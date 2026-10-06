@@ -3,49 +3,6 @@
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { AgentState, Role } from "./AgentStage";
-import { getLatestSettlement, type LatestSettlement } from "@/lib/settlement";
-
-/** Miniature discount curve. With no settlement it draws the empty arc as a dashed path (an honest empty state). */
-function MiniCurve({ filled }: { filled: boolean }) {
-  return (
-    <svg viewBox="0 0 120 56" width="120" height="56" aria-hidden="true" fill="none">
-      <path
-        d="M6 50 C 30 50, 38 8, 60 8 S 90 50, 114 50"
-        stroke="var(--accent)"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeDasharray={filled ? undefined : "3 6"}
-        opacity={filled ? 1 : 0.7}
-      />
-    </svg>
-  );
-}
-
-function LatestPanel() {
-  const [s, setS] = useState<LatestSettlement | null>(null);
-  useEffect(() => {
-    let live = true;
-    getLatestSettlement().then((r) => live && setS(r));
-    return () => {
-      live = false;
-    };
-  }, []);
-
-  let body: React.ReactNode = <span className="muted">Loading the latest settlement</span>;
-  if (s?.status === "unavailable") body = <>Unavailable: {s.reason}</>;
-  if (s?.status === "empty") body = <>No settlement yet. Create the first invoice.</>;
-  if (s?.status === "ready") body = <>{s.invoiceRef} paid {s.daysEarly} days early</>;
-
-  return (
-    <div className="hero-latest" aria-live="polite">
-      <MiniCurve filled={s?.status === "ready"} />
-      <div>
-        <p className="tag">On-chain latest settlement</p>
-        <p className="hero-latest-body">{body}</p>
-      </div>
-    </div>
-  );
-}
 
 const HeroCanvas = dynamic(() => import("./HeroCanvas"), { ssr: false });
 
@@ -179,8 +136,7 @@ export function Hero() {
       </div>
       <AgentGuide />
       <div className="hero-foot">
-        <LatestPanel />
-        <p className="tag hero-net">Live on Arc testnet</p>
+        <p className="tag hero-net">Arc testnet</p>
       </div>
     </section>
   );

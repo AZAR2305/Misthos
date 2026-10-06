@@ -110,26 +110,28 @@
     background: color-mix(in srgb, var(--color-surface-1) 86%, transparent); backdrop-filter: blur(10px);
     border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: 14px 16px; }
   .hero-say-line { min-height: 4.2em; font-size: 1.05rem; }
-  .hero-start { top: 34%; }
+  .hero-start { top: auto; bottom: clamp(104px, 30vw, 150px); }
   .hero-foot { order: 3; margin-top: 18px; }
 }
 
 /* ---------- plain sections: an eyebrow, then ruled rows ---------- */
 .sec { padding: clamp(72px, 14vh, 150px) var(--page-gutter) 0; display: grid; gap: clamp(24px, 4vh, 44px); }
 .sec-eyebrow { margin: 0; font-family: var(--font-mono); font-size: var(--text-micro); letter-spacing: 0.14em; text-transform: uppercase; color: var(--color-text-muted); }
+/* One two-column split for every section, so headings and copy line up from top to bottom of the page. */
+:root { --split: minmax(0, 5fr) minmax(0, 6fr); --split-gap: clamp(32px, 6vw, 96px); }
 .rows { list-style: none; margin: 0; padding: 0; }
 .row {
-  display: grid; grid-template-columns: minmax(0, 6fr) minmax(0, 5fr); align-items: start; gap: 12px clamp(24px, 6vw, 96px);
+  display: grid; grid-template-columns: var(--split); align-items: start; gap: 12px var(--split-gap);
   padding: clamp(24px, 4.5vh, 44px) 0; border-top: 1px solid var(--color-border-strong);
 }
 .row:last-child { border-bottom: 1px solid var(--color-border-strong); }
 .row p { margin: 0; font-size: clamp(0.98rem, 1.15vw, 1.08rem); line-height: 1.6; max-width: 44ch; color: var(--color-text-muted); }
-.steps-list .row { grid-template-columns: 4rem minmax(0, 5fr) minmax(0, 5fr); }
-.steps-list .step-n { color: var(--accent); font-size: var(--text-small); padding-top: 0.9em; }
+.steps-list .step-head { display: flex; align-items: baseline; gap: 28px; }
+.steps-list .step-n { color: var(--accent); font-size: var(--text-small); min-width: 2.2rem; }
 
 /* ---------- agents: two robots and a terminal between them ---------- */
 .agents { padding: clamp(72px, 14vh, 150px) var(--page-gutter) 0; display: grid; gap: clamp(22px, 4vh, 40px); }
-.agents-head { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); gap: clamp(24px, 5vw, 80px); align-items: start; }
+.agents-head { display: grid; grid-template-columns: var(--split); gap: 24px var(--split-gap); align-items: start; }
 .agents-copy { display: grid; gap: 18px; }
 .agent-tabs { display: flex; gap: 12px; flex-wrap: wrap; }
 .agent-tab {
@@ -210,7 +212,7 @@
 }
 
 /* ---------- evidence ---------- */
-.evidence { padding: clamp(72px, 14vh, 150px) var(--page-gutter) 0; display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); gap: clamp(32px, 6vw, 96px); align-items: start; }
+.evidence { padding: clamp(72px, 14vh, 150px) var(--page-gutter) 0; display: grid; grid-template-columns: var(--split); gap: 32px var(--split-gap); align-items: start; }
 .evidence-list { list-style: none; margin: 0; padding: 0; display: grid; gap: clamp(28px, 6vh, 56px); }
 .evidence-list li { display: grid; gap: 10px; border-top: 1px solid var(--color-border-strong); padding-top: 22px; }
 .evidence-list p { margin: 0; max-width: 46ch; color: var(--color-text-muted); }
@@ -246,7 +248,7 @@
   .hero-foot { grid-template-columns: 1fr; justify-items: start; gap: 12px; }
   .hero-net { justify-self: start; }
   .hero-latest { grid-row: auto; }
-  .row, .steps-list .row { grid-template-columns: 1fr; }
+  .row { grid-template-columns: 1fr; }
   .agents, .evidence { grid-template-columns: 1fr; }
   .proof, .who-grid { grid-template-columns: 1fr; }
 }

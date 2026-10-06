@@ -14,7 +14,8 @@
   transition: background var(--dur-slow) var(--ease), border-color var(--dur-slow) var(--ease), box-shadow var(--dur-slow) var(--ease);
 }
 .appbar[data-scrolled="true"] { background: color-mix(in srgb, var(--landing-bg) 88%, transparent); border-color: var(--color-border); box-shadow: 0 10px 30px -18px rgb(0 0 0 / 0.5); }
-.appbar-row { display: flex; align-items: center; gap: clamp(12px, 2vw, 28px); padding: 18px clamp(16px, 3vw, 40px); max-width: 1480px; margin: 0 auto; transition: padding var(--dur-slow) var(--ease); }
+:root { --shell-w: 1320px; }
+.appbar-row { display: flex; align-items: center; gap: clamp(12px, 2vw, 28px); padding: 18px clamp(16px, 3vw, 40px); max-width: var(--shell-w); margin: 0 auto; transition: padding var(--dur-slow) var(--ease); }
 .appbar[data-scrolled="true"] .appbar-row { padding-block: 9px; }
 .rail-brand { display: inline-flex; align-items: center; gap: 10px; font-family: var(--font-display); font-weight: 600; letter-spacing: -0.02em; font-size: 1.15rem; flex: none; }
 .rail-brand svg { color: var(--accent); transition: transform 0.9s var(--ease); }
@@ -35,10 +36,10 @@
 .role-switch button:hover { color: var(--color-text); }
 .role-switch button[aria-pressed="true"][data-role="supplier"] { background: var(--role-supplier); color: var(--on-role-supplier); }
 .role-switch button[aria-pressed="true"][data-role="buyer"] { background: var(--role-buyer); color: var(--on-role-buyer); }
-.banners { display: grid; gap: 10px; padding: 14px clamp(16px, 3vw, 40px) 0; max-width: 1480px; width: 100%; margin: 0 auto; }
+.banners { display: grid; gap: 10px; padding: 14px clamp(16px, 3vw, 40px) 0; max-width: var(--shell-w); width: 100%; margin: 0 auto; }
 .banners:empty { display: none; }
 .page { padding: clamp(20px, 3vw, 44px) clamp(16px, 3vw, 40px); max-width: 1320px; width: 100%; margin: 0 auto; display: grid; gap: 24px; align-content: start; flex: 1; }
-.appfoot { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 18px clamp(16px, 3vw, 40px); border-top: 1px solid var(--color-border); font-size: 0.82rem; max-width: 1480px; width: 100%; margin: 0 auto; }
+.appfoot { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 18px clamp(16px, 3vw, 40px); border-top: 1px solid var(--color-border); font-size: 0.82rem; max-width: var(--shell-w); width: 100%; margin: 0 auto; }
 .appfoot-links { display: inline-flex; gap: 18px; color: var(--color-text-muted); }
 .appfoot-links a:hover { color: var(--accent); }
 

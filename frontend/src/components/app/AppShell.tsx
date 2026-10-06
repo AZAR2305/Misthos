@@ -215,7 +215,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         )}
         {chain.status === "error" && (
           <Notice kind="error" title="Could not read the chain" action={<button type="button" className="btn btn-ghost btn-sm" onClick={() => void chain.refresh()}>Try again</button>}>
-            {chain.error}. Your data is safe; this is only the page failing to fetch it.
+            {(chain.error ?? "").replace(/\.+$/, "")}. Your data is safe; this is only the page failing to fetch it.
           </Notice>
         )}
       </div>

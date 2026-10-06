@@ -19,8 +19,10 @@ export function Steps() {
       <ol className="rows steps-list">
         {STEPS.map((s, i) => (
           <li key={s.word} className="row">
-            <p className="step-n mono">{String(i + 1).padStart(2, "0")}</p>
-            <h3 className="display-2">{s.word}</h3>
+            <div className="step-head">
+              <p className="step-n mono">{String(i + 1).padStart(2, "0")}</p>
+              <h3 className="display-2">{s.word}</h3>
+            </div>
             <p>{s.text}</p>
           </li>
         ))}

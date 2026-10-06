@@ -105,9 +105,7 @@ export function Robot({
 }) {
   const group = useRef<THREE.Group>(null!);
   const core = useRef<THREE.Group>(null!);
-  const ringA = useRef<THREE.Group>(null!);
-  const ringB = useRef<THREE.Group>(null!);
-  const ringC = useRef<THREE.Group>(null!);
+  const coinSpin = useRef<Array<THREE.Group | null>>([]);
   const coins = useRef<THREE.Group>(null!);
   const eyeL = useRef<THREE.Mesh>(null!);
   const eyeR = useRef<THREE.Mesh>(null!);
@@ -203,11 +201,9 @@ export function Robot({
       shadow.current.scale.set(s, s, s);
     }
 
-    // --- rings: slow gyro; faster when busy, walking or celebrating ---
-    const speed = (calm ? 0 : 0.35) + busy * 1.8 + (walking.current ? 0.8 : 0) + ringBoost;
-    ringA.current.rotation.z += dt * speed * 1.0;
-    ringB.current.rotation.x += dt * speed * 0.8;
-    ringC.current.rotation.y -= dt * speed * 0.6;
+    // --- coins: each spins on its own axis while the set orbits the agent ---
+    const speed = (calm ? 0 : 1.6) + busy * 2 + (walking.current ? 1 : 0) + ringBoost;
+    for (const c of coinSpin.current) if (c) c.rotation.y += dt * speed;
     spin.current += dt * ((calm ? 0 : 0.25) + spinBoost);
     if (coins.current) coins.current.rotation.y = spin.current + (calm ? 0 : now * 0.2);
 
@@ -229,19 +225,6 @@ export function Robot({
     eyeR.current.position.x = 0.2 + scan;
     eyeMat.color.set(glow).multiplyScalar(br * (1 + busy * 0.4 * (0.5 + 0.5 * Math.sin(now * 9))));
   });
-
-  const ring = (r: number, w: number) => (
-    <>
-      <mesh>
-        <torusGeometry args={[r, w, 12, 128]} />
-        <meshStandardMaterial color={th.joints} metalness={0.85} roughness={0.25} emissive={glow} emissiveIntensity={0.18} />
-      </mesh>
-      <mesh position={[r, 0, 0]}>
-        <sphereGeometry args={[w * 3.2, 16, 16]} />
-        <meshBasicMaterial color={glow} toneMapped={false} />
-      </mesh>
-    </>
-  );
 
   return (
     <group
@@ -266,7 +249,7 @@ export function Robot({
       <group ref={core} position={[0, cy, 0]} scale={R}>
         <mesh castShadow>
           <sphereGeometry args={[1, 64, 64]} />
-          <meshPhysicalMaterial color={dark ? "#26241f" : "#f2f1ee"} metalness={dark ? 0.75 : 0.35} roughness={dark ? 0.22 : 0.18} clearcoat={1} clearcoatRoughness={0.1} envMapIntensity={1.6} emissive={tint} emissiveIntensity={dark ? 0.05 : 0.02} />
+          <meshPhysicalMaterial color={dark ? "#a8ecb5" : "#e4f6e8"} metalness={dark ? 0.35 : 0.3} roughness={0.2} clearcoat={1} clearcoatRoughness={0.1} envMapIntensity={1.6} emissive={tint} emissiveIntensity={dark ? 0.05 : 0.02} />
         </mesh>
         {/* Visor */}
         <mesh position={[0, 0.06, 0.62]} scale={[0.78, 0.42, 0.45]}>
@@ -293,28 +276,19 @@ export function Robot({
           <sphereGeometry args={[0.09, 16, 16]} />
           <meshBasicMaterial color={glow} toneMapped={false} />
         </mesh>
-        {/* Gyro rings */}
-        <group ref={ringA} rotation={[Math.PI / 2.4, 0, 0]}>{ring(1.55, 0.014)}</group>
-        <group ref={ringB} rotation={[0.3, 0, Math.PI / 2.8]}>{ring(1.8, 0.011)}</group>
-        <group ref={ringC} rotation={[Math.PI / 2, 0, 0.5]}>{ring(2.05, 0.009)}</group>
       </group>
 
-      {/* USDC-style coins in orbit, when the agent stands alone. */}
+      {/* USDC coins in orbit, when the agent stands alone. Each spins on its own axis. */}
       {bare && (
-        <group ref={coins} position={[0, cy + R * 0.2, 0]}>
-          {[0, 1, 2].map((i) => {
-            const a = (i / 3) * Math.PI * 2;
-            const r = R * 2.45;
+        <group ref={coins} position={[0, cy + R * 0.1, 0]}>
+          {[0, 1, 2, 3].map((i) => {
+            const a = (i / 4) * Math.PI * 2;
+            const r = R * 1.85;
             return (
-              <group key={i} position={[Math.sin(a) * r, Math.sin(a * 2) * R * 0.35, Math.cos(a) * r]} rotation={[0, a, 0]}>
-                <mesh rotation={[Math.PI / 2, 0, 0]} castShadow>
-                  <cylinderGeometry args={[R * 0.2, R * 0.2, R * 0.04, 48]} />
-                  <meshStandardMaterial color={THEMES[themeId].scene.dark ? "#e9fbed" : "#ffffff"} metalness={0.7} roughness={0.22} emissive={glow} emissiveIntensity={0.18} />
-                </mesh>
-                <mesh position={[0, 0, R * 0.025]}>
-                  <torusGeometry args={[R * 0.135, R * 0.01, 8, 40]} />
-                  <meshBasicMaterial color={glow} toneMapped={false} />
-                </mesh>
+              <group key={i} position={[Math.sin(a) * r, Math.sin(a * 2 + 1) * R * 0.3, Math.cos(a) * r]}>
+                <group ref={(g) => { coinSpin.current[i] = g; }} rotation={[0, a, 0]}>
+                  <UsdcCoin size={R * 0.34} />
+                </group>
               </group>
             );
           })}
@@ -351,6 +325,49 @@ export function Robot({
         </Html>
       )}
     </group>
+  );
+}
+
+const USDC_BLUE = "#2775ca";
+
+/** The USDC face: blue disc, white rim and the dollar mark. Drawn once and shared by every coin. */
+let usdcFace: THREE.CanvasTexture | null = null;
+function useUsdcFace() {
+  return useMemo(() => {
+    if (usdcFace) return usdcFace;
+    const c = document.createElement("canvas");
+    c.width = c.height = 256;
+    const g = c.getContext("2d")!;
+    g.fillStyle = USDC_BLUE;
+    g.fillRect(0, 0, 256, 256);
+    g.strokeStyle = "#ffffff";
+    g.lineWidth = 7;
+    g.beginPath();
+    g.arc(128, 128, 104, 0, Math.PI * 2);
+    g.stroke();
+    g.fillStyle = "#ffffff";
+    g.font = "700 150px 'Plus Jakarta Sans', Arial, sans-serif";
+    g.textAlign = "center";
+    g.textBaseline = "middle";
+    g.fillText("$", 128, 136);
+    const t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.SRGBColorSpace;
+    t.anisotropy = 4;
+    usdcFace = t;
+    return t;
+  }, []);
+}
+
+/** A USDC coin standing on its edge, its two faces toward +z and -z. */
+function UsdcCoin({ size }: { size: number }) {
+  const face = useUsdcFace();
+  return (
+    <mesh rotation={[Math.PI / 2, 0, 0]} castShadow>
+      <cylinderGeometry args={[size, size, size * 0.16, 64]} />
+      <meshStandardMaterial attach="material-0" color={USDC_BLUE} metalness={0.55} roughness={0.3} />
+      <meshStandardMaterial attach="material-1" map={face} metalness={0.25} roughness={0.35} />
+      <meshStandardMaterial attach="material-2" map={face} metalness={0.25} roughness={0.35} />
+    </mesh>
   );
 }
 
@@ -395,7 +412,7 @@ function TreasuryProp({ accent }: { accent: string }) {
       {[0, 1, 2, 3, 4].map((i) => (
         <mesh key={i} position={[(i % 2) * 0.03, i * 0.1 - 0.2, 0]}>
           <cylinderGeometry args={[0.3, 0.3, 0.085, 28]} />
-          <meshStandardMaterial color={accent} metalness={0.85} roughness={0.2} emissive={accent} emissiveIntensity={0.18} />
+          <meshStandardMaterial color={USDC_BLUE} metalness={0.7} roughness={0.25} emissive={USDC_BLUE} emissiveIntensity={0.15} />
         </mesh>
       ))}
     </group>
