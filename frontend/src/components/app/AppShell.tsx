@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useState, type ReactNode } from "react";
 import { ArcGlyph } from "@/components/landing/Nav";
 import { ConnectButton } from "@/components/wallet/ConnectButton";
+import { ThemePicker } from "@/components/ThemePicker";
 import { useWallet } from "@/components/wallet/WalletProvider";
 import { Money, Notice } from "@/components/ui/kit";
 import { CONFIG } from "@/lib/config";
@@ -106,6 +107,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               {chain.rpcOk === false ? "Network unreachable" : chain.rpcOk ? "Network live" : "Connecting"}
             </span>
           </div>
+          <ThemePicker />
           <ConnectButton />
         </div>
 

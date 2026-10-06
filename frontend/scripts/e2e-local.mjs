@@ -222,6 +222,19 @@ async function main() {
     await mp.screenshot({ path: path.join(shots, `30-phone-${p === "/" ? "landing" : p.replace(/\/0x[0-9a-f]{64}/, "/id").replace(/\//g, "-").replace(/^-/, "")}.png`) });
   }
 
+  if (process.env.E2E_THEMES) {
+    log("11. the real app pages in every colour theme");
+    const themes = ["violet-night", "violet-light", "midnight-coral", "emerald"];
+    for (const t of themes) {
+      for (const [name, p, who] of [["invoice", `/invoices/${invoiceId}`, buyer], ["buyer", "/buyer", buyer], ["stats", "/stats", buyer], ["new", "/supplier/invoices/new", supplier]]) {
+        await page.evaluate((x) => window.__connectAs(x), who);
+        await page.goto(`${BASE}${p}?theme=${t}`, { waitUntil: "networkidle" });
+        await sleep(1400);
+        await page.screenshot({ path: path.join(shots, `theme-${t}-${name}.png`) });
+      }
+    }
+    check(true, "captured the app in 4 themes");
+  }
   check(errors.length === 0, `no console errors in the app${errors.length ? ": " + errors.slice(0, 3).join(" | ") : ""}`);
   await browser.close();
   console.log("\nE2E PASSED");

@@ -8,11 +8,12 @@ import "@fontsource/chakra-petch/600.css";
 import "@fontsource/jetbrains-mono/400.css";
 import "@fontsource/jetbrains-mono/500.css";
 import "../../design/tokens.css";
-import "../../design/theme-green.css";
+import "../../design/themes.css";
 import "./globals.css";
 import "./landing.css";
 import "./app.css";
 import { Providers } from "@/components/Providers";
+import { NO_FLASH_SCRIPT } from "@/lib/themes";
 
 export const metadata: Metadata = {
   title: "Misthos: get paid days after approval, not weeks",
@@ -28,7 +29,10 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: NO_FLASH_SCRIPT }} />
+      </head>
       <body>
         <Providers>{children}</Providers>
       </body>

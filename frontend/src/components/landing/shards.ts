@@ -97,16 +97,16 @@ export interface ShardSet {
   phase: Float32Array;
   spin: Float32Array;
   introDelay: Float32Array;
-  color: Float32Array;
+  /** Position on the theme's colour ramp, 0 (darkest) to 1 (glint). The theme decides the actual colour. */
+  tone: Float32Array;
 }
 
-const PALETTE = {
-  deep: new THREE.Color("#0a5a39"),
-  mid: new THREE.Color("#12925a"),
-  bright: new THREE.Color("#2fcf86"),
-  mint: new THREE.Color("#8ef0bf"),
-  glint: new THREE.Color("#d8fbe8"),
-};
+/** Linear lookup on a colour ramp: t in 0..1 over the stops, dark to light. */
+export function rampColor(stops: readonly THREE.Color[], t: number, out: THREE.Color): THREE.Color {
+  const x = Math.min(0.9999, Math.max(0, t)) * (stops.length - 1);
+  const i = Math.floor(x);
+  return out.copy(stops[i]!).lerp(stops[i + 1]!, x - i);
+}
 
 function gauss(rand: () => number) {
   return (rand() + rand() + rand() - 1.5) / 1.5;
@@ -132,10 +132,9 @@ export function buildShardSet(kind: "crystal" | "wedge", count: number, seed: nu
   const phase = new Float32Array(count);
   const spin = new Float32Array(count);
   const introDelay = new Float32Array(count);
-  const color = new Float32Array(count * 3);
+  const tone = new Float32Array(count);
   const e = new THREE.Euler();
   const q = new THREE.Quaternion();
-  const c = new THREE.Color();
 
   for (let i = 0; i < count; i++) {
     delay[i] = rand();
@@ -144,13 +143,7 @@ export function buildShardSet(kind: "crystal" | "wedge", count: number, seed: nu
     introDelay[i] = rand();
 
     const pick = rand();
-    if (pick < 0.34) c.copy(PALETTE.deep).lerp(PALETTE.mid, rand());
-    else if (pick < 0.78) c.copy(PALETTE.mid).lerp(PALETTE.bright, rand());
-    else if (pick < 0.96) c.copy(PALETTE.bright).lerp(PALETTE.mint, rand());
-    else c.copy(PALETTE.glint);
-    color[i * 3] = c.r;
-    color[i * 3 + 1] = c.g;
-    color[i * 3 + 2] = c.b;
+    tone[i] = pick < 0.34 ? rand() * 0.25 : pick < 0.78 ? 0.25 + rand() * 0.3 : pick < 0.96 ? 0.55 + rand() * 0.3 : 0.93 + rand() * 0.07;
 
     // ---- F0: hero field. Upright shards rising from the bottom edge. ----
     {
@@ -198,7 +191,7 @@ export function buildShardSet(kind: "crystal" | "wedge", count: number, seed: nu
     }
   }
 
-  return { count, formations: F, delay, phase, spin, introDelay, color };
+  return { count, formations: F, delay, phase, spin, introDelay, tone };
 }
 
 /** An arch (rainbow) with short legs: the central Arc mark, extruded and bevelled so it catches light in facets. */

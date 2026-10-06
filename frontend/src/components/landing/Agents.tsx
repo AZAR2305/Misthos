@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { AgentState, Face, Message, Pose, Role } from "./AgentStage";
+import { HOME, MEET } from "./stage-constants";
 
 const AgentStage = dynamic(() => import("./AgentStage"), { ssr: false });
 
@@ -75,17 +76,36 @@ export function Agents() {
     [],
   );
 
+  const walk = useCallback((who: Role, x: number) => {
+    const set = who === "supplier" ? setSupplier : setBuyer;
+    set((s) => ({ ...s, move: { x, key: (s.move?.key ?? 0) + 1 } }));
+  }, []);
+
   const send = (from: Role) => setMessage({ from, key: counter.current++ });
 
+  const home = () => {
+    walk("supplier", HOME.supplier);
+    walk("buyer", HOME.buyer);
+  };
+
+  // Post offer: the supplier walks over, hands it across, and walks back.
   const offer = () => {
     clearAll();
     setSettled(false);
-    act("supplier", "Wave", "neutral", "//r1 offer signed");
     act("buyer", "Idle", "neutral", null);
-    send("supplier");
-    later(3200, () => setSupplier((s) => ({ ...s, bubble: null })));
+    act("supplier", "Idle", "neutral", null);
+    walk("supplier", MEET.supplier);
+    later(1400, () => {
+      act("supplier", "Wave", "neutral", "//r1 offer signed");
+      send("supplier");
+    });
+    later(3400, () => {
+      setSupplier((s) => ({ ...s, bubble: null }));
+      walk("supplier", HOME.supplier);
+    });
   };
 
+  // Reject: the buyer shakes its head with a reason code; the supplier takes it on the chin.
   const reject = () => {
     clearAll();
     setSettled(false);
@@ -98,27 +118,38 @@ export function Agents() {
     });
   };
 
+  // Accept: both step up, the buyer gives a thumbs up, the supplier jumps, then they celebrate together.
   const accept = () => {
     clearAll();
-    act("buyer", "ThumbsUp", "surprised", "Accept");
-    send("buyer");
-    later(900, () => {
+    walk("supplier", MEET.supplier);
+    walk("buyer", MEET.buyer);
+    later(1500, () => {
+      act("buyer", "ThumbsUp", "surprised", "Accept");
+      send("buyer");
+    });
+    later(2400, () => {
       act("supplier", "Jump", "surprised", "Paid early");
       setPulseKey((k) => k + 1 + counter.current++);
       setSettled(true);
     });
-    later(4200, () => {
-      setBuyer((s) => ({ ...s, face: "neutral", bubble: null }));
-      setSupplier((s) => ({ ...s, face: "neutral", bubble: null }));
+    later(3700, () => {
+      act("supplier", "Dance", "surprised", null);
+      act("buyer", "Dance", "surprised", null);
+    });
+    later(7000, () => {
+      act("supplier", "Idle", "neutral", null);
+      act("buyer", "Idle", "neutral", null);
+      home();
     });
   };
 
   const reset = () => {
     clearAll();
     setSettled(false);
-    setSupplier(REST);
-    setBuyer(REST);
+    setSupplier((s) => ({ ...REST, move: s.move }));
+    setBuyer((s) => ({ ...REST, move: s.move }));
     setMessage(null);
+    home();
   };
 
   const onSelect = (r: Role) => {

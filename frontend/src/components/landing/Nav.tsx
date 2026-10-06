@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { ConnectButton } from "@/components/wallet/ConnectButton";
+import { ThemePicker } from "@/components/ThemePicker";
 import { onTick } from "./scene-store";
 
 export function ArcGlyph({ size = 22 }: { size?: number }) {
@@ -62,6 +63,7 @@ export function Nav() {
         <span />
         <span />
       </button>
+      <ThemePicker />
       <ConnectButton compact />
       <a href="/app" className="nav-cta">
         Open app

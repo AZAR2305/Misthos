@@ -94,9 +94,9 @@ function Dumbbell({ rows }: { rows: SettlementRow[] }) {
         return (
           <g key={r.tx}>
             <text x={m.l - 10} y={y + 4} textAnchor="end">{shortId(r.id).slice(0, 10)}</text>
-            <line x1={x(r.paidSec)} x2={x(r.dueSec)} y1={y} y2={y} stroke="var(--g-600)" strokeWidth={3} strokeLinecap="round" />
+            <line x1={x(r.paidSec)} x2={x(r.dueSec)} y1={y} y2={y} stroke="var(--accent-dim)" strokeWidth={3} strokeLinecap="round" />
             <circle cx={x(r.paidSec)} cy={y} r={5.5} fill="var(--accent)" />
-            <circle cx={x(r.dueSec)} cy={y} r={5.5} fill="#000" stroke="var(--color-text-muted)" strokeWidth={2} />
+            <circle cx={x(r.dueSec)} cy={y} r={5.5} fill="var(--color-bg)" stroke="var(--color-text-muted)" strokeWidth={2} />
           </g>
         );
       })}

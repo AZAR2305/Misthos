@@ -6,7 +6,8 @@ import { Bloom, EffectComposer, SMAA, Vignette } from "@react-three/postprocessi
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { sceneState } from "./scene-store";
-import { archMarkGeometry, buildShardSet, crystalGeometry, mulberry32, wedgeGeometry, type ShardSet } from "./shards";
+import { THEMES, useThemeId } from "@/lib/themes";
+import { archMarkGeometry, buildShardSet, crystalGeometry, mulberry32, rampColor, wedgeGeometry, type ShardSet } from "./shards";
 
 const clamp = (v: number, a = 0, b = 1) => Math.min(b, Math.max(a, v));
 const smooth = (t: number) => t * t * (3 - 2 * t);
@@ -28,15 +29,17 @@ function ShardField({ set, geometry }: { set: ShardSet; geometry: THREE.BufferGe
     [],
   );
 
+  const themeId = useThemeId();
+  const th = THEMES[themeId].scene;
+
+  // Re-colour every shard when the theme changes.
   useLayoutEffect(() => {
     const m = mesh.current;
+    const stops = th.shard.map((h) => new THREE.Color(h));
     const c = new THREE.Color();
-    for (let i = 0; i < set.count; i++) {
-      c.setRGB(set.color[i * 3], set.color[i * 3 + 1], set.color[i * 3 + 2]);
-      m.setColorAt(i, c);
-    }
+    for (let i = 0; i < set.count; i++) m.setColorAt(i, rampColor(stops, set.tone[i]!, c));
     if (m.instanceColor) m.instanceColor.needsUpdate = true;
-  }, [set]);
+  }, [set, th]);
 
   useFrame(({ clock }) => {
     const m = mesh.current;
@@ -116,7 +119,7 @@ function ShardField({ set, geometry }: { set: ShardSet; geometry: THREE.BufferGe
 
   return (
     <instancedMesh ref={mesh} args={[geometry, undefined, set.count]} frustumCulled={false}>
-      <meshStandardMaterial color="#ffffff" metalness={0.42} roughness={0.15} envMapIntensity={1.7} emissive="#06261a" emissiveIntensity={0.9} flatShading />
+      <meshStandardMaterial color="#ffffff" metalness={th.shardGloss.metalness} roughness={th.shardGloss.roughness} envMapIntensity={th.shardGloss.env} emissive={th.shardGloss.emissive} emissiveIntensity={th.shardGloss.emissiveIntensity} flatShading />
     </instancedMesh>
   );
 }
@@ -129,6 +132,7 @@ function ArcMark() {
   const group = useRef<THREE.Group>(null!);
   const dot = useRef<THREE.Mesh>(null!);
   const geometry = useMemo(() => archMarkGeometry(), []);
+  const th = THEMES[useThemeId()].scene;
 
   useFrame(({ clock }) => {
     const g = group.current;
@@ -155,15 +159,15 @@ function ArcMark() {
   return (
     <group ref={group} visible={false}>
       <mesh geometry={geometry}>
-        <meshStandardMaterial color="#0f7a4c" metalness={0.9} roughness={0.14} envMapIntensity={2.6} emissive="#052d1d" emissiveIntensity={0.9} flatShading />
+        <meshStandardMaterial color={th.arch.color} metalness={th.arch.metalness} roughness={th.arch.roughness} envMapIntensity={th.arch.env} emissive={th.arch.emissive} emissiveIntensity={th.arch.emissiveIntensity} flatShading />
       </mesh>
       <mesh position={[0, 0, 0]}>
         <torusGeometry args={[0.5, 0.016, 8, 96, Math.PI]} />
-        <meshBasicMaterial color="#8ef0bf" toneMapped={false} />
+        <meshBasicMaterial color={th.curve} toneMapped={false} />
       </mesh>
       <mesh ref={dot}>
         <sphereGeometry args={[0.07, 16, 16]} />
-        <meshBasicMaterial color="#e8fff3" toneMapped={false} />
+        <meshBasicMaterial color={th.dot} toneMapped={false} />
       </mesh>
     </group>
   );
@@ -172,6 +176,7 @@ function ArcMark() {
 /** A few hundred tiny motes behind the shards: depth without weight. */
 function Dust({ count }: { count: number }) {
   const ref = useRef<THREE.Points>(null!);
+  const dust = THEMES[useThemeId()].scene.dust;
   const geometry = useMemo(() => {
     const rand = mulberry32(77);
     const p = new Float32Array(count * 3);
@@ -192,13 +197,14 @@ function Dust({ count }: { count: number }) {
   });
   return (
     <points ref={ref} geometry={geometry}>
-      <pointsMaterial color="#8ef0bf" size={0.04} sizeAttenuation transparent opacity={0.5} depthWrite={false} blending={THREE.AdditiveBlending} />
+      <pointsMaterial color={dust.color} size={dust.additive ? 0.04 : 0.05} sizeAttenuation transparent opacity={dust.opacity} depthWrite={false} blending={dust.additive ? THREE.AdditiveBlending : THREE.NormalBlending} />
     </points>
   );
 }
 
 function PointerLight() {
   const ref = useRef<THREE.PointLight>(null!);
+  const th = THEMES[useThemeId()].scene;
   useFrame(() => {
     const p = sceneState.pointer;
     if (!ref.current) return;
@@ -206,7 +212,7 @@ function PointerLight() {
     const on = p.active && !sceneState.reducedMotion;
     ref.current.intensity = on ? 38 * (1 - 0.85 * clamp(sceneState.mark)) : 0;
   });
-  return <pointLight ref={ref} color="#b4f6d0" distance={9} decay={1.7} />;
+  return <pointLight ref={ref} color={th.light.pointer} distance={9} decay={1.7} />;
 }
 
 function CameraRig() {
@@ -240,19 +246,23 @@ function Scene({ density, quality, post }: { density: number; quality: number; p
     };
   }, [density]);
 
+  const themeId = useThemeId();
+  const th = THEMES[themeId].scene;
+  const e = th.env;
   return (
     <>
-      <color attach="background" args={["#000000"]} />
-      <fog attach="fog" args={["#000000", 10, 27]} />
-      <ambientLight intensity={0.3} color="#9fe8c4" />
-      <directionalLight position={[6, 8, 6]} intensity={2.4} color="#e8fff3" />
-      <Environment resolution={128} frames={1}>
-        <Lightformer form="rect" intensity={3.2} color="#e8fff3" position={[5, 5, 4]} scale={[7, 3, 1]} />
-        <Lightformer form="rect" intensity={2.2} color="#1dba72" position={[-6, 1, 3]} scale={[3, 8, 1]} />
-        <Lightformer form="ring" intensity={2.4} color="#3fd98e" position={[0, 0, -6]} scale={9} />
-        <Lightformer form="rect" intensity={2.4} color="#8ef0bf" position={[-5, 4, 2]} scale={[2, 6, 1]} />
-        <Lightformer form="rect" intensity={2.2} color="#d8fbe8" position={[6, -2, 2]} scale={[2, 6, 1]} />
-        <Lightformer form="rect" intensity={1.5} color="#ffffff" position={[0, -6, 2]} scale={[10, 1.5, 1]} />
+      <color key={`bg-${themeId}`} attach="background" args={[th.bg]} />
+      <fog key={`fog-${themeId}`} attach="fog" args={[th.bg, 10, 27]} />
+      <ambientLight intensity={th.light.ambientIntensity} color={th.light.ambient} />
+      <directionalLight position={[6, 8, 6]} intensity={th.light.keyIntensity} color={th.light.key} />
+      {/* The environment is baked once per theme: light cards reflected in the glossy crystals. */}
+      <Environment key={`env-${themeId}`} resolution={128} frames={1}>
+        <Lightformer form="rect" intensity={3.2 * e.boost} color={e.key} position={[5, 5, 4]} scale={[7, 3, 1]} />
+        <Lightformer form="rect" intensity={2.4 * e.boost} color={e.side} position={[-6, 1, 3]} scale={[3, 8, 1]} />
+        <Lightformer form="ring" intensity={2.4 * e.boost} color={e.ring} position={[0, 0, -6]} scale={9} />
+        <Lightformer form="rect" intensity={2.4 * e.boost} color={e.stripA} position={[-5, 4, 2]} scale={[2, 6, 1]} />
+        <Lightformer form="rect" intensity={2.2 * e.boost} color={e.stripB} position={[6, -2, 2]} scale={[2, 6, 1]} />
+        <Lightformer form="rect" intensity={1.5 * e.boost} color={e.floor} position={[0, -6, 2]} scale={[10, 1.5, 1]} />
       </Environment>
       <ShardField {...sets.crystalA} />
       <ShardField {...sets.crystalB} />
@@ -261,20 +271,24 @@ function Scene({ density, quality, post }: { density: number; quality: number; p
       <ArcMark />
       <PointerLight />
       <CameraRig />
-      {post && (
+      {post && (th.bloom.on || quality >= 2) && (
         // Measured on an Intel UHD (uncapped): MSAA halved the frame rate and half-float buffers cost another ~60%,
         // so the composer uses 8-bit buffers, no MSAA, and SMAA only at the top quality tier.
         <EffectComposer multisampling={0} frameBufferType={THREE.UnsignedByteType}>
-          <Bloom
-            intensity={0.6}
-            luminanceThreshold={0.8}
-            luminanceSmoothing={0.25}
-            mipmapBlur
-            levels={quality >= 2 ? 5 : quality === 1 ? 4 : 3}
-            resolutionScale={quality >= 2 ? 0.5 : quality === 1 ? 0.4 : 0.3}
-          />
+          {th.bloom.on ? (
+            <Bloom
+              intensity={th.bloom.intensity}
+              luminanceThreshold={th.bloom.threshold}
+              luminanceSmoothing={0.25}
+              mipmapBlur
+              levels={quality >= 2 ? 5 : quality === 1 ? 4 : 3}
+              resolutionScale={quality >= 2 ? 0.5 : quality === 1 ? 0.4 : 0.3}
+            />
+          ) : (
+            <></>
+          )}
           {quality >= 2 ? <SMAA /> : <></>}
-          {quality >= 1 ? <Vignette eskil={false} offset={0.28} darkness={0.8} /> : <></>}
+          {th.vignette && quality >= 1 ? <Vignette eskil={false} offset={0.28} darkness={0.8} /> : <></>}
         </EffectComposer>
       )}
     </>

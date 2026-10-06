@@ -1,0 +1,161 @@
+/*
+ * Colour themes (product owner request, 2026-10-06). Loaded after tokens.css, which stays exactly as spec 10.2.
+ * A theme sets every colour the UI uses; components only read these semantic variables, so switching the data-theme
+ * attribute on <html> restyles the whole site. The 3D scene reads the matching palette from src/lib/themes.ts.
+ *
+ *   accent*   links, outlines and highlights        tint*    quiet accent-tinted surfaces
+ *   primary   the main call-to-action fill          money    the number the reader acts on
+ *   agent-*   anything an agent said or decided     ok/warn/bad  status only
+ *
+ * Contrast: text on surfaces, primary buttons and tinted chips were chosen for at least 4.5:1 (checked in
+ * docs/DECISIONS.md, "Themes").
+ */
+
+/* ------------------------------------------------------------------ Emerald night (kept as an option) */
+[data-theme="emerald"] {
+  color-scheme: dark;
+  --landing-bg: #000000;
+  --color-bg: #000000;
+  --color-surface-1: #08110d;
+  --color-surface-2: #0e1a14;
+  --color-border: #1c2c24;
+  --color-border-strong: #2b4034;
+  --color-text: #ffffff;
+  --color-text-muted: #9fb5a9;
+  --accent: #7cebb0;
+  --accent-strong: #3fd98e;
+  --accent-soft: #b4f6d0;
+  --accent-dim: #12925a;
+  --accent-ink: #03150c;
+  --tint: #072f20;
+  --tint-2: #041a12;
+  --tint-border: #0a4b31;
+  --color-primary: #7cebb0;
+  --color-on-primary: #03150c;
+  --primary-hover: #b4f6d0;
+  --color-money: #7cebb0;
+  --color-focus: #7cebb0;
+  --input-bg: #000000;
+  --code-bg: #000000;
+  --code-text: #b4f6d0;
+  --color-agent-bg: #442650;
+  --color-agent-border: #7f4d8d;
+  --color-agent-text: #ffffff;
+  --agent-soft: #cdb1d6;
+  --color-ok: #55d6a8;
+  --color-warn: #f2c14e;
+  --color-bad: #f07178;
+  --shadow-pop: 0 12px 32px rgb(0 0 0 / 0.55);
+}
+
+/* ------------------------------------------------------------------ Violet night (default): violet world, lime action, coral and ice agents */
+:root:not([data-theme]),
+[data-theme="violet-night"] {
+  color-scheme: dark;
+  --landing-bg: #06050b;
+  --color-bg: #06050b;
+  --color-surface-1: #0d0b17;
+  --color-surface-2: #151228;
+  --color-border: #241f3d;
+  --color-border-strong: #35305a;
+  --color-text: #f5f3ff;
+  --color-text-muted: #aaa4c9;
+  --accent: #b9a5ff;
+  --accent-strong: #9a7dff;
+  --accent-soft: #ddd2ff;
+  --accent-dim: #6a4ee0;
+  --accent-ink: #0b0620;
+  --tint: #1b1440;
+  --tint-2: #110d29;
+  --tint-border: #2e2470;
+  --color-primary: #c8f560;
+  --color-on-primary: #121a02;
+  --primary-hover: #dcff85;
+  --color-money: #d6f87a;
+  --color-focus: #c8f560;
+  --input-bg: #04030a;
+  --code-bg: #04030a;
+  --code-text: #ddd2ff;
+  --color-agent-bg: #3a1a12;
+  --color-agent-border: #ff8a5b;
+  --color-agent-text: #ffffff;
+  --agent-soft: #ffb59a;
+  --color-ok: #5be3b0;
+  --color-warn: #f2c14e;
+  --color-bad: #ff6f7d;
+  --shadow-pop: 0 12px 32px rgb(0 0 0 / 0.6);
+}
+
+/* ------------------------------------------------------------------ Daylight violet: white page, black text, glossy violet */
+[data-theme="violet-light"] {
+  color-scheme: light;
+  --landing-bg: #ffffff;
+  --color-bg: #ffffff;
+  --color-surface-1: #f7f5fd;
+  --color-surface-2: #eeeaf9;
+  --color-border: #e2dcf2;
+  --color-border-strong: #cfc6e8;
+  --color-text: #0d0a1a;
+  --color-text-muted: #5a5478;
+  --accent: #6a38f0;
+  --accent-strong: #5427d6;
+  --accent-soft: #3b1ca8;
+  --accent-dim: #8b66ff;
+  --accent-ink: #ffffff;
+  --tint: #efe8ff;
+  --tint-2: #f6f1ff;
+  --tint-border: #d6c7ff;
+  --color-primary: #0d0a1a;
+  --color-on-primary: #ffffff;
+  --primary-hover: #6a38f0;
+  --color-money: #5427d6;
+  --color-focus: #6a38f0;
+  --input-bg: #ffffff;
+  --code-bg: #f3effc;
+  --code-text: #3b1ca8;
+  --color-agent-bg: #ffe9f0;
+  --color-agent-border: #ff5c8a;
+  --color-agent-text: #3a0a1a;
+  --agent-soft: #c4204f;
+  --color-ok: #087350;
+  --color-warn: #a86d00;
+  --color-bad: #d4254b;
+  --shadow-pop: 0 12px 32px rgb(40 20 90 / 0.16);
+}
+
+/* ------------------------------------------------------------------ Midnight coral: navy world, aqua crystals, coral action */
+[data-theme="midnight-coral"] {
+  color-scheme: dark;
+  --landing-bg: #050914;
+  --color-bg: #050914;
+  --color-surface-1: #0a1224;
+  --color-surface-2: #101c38;
+  --color-border: #1b2b4f;
+  --color-border-strong: #2a4175;
+  --color-text: #f2f7ff;
+  --color-text-muted: #9fb2d3;
+  --accent: #5ce1e6;
+  --accent-strong: #2ec4cc;
+  --accent-soft: #b4f3f5;
+  --accent-dim: #1a8f9b;
+  --accent-ink: #031418;
+  --tint: #0b2a3d;
+  --tint-2: #071b2a;
+  --tint-border: #14506b;
+  --color-primary: #ff6b57;
+  --color-on-primary: #1c0804;
+  --primary-hover: #ff8f7e;
+  --color-money: #5ce1e6;
+  --color-focus: #ff6b57;
+  --input-bg: #040711;
+  --code-bg: #040711;
+  --code-text: #b4f3f5;
+  --color-agent-bg: #2d1f5e;
+  --color-agent-border: #7a5cff;
+  --color-agent-text: #ffffff;
+  --agent-soft: #c1b3ff;
+  --color-ok: #4fe0a8;
+  --color-warn: #f2c14e;
+  --color-bad: #ff7d8a;
+  --shadow-pop: 0 12px 32px rgb(0 0 0 / 0.6);
+}

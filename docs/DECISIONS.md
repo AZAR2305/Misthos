@@ -141,3 +141,44 @@ down on slow machines; `?q=0|1|2` pins a tier and `?post=0` disables post-proces
 
 **Backend.** `backend/db/schema.sql` is spec section 6 and is applied and constraint-tested against PGlite (Postgres in
 WASM). `gen_random_uuid()` is built in, so no `pgcrypto`. The API routes, indexer and job outbox are not built yet.
+
+## 2026-10-06 app pages, themes and agent motion
+
+**App without a backend.** The pages read the chain directly: one shared, polled view of every InvoiceBook event (range-split
+`getLogs`), folded into invoice records in the browser. People sign with a browser wallet (EIP-6963 discovery, network switch
+to Arc). The spec says a browser wallet is "not required" because Circle wallets sign; it is still supported because an EOA
+signature is exactly as valid to the contract, and it makes the whole flow usable and testable today. References and notes the
+chain does not hold stay in browser storage on the device that typed them. Registration is sent from the supplier's own wallet
+(the spec's gasless relayer needs the backend). A supplier hands a buyer a signed offer code (EIP-712 EarlyPayOffer plus its
+signature); only that invoice's buyer can use it, once, before it expires, never above its rate.
+
+**Real end-to-end test.** `pnpm --filter @misthos/frontend e2e:local` starts Anvil, deploys the real contract, builds the app
+against it and drives the real UI with a browser-wallet stand-in that forwards to Anvil's unlocked accounts. It checks the
+chain after each step: net + discount = face, fee = 10% of the discount, the supplier received exactly net, the buyer paid
+net + fee. It found and fixed a crash (fractional seconds passed to BigInt in the discount curve).
+
+**Agents are bound to localhost and CORS-limited.** The buyer agent holds a private hurdle, so both agents listen on
+127.0.0.1 and answer CORS only for AGENT_ALLOWED_ORIGINS. CORS is not authentication; any local process can still call them.
+
+**Themes (product owner: "not everything green", "better colour grading", try a white page with glossy violet).** Four themes
+rendered side by side on the landing page, the 3D agents and the real app pages (`scripts/themes.mjs`, `e2e:local` with
+`E2E_THEMES=1`). Each pairs a cool world with a warm action and warm or contrasting characters:
+
+| Theme | World | Action | Agents | Verdict |
+|---|---|---|---|---|
+| Violet night (default) | near-black, glossy violet crystals | lime | coral and ice | Most distinctive; the agents pop; strong on every screen |
+| Daylight violet | white page, black text, glossy violet glass | black pill, violet highlights | pink and teal | Best for dense data and the app; the owner's idea; clean and professional |
+| Midnight coral | deep navy, icy aqua crystals | coral | coral and aqua | Strong and trustworthy; crystals read icy rather than shiny |
+| Emerald night | black, emerald | mint | emerald and mint | Flat: one hue everywhere, the agents melt into the world |
+
+Recommendation: Violet night as the default and Daylight violet as the light option; keep the other two in the picker. The
+choice is saved per browser (`?theme=` overrides it). All 15 key text, accent, status and UI pairs meet WCAG targets in every
+theme (`pnpm --filter @misthos/frontend contrast`; the light theme's "ok" green was darkened from 4.03:1). CSS lives in
+`design/themes.css` (tokens.css stays as the spec); the three.js palettes live in `src/lib/themes.ts` and must stay in step.
+This replaces the earlier "green on black" request and moves away from the spec's Sail/Cello/Bossanova palette, which was an
+unverified Brandfetch extraction anyway (VERIFY against arc.io).
+
+**Agents move like characters.** Same CC0 RobotExpressive model, now with: autonomous idle gestures every few seconds, head
+tracking toward the cursor (only if the clips animate the head bone, so offsets cannot accumulate), walking to meet at the
+middle to hand over an offer, a thumbs up and a jump on accept, a dance on settlement, contact shadows, and per-theme skins
+(eyes glow in the action colour). Still labelled as an illustration with no numbers.

@@ -9,7 +9,8 @@
     "shots": "node scripts/shots.mjs",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "e2e:local": "node scripts/e2e-local.mjs"
+    "e2e:local": "node scripts/e2e-local.mjs",
+    "contrast": "node scripts/contrast.mjs"
   },
   "dependencies": {
     "@fontsource/chakra-petch": "^5.2.0",
