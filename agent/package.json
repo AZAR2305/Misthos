@@ -1,0 +1,27 @@
+{
+  "name": "@misthos/agent",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Misthos agents: pure core library, negotiation protocol, wallet adapters and the supplier and buyer agent processes.",
+  "license": "MIT",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "doctor": "tsx src/doctor.ts",
+    "supplier": "tsx src/runners/supplier.ts",
+    "buyer": "tsx src/runners/buyer.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.131.0",
+    "viem": "^2.57.3",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@circle-fin/cli": "^1.1.4",
+    "@types/node": "^22.0.0",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.0",
+    "vitest": "^3.2.0"
+  }
+}

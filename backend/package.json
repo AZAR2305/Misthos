@@ -1,0 +1,8 @@
+{
+  "name": "@misthos/backend",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Misthos backend: Postgres schema, API contract, chain indexer and the durable job outbox (not built yet).",
+  "license": "MIT"
+}
