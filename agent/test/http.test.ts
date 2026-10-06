@@ -8,6 +8,7 @@ import { WalletError } from "../src/wallets/types.js";
 
 /** The HTTP layer both agent processes use: envelope, error mapping, body limits, no leaked internals. */
 let base = "";
+let addr: AddressInfo;
 let close: () => void;
 
 beforeAll(async () => {
@@ -35,9 +36,11 @@ beforeAll(async () => {
       },
     },
     "test-agent",
+    { allowedOrigins: ["http://localhost:3000"] },
   );
   await new Promise<void>((r) => (server.listening ? r() : server.once("listening", () => r())));
-  base = `http://localhost:${(server.address() as AddressInfo).port}`;
+  addr = server.address() as AddressInfo;
+  base = `http://localhost:${addr.port}`;
   close = () => server.close();
 });
 afterAll(() => close());
@@ -96,5 +99,24 @@ describe("agent http envelope", () => {
       () => "connection closed",
     );
     expect(outcome === "connection closed" || (typeof outcome === "number" && outcome >= 400)).toBe(true);
+  });
+
+  it("allows the website origin, and only that origin, to read responses (CORS)", async () => {
+    const ok = await fetch(base + "/ok", { headers: { origin: "http://localhost:3000" } });
+    expect(ok.headers.get("access-control-allow-origin")).toBe("http://localhost:3000");
+    const other = await fetch(base + "/ok", { headers: { origin: "https://evil.example" } });
+    expect(other.headers.get("access-control-allow-origin")).toBeNull();
+  });
+
+  it("answers a browser preflight for the website and refuses it for anyone else", async () => {
+    const pre = await fetch(base + "/echo", { method: "OPTIONS", headers: { origin: "http://localhost:3000", "access-control-request-method": "POST" } });
+    expect(pre.status).toBe(204);
+    expect(pre.headers.get("access-control-allow-methods")).toContain("POST");
+    const bad = await fetch(base + "/echo", { method: "OPTIONS", headers: { origin: "https://evil.example", "access-control-request-method": "POST" } });
+    expect(bad.status).toBe(403);
+  });
+
+  it("listens on localhost only by default", () => {
+    expect(addr.address).toBe("127.0.0.1");
   });
 });

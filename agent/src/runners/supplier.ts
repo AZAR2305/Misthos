@@ -9,13 +9,18 @@ import { loadConfig, loadEnvFile, supplierPrefsFromEnv } from "../config.js";
 import { CircleCliAdapter } from "../wallets/circleCli.js";
 import { chainVerifier, WalletError, type Address } from "../wallets/types.js";
 import { ProtocolError } from "../agents/buyer.js";
-import { serve } from "./http.js";
+import { serve, type ServeOptions } from "./http.js";
 
 /**
  * The supplier agent process (CLAUDE.md 5.3 and 9.2). Its own wallet, its own private config; it talks to the buyer
  * agent only over HTTP and to the chain. Routes: GET /health, POST /start/:invoiceId, POST /pause/:invoiceId.
  */
 loadEnvFile();
+/** Local by default; the website origin is allowed to call the agent from the browser. Read after .env is loaded. */
+const serveOptions: ServeOptions = {
+  host: process.env.AGENT_HOST || undefined,
+  allowedOrigins: (process.env.AGENT_ALLOWED_ORIGINS ?? "http://localhost:3000").split(","),
+};
 const cfg = loadConfig();
 if (!cfg.SUPPLIER_AGENT_WALLET_ADDRESS || !cfg.BUYER_AGENT_WALLET_ADDRESS || !cfg.INVOICE_BOOK_ADDRESS) {
   throw new Error("Set SUPPLIER_AGENT_WALLET_ADDRESS, BUYER_AGENT_WALLET_ADDRESS and INVOICE_BOOK_ADDRESS in agent/.env (run: pnpm doctor).");
@@ -84,9 +89,11 @@ serve(
       paused.add(idSchema.parse(params.invoiceId));
       return { paused: true };
     },
+    "GET /prefs": async () => supplierPrefsFromEnv(),
     "GET /decisions": async () => ({ entries: store.all(), verify: store.verify() }),
   },
   "supplier-agent",
+  serveOptions,
 );
 
 process.on("unhandledRejection", (e) => {

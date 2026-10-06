@@ -9,13 +9,18 @@ import { offerMsgSchema } from "../protocol/index.js";
 import { buyerPolicyFromEnv, loadConfig, loadEnvFile } from "../config.js";
 import { CircleCliAdapter } from "../wallets/circleCli.js";
 import { chainVerifier, type Address } from "../wallets/types.js";
-import { serve } from "./http.js";
+import { serve, type ServeOptions } from "./http.js";
 
 /**
  * The buyer agent process (CLAUDE.md 5.3 and 9.2). Routes: GET /health, POST /negotiate, POST /accept/:invoiceId,
  * POST /plan, POST /plan/execute, GET /needs-approval, GET /decisions. The hurdle and policy stay in this process.
  */
 loadEnvFile();
+/** Local by default; the website origin is allowed to call the agent from the browser. Read after .env is loaded. */
+const serveOptions: ServeOptions = {
+  host: process.env.AGENT_HOST || undefined,
+  allowedOrigins: (process.env.AGENT_ALLOWED_ORIGINS ?? "http://localhost:3000").split(","),
+};
 const cfg = loadConfig();
 if (!cfg.BUYER_AGENT_WALLET_ADDRESS || !cfg.INVOICE_BOOK_ADDRESS) {
   throw new Error("Set BUYER_AGENT_WALLET_ADDRESS and INVOICE_BOOK_ADDRESS in agent/.env (run: pnpm doctor).");
@@ -73,8 +78,10 @@ serve(
       const { allocation } = await runPlan(body);
       return { allocation, settled: await buyer.executePlan(allocation) };
     },
+    "GET /policy": async () => buyerPolicyFromEnv(), // private to this machine: the hurdle is shown only to its owner
     "GET /needs-approval": async () => [...buyer.needsApproval].map(([invoiceId, v]) => ({ invoiceId, ...v })),
     "GET /decisions": async () => ({ entries: store.all(), verify: store.verify() }),
   },
   "buyer-agent",
+  serveOptions,
 );

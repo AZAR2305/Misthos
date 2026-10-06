@@ -67,8 +67,29 @@ function fail(res: ServerResponse, status: number, code: string, message: string
   res.end(JSON.stringify({ ok: false, error: { code, message } }));
 }
 
-export function serve(port: number, routes: Routes, name: string): Server {
+export interface ServeOptions {
+  /** Interface to listen on. Default 127.0.0.1: an agent is private to its own machine unless you say otherwise. */
+  host?: string;
+  /** Browser origins allowed to call this agent (CORS). Default none. */
+  allowedOrigins?: readonly string[];
+}
+
+export function serve(port: number, routes: Routes, name: string, opts: ServeOptions = {}): Server {
+  const allowed = new Set((opts.allowedOrigins ?? []).map((o) => o.trim()).filter(Boolean));
   const server = createServer(async (req, res) => {
+    // CORS: only the listed website origins may read responses from a browser. This is not authentication.
+    const origin = req.headers.origin;
+    if (origin && allowed.has(origin)) {
+      res.setHeader("access-control-allow-origin", origin);
+      res.setHeader("vary", "Origin");
+    }
+    if (req.method === "OPTIONS") {
+      if (origin && allowed.has(origin)) {
+        res.writeHead(204, { "access-control-allow-methods": "GET, POST, OPTIONS", "access-control-allow-headers": "content-type", "access-control-max-age": "600" });
+      } else res.writeHead(403);
+      res.end();
+      return;
+    }
     try {
       const url = new URL(req.url ?? "/", "http://localhost");
       const found = match(routes, req.method ?? "GET", url.pathname);
@@ -87,6 +108,7 @@ export function serve(port: number, routes: Routes, name: string): Server {
       return fail(res, 500, "INTERNAL", "The agent hit an unexpected error. Check its log.");
     }
   });
-  server.listen(port, () => console.log(`[${name}] listening on http://localhost:${port}`));
+  const host = opts.host ?? "127.0.0.1";
+  server.listen(port, host, () => console.log(`[${name}] listening on http://${host}:${port}`));
   return server;
 }
