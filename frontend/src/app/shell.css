@@ -147,3 +147,10 @@
   .page > *, .stats .stat, .gate > .gate-inner > *, .role-card, .role-art, .crystals i, .dot { animation: none !important; }
   .tab-bar, .role-card { transition: none; }
 }
+
+/* KPI strip: the stats read as one joined panel with big numbers. */
+.stats { gap: 0; border-top: 1px solid var(--color-border); border-left: 1px solid var(--color-border); border-radius: var(--radius-lg); overflow: hidden; background: color-mix(in srgb, var(--color-surface-1) 85%, transparent); }
+.stats .stat { border: 0; border-right: 1px solid var(--color-border); border-bottom: 1px solid var(--color-border); border-radius: 0; background: transparent; padding: 18px 20px; }
+.stats .stat:hover { transform: none; box-shadow: none; background: color-mix(in srgb, var(--accent) 6%, transparent); }
+.stat-value { font-family: var(--font-display); font-weight: 500; font-size: clamp(1.5rem, 2.2vw, 2rem); letter-spacing: -0.01em; }
+@media (max-width: 640px) { .crystals { opacity: 0.5; } }

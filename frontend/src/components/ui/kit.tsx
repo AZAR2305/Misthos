@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { cloneElement, isValidElement, useEffect, useLayoutEffect, useRef, useState, type ReactElement, type ReactNode } from "react";
 import { addressUrl, txUrl } from "@/lib/config";
 import { formatUsd } from "@/lib/core";
 import type { InvoiceStatus } from "@/lib/chain/invoices";
@@ -45,7 +45,7 @@ export function Stat({ label, value, hint, accent }: { label: string; value: Rea
   return (
     <div className="stat">
       <p className="stat-label">{label}</p>
-      <p className={`stat-value ${accent ? "is-money" : ""}`}>{value}</p>
+      <p className={`stat-value ${accent ? "is-money" : ""}`}>{isValidElement(value) && value.type === Money ? cloneElement(value as ReactElement<{ count?: boolean }>, { count: true }) : value}</p>
       {hint && <p className="stat-hint">{hint}</p>}
     </div>
   );
@@ -78,8 +78,37 @@ export function Tag({ children, tone }: { children: ReactNode; tone?: "agent" })
 }
 
 /** USDC amount from 6-decimal minor units. Accent only when it is the number the reader acts on. */
-export function Money({ minor, accent, dp = 2 }: { minor: bigint; accent?: boolean; dp?: number }) {
-  return <span className={`money ${accent ? "is-money" : ""}`}>{formatUsd(minor, dp)}</span>;
+/** Counts up from zero on first show and between values. Only the display is animated; the final value is the exact bigint. */
+function useCountUp(target: bigint, on: boolean, ms = 700): bigint {
+  const [shown, setShown] = useState(target);
+  const from = useRef(on ? 0n : target);
+  useLayoutEffect(() => {
+    if (!on || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      from.current = target;
+      setShown(target);
+      return;
+    }
+    const start = from.current;
+    const t0 = performance.now();
+    let raf = 0;
+    const tick = (now: number) => {
+      const p = Math.min((now - t0) / ms, 1);
+      const eased = 1 - (1 - p) ** 3;
+      const cur = p >= 1 ? target : start + ((target - start) * BigInt(Math.round(eased * 1000))) / 1000n;
+      from.current = cur;
+      setShown(cur);
+      if (p < 1) raf = requestAnimationFrame(tick);
+    };
+    setShown(start);
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [target, on, ms]);
+  return shown;
+}
+
+export function Money({ minor, accent, dp = 2, count = false }: { minor: bigint; accent?: boolean; dp?: number; count?: boolean }) {
+  const shown = useCountUp(minor, count);
+  return <span className={`money ${accent ? "is-money" : ""}`}>{formatUsd(shown, dp)}</span>;
 }
 
 export function Apr({ bps }: { bps: bigint | number }) {
