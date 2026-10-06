@@ -1,3 +1,0 @@
-:HL["/_next/static/chunks/3j45o4n_30q9t.css","style"]
-:HC["/",""]
-0:{"tree":{"name":"","param":null,"prefetchHints":4176,"slots":{"children":{"name":"(app)","param":null,"prefetchHints":4192,"slots":{"children":{"name":"buyer","param":null,"prefetchHints":4192,"slots":{"children":{"name":"approvals","param":null,"prefetchHints":4192,"slots":{"children":{"name":"__PAGE__","param":null,"prefetchHints":4256,"slots":null}}}}}}}}},"staleTime":300,"buildId":"WDT-K8lCQFTIXbYonMTDu"}

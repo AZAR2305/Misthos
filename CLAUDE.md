@@ -31,7 +31,7 @@ often 0%. Hackathon: Tameion Agents Hackathon (Canteen x Circle x Arc). Final su
 - `docs/` DECISIONS, design plan, inspiration notes, spec.
 
 ## Dev notes
-- Tests: `cd contract && forge test`; `pnpm --filter @misthos/agent test`; `pnpm --filter @misthos/backend test` (includes a real Anvil chain); real-browser end-to-end: `pnpm --filter @misthos/frontend e2e:local` (wallet only) and `e2e:accounts` (Google + wallet + side, with the backend).
+- Tests: `cd contract && forge test`; `pnpm --filter @misthos/agent test`; `pnpm --filter @misthos/backend test`.
 - Commit in small steps and push to origin/main. Never commit `.env` files (only `.env.example`).
 - `pnpm dev` from the repo root. `pnpm --filter @misthos/frontend shots` captures screenshots at 375/768/1280.
 - This machine's Node resolves only IPv6 for some hosts, which times out. Run npm/pnpm/node network commands with

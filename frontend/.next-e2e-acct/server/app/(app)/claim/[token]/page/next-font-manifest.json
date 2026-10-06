@@ -1,8 +1,0 @@
-{
-  "pages": {},
-  "app": {
-    "[project]/frontend/src/app/(app)/claim/[token]/page": []
-  },
-  "appUsingSizeAdjust": true,
-  "pagesUsingSizeAdjust": false
-}

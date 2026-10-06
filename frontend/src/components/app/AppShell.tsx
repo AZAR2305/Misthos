@@ -7,12 +7,10 @@ import { ArcGlyph } from "@/components/landing/Nav";
 import { ConnectButton } from "@/components/wallet/ConnectButton";
 import { ThemePicker } from "@/components/ThemePicker";
 import { useWallet } from "@/components/wallet/WalletProvider";
-import { Money, Notice, Skeleton } from "@/components/ui/kit";
+import { Money, Notice } from "@/components/ui/kit";
 import { CONFIG } from "@/lib/config";
 import { useUsdcBalance } from "@/lib/hooks";
-import { type Role } from "@/lib/storage";
-import { useAccount, useSide } from "@/components/account/AccountProvider";
-import { Onboarding } from "./Onboarding";
+import { useRole, type Role } from "@/lib/storage";
 import { useChainData } from "./ChainData";
 import { ROLE_HOME } from "./RoleChoice";
 
@@ -48,17 +46,16 @@ export function AppShell({ children }: { children: ReactNode }) {
   const w = useWallet();
   const chain = useChainData();
   const { balance } = useUsdcBalance(w.address);
-  const acct = useAccount();
-  const { side: role, set: setRole } = useSide();
+  const [role, setRole] = useRole(w.address);
   const [scrolled, setScrolled] = useState(false);
   const tabs = tabsFor(role);
 
   // Being on a supplier or buyer page means acting as that side: keep the chosen side in step.
   useEffect(() => {
-    if (acct.mode === "on" || w.status !== "connected") return;
+    if (w.status !== "connected") return;
     const side: Role | null = path.startsWith("/supplier") ? "supplier" : path.startsWith("/buyer") ? "buyer" : null;
     if (side && side !== role) setRole(side);
-  }, [path, role, setRole, w.status, acct.mode]);
+  }, [path, role, setRole, w.status]);
 
   useEffect(() => {
     const on = () => setScrolled(window.scrollY > 12);
@@ -82,9 +79,6 @@ export function AppShell({ children }: { children: ReactNode }) {
     return () => window.removeEventListener("resize", place);
   }, [path, role, tabs.length]);
 
-  const pathSide: Role | null = path.startsWith("/supplier") ? "supplier" : path.startsWith("/buyer") ? "buyer" : null;
-  const ready = acct.mode === "on" ? acct.status === "ready" && acct.me?.step === "ready" : w.status === "connected";
-  const linked = acct.me?.address ?? null;
   const switchTo = (next: Role) => {
     setRole(next);
     router.push(ROLE_HOME[next]);
@@ -112,7 +106,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               {CONFIG.networkName}
               <span className="net-live">{chain.rpcOk === false ? "unreachable" : chain.rpcOk ? "live" : "connecting"}</span>
             </span>
-            {ready &&
+            {w.status === "connected" &&
               (role ? (
                 <div className="role-switch" role="group" aria-label="Your side">
                   {(["supplier", "buyer"] as const).map((r) => (
@@ -131,11 +125,6 @@ export function AppShell({ children }: { children: ReactNode }) {
       </header>
 
       <div className="banners">
-        {acct.mode === "on" && linked && w.status === "connected" && w.address !== linked && (
-          <Notice kind="warn" title="This is not the wallet linked to your account">
-            You are signed in with the wallet <span className="mono">{linked.slice(0, 6)}…{linked.slice(-4)}</span>. Switch to it in your wallet before you sign or pay anything.
-          </Notice>
-        )}
         {w.status === "connected" && !w.onRightNetwork && (
           <Notice
             kind="warn"
@@ -163,25 +152,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       </div>
 
       <main className="page" id="content" key={path}>
-        {acct.mode === "on" && pathSide && acct.status !== "ready" ? (
-          <Skeleton rows={4} />
-        ) : acct.mode === "on" && pathSide && acct.me?.step !== "ready" ? (
-          <Onboarding />
-        ) : acct.mode === "on" && pathSide && acct.me?.side !== pathSide ? (
-          <section className="card welcome" data-role={pathSide}>
-            <div>
-              <p className="ptag">{"{" + pathSide + "}"}</p>
-              <h2>This page is for {pathSide}s</h2>
-              <p className="muted">Your account is set up as a {acct.me?.side}. Switch sides to use this page; you can switch back at any time.</p>
-            </div>
-            <div className="actions-row">
-              <button type="button" className="btn btn-primary" onClick={() => switchTo(pathSide)}>Switch to {pathSide}</button>
-              <Link className="btn btn-ghost" href={ROLE_HOME[acct.me!.side!]}>Back to my dashboard</Link>
-            </div>
-          </section>
-        ) : (
-          children
-        )}
+        {children}
       </main>
 
       <footer className="appfoot">
@@ -192,13 +163,6 @@ export function AppShell({ children }: { children: ReactNode }) {
             </>
           ) : (
             <span className="muted">No wallet connected. Everything public is readable.</span>
-          )}
-          {acct.me && (
-            <>
-              {" · "}
-              <span title="Signed in with Google">{acct.me.email}</span>{" "}
-              <button type="button" className="linklike" onClick={() => void acct.signOut()}>Sign out</button>
-            </>
           )}
         </span>
         <span className="appfoot-links">

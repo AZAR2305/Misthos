@@ -1,8 +1,0 @@
-{
-  "pages": {},
-  "app": {
-    "[project]/frontend/src/app/(app)/buyer/approvals/page": []
-  },
-  "appUsingSizeAdjust": true,
-  "pagesUsingSizeAdjust": false
-}

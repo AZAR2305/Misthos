@@ -164,30 +164,6 @@ explorer links) and run it with you.
 
 ---
 
-## 7b. Turn on accounts: Google sign-in and the backend (optional, recommended)
-
-Without this the app works with just a wallet. With it, every supplier and buyer is one Google identity linked to one
-wallet and one side.
-
-1. **Create a Google client id** (free, about 5 minutes): https://console.cloud.google.com → create or pick a project →
-   **APIs & Services → OAuth consent screen** (External, add your email as a test user) → **Credentials → Create
-   credentials → OAuth client ID → Web application**. Under **Authorised JavaScript origins** add `http://localhost:3000`
-   (and your Vercel URL later). Copy the **Client ID** (it ends in `.apps.googleusercontent.com`). It is public; there is
-   no secret to keep.
-2. **Backend**: `cd backend && copy .env.example .env`, then fill in `GOOGLE_CLIENT_ID`, `ARC_RPC_URL`,
-   `INVOICE_BOOK_ADDRESS`, `DEPLOY_BLOCK` (from step 5) and, to let the server pay gas for suppliers,
-   `RELAYER_PRIVATE_KEY` (a **new throwaway key** with a little test USDC; never reuse a funded key; never commit it).
-   Run `pnpm --filter @misthos/backend start` and open http://localhost:4000/api/health: every part you configured
-   should say so. With no `DATABASE_URL` it keeps an embedded database in `backend/.data`.
-3. **Frontend**: in `frontend/.env.local` set `NEXT_PUBLIC_API_URL=http://localhost:4000` and
-   `NEXT_PUBLIC_GOOGLE_CLIENT_ID=<the client id>`, then restart `pnpm dev`. /app now shows the three steps: sign in,
-   link wallet, choose side.
-4. **For a hosted server** (Railway, Fly, Render): set the same variables there, add a Postgres database and put its
-   URL in `DATABASE_URL`, set `FRONTEND_ORIGINS` to your site URL and `COOKIE_SECURE=true`, and add that site to the
-   Google client's authorised origins.
-
----
-
 ## 8. Before you submit
 
 - **Make the GitHub repo public**: https://github.com/AZAR2305/Misthos → **Settings → General → Danger Zone → Change

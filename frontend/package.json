@@ -10,7 +10,6 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "e2e:local": "node scripts/e2e-local.mjs",
-    "e2e:accounts": "node scripts/e2e-accounts.mjs",
     "contrast": "node scripts/contrast.mjs"
   },
   "dependencies": {

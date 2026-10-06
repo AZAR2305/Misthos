@@ -6,8 +6,7 @@ import { useChainData } from "@/components/app/ChainData";
 import { useWallet } from "@/components/wallet/WalletProvider";
 import { CONFIG } from "@/lib/config";
 import { useAgentHealth, useUsdcBalance } from "@/lib/hooks";
-import { useAccount, useSide } from "@/components/account/AccountProvider";
-import { Onboarding } from "@/components/app/Onboarding";
+import { useRole } from "@/lib/storage";
 import { WalletGate } from "@/components/app/Gate";
 import { ROLE_HOME, RoleChoice } from "@/components/app/RoleChoice";
 import { Skeleton } from "@/components/ui/kit";
@@ -15,10 +14,7 @@ import { Skeleton } from "@/components/ui/kit";
 /** The front door: who you are, what to set up, and what a payment looks like. Every check reads real state. */
 export default function StartHere() {
   const w = useWallet();
-  const acct = useAccount();
-  const { side: role, ready: roleReady, set: setRole } = useSide();
-  // With a server, onboarding is Google, then wallet, then side. Without one it is just wallet, then side.
-  if (acct.mode === "on") return acct.status === "ready" && acct.me?.step === "ready" && acct.me.side ? <Overview role={acct.me.side} /> : <Onboarding />;
+  const [role, setRole, roleReady] = useRole(w.address);
   if (w.status !== "connected" || !w.address) return w.status === "connecting" ? <Skeleton rows={4} /> : <WalletGate />;
   if (!roleReady) return <Skeleton rows={4} />;
   if (!role) return <RoleChoice address={w.address} onChoose={setRole} />;
@@ -27,8 +23,7 @@ export default function StartHere() {
 
 function Overview({ role }: { role: "supplier" | "buyer" }) {
   const w = useWallet();
-  const acct = useAccount();
-  const { set: setRole } = useSide();
+  const [, setRole] = useRole(w.address);
   const other = role === "supplier" ? "buyer" : "supplier";
   const chain = useChainData();
   const { balance } = useUsdcBalance(w.address);
@@ -36,9 +31,6 @@ function Overview({ role }: { role: "supplier" | "buyer" }) {
   const supplierAgent = useAgentHealth(CONFIG.supplierAgentUrl);
 
   const checks = [
-    ...(acct.mode === "on"
-      ? [{ done: !!acct.me, text: "Signed in with Google", help: acct.me ? `${acct.me.email}, wallet ${acct.me.address ? acct.me.address.slice(0, 6) + "…" + acct.me.address.slice(-4) : "not linked"}` : "Sign in to act as a supplier or buyer.", action: undefined as React.ReactNode }]
-      : []),
     { done: w.status === "connected", text: "Connect a wallet", help: "Use the button at the top right. A browser wallet signs invoices and payments.", action: w.status === "connected" ? undefined : <button type="button" className="btn btn-primary btn-sm" onClick={w.openModal}>Connect wallet</button> },
     { done: w.status === "connected" && w.onRightNetwork, text: `Be on ${CONFIG.networkName}`, help: "Your wallet must use the same network as this site.", action: w.status === "connected" && !w.onRightNetwork ? <button type="button" className="btn btn-ghost btn-sm" onClick={() => void w.switchNetwork()}>Switch network</button> : undefined },
     { done: !!CONFIG.book, text: "The InvoiceBook contract is deployed", help: CONFIG.book ? "It is live on this network." : "This build has no contract address yet, so there is nothing to read or sign." },

@@ -1,3 +1,0 @@
-{
-  "/(app)/claim/[token]/page": "app/(app)/claim/[token]/page.js"
-}
