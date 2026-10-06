@@ -4,7 +4,7 @@
 .landing-canvas { position: fixed; inset: 0; z-index: 0; pointer-events: none; }
 .landing main { position: relative; z-index: 1; }
 /* Text sits over moving shards: a soft halo keeps it legible without a scrim. */
-.landing main p, .landing main h2, .landing main h3, .landing main li { text-shadow: 0 1px 16px color-mix(in srgb, var(--cello-950) 90%, transparent); }
+.landing main p, .landing main h2, .landing main h3, .landing main li { text-shadow: 0 1px 16px color-mix(in srgb, var(--landing-bg) 90%, transparent); }
 
 .mono { font-family: var(--font-mono); }
 .muted { color: var(--color-text-muted); }
@@ -49,7 +49,7 @@
 .btn-sm { height: 36px; padding: 0 14px; font-size: var(--text-small); }
 .btn-primary { background: var(--color-primary); color: var(--color-on-primary); }
 .btn-primary:hover { background: var(--sail-200); }
-.btn-ghost { border-color: color-mix(in srgb, var(--sail-300) 45%, transparent); background: color-mix(in srgb, var(--cello-950) 55%, transparent); }
+.btn-ghost { border-color: color-mix(in srgb, var(--sail-300) 45%, transparent); background: color-mix(in srgb, var(--landing-bg) 55%, transparent); }
 .btn-ghost:hover { background: var(--cello-700); border-color: var(--sail-300); }
 .btn-quiet { background: transparent; color: var(--color-text-muted); }
 .btn-quiet:hover { color: #fff; }
@@ -60,7 +60,7 @@
   display: flex; align-items: center; gap: 28px;
   padding: 18px var(--page-gutter);
 }
-.nav[data-scrolled="true"] { background: color-mix(in srgb, var(--cello-950) 74%, transparent); backdrop-filter: blur(10px); border-bottom: 1px solid color-mix(in srgb, var(--color-border) 55%, transparent); }
+.nav[data-scrolled="true"] { background: color-mix(in srgb, var(--landing-bg) 74%, transparent); backdrop-filter: blur(10px); border-bottom: 1px solid color-mix(in srgb, var(--color-border) 55%, transparent); }
 .nav { transition: background var(--dur-base) var(--ease); }
 .nav-brand {
   display: inline-flex; align-items: center; gap: 10px; margin-right: auto;
@@ -83,7 +83,7 @@
 .nav-cta:hover { background: var(--cello-600); }
 .nav-menu {
   position: fixed; inset: 0; z-index: -1;
-  background: color-mix(in srgb, var(--cello-950) 98%, transparent);
+  background: color-mix(in srgb, var(--landing-bg) 98%, transparent);
   display: grid; place-content: center;
   opacity: 0; visibility: hidden; transition: opacity var(--dur-slow) var(--ease), visibility var(--dur-slow);
 }
@@ -183,7 +183,7 @@
 
 .stage {
   border: 1px solid var(--color-border); border-radius: var(--radius-lg); overflow: hidden;
-  background: color-mix(in srgb, var(--cello-950) 62%, transparent);
+  background: color-mix(in srgb, var(--landing-bg) 62%, transparent);
 }
 .stage-canvas { position: relative; height: clamp(360px, 54vh, 580px); }
 .stage-canvas canvas { display: block; }
@@ -229,7 +229,7 @@
 }
 .final-copy {
   display: grid; justify-items: center; text-align: center; gap: 22px;
-  padding-top: 52vh; text-shadow: 0 2px 28px color-mix(in srgb, var(--cello-950) 85%, transparent);
+  padding-top: 52vh; text-shadow: 0 2px 28px color-mix(in srgb, var(--landing-bg) 85%, transparent);
 }
 .final-copy .lede { max-width: 46ch; }
 .proof {

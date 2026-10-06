@@ -29,17 +29,19 @@
   /* Display face for the landing. Chakra Petch is free (OFL) and close to the squared techno feel of the reference. */
   --font-display: "Chakra Petch", var(--font-sans);
   --page-gutter: clamp(20px, 5vw, 72px);
+  /* The landing page sits on pure black (product owner request); the 3D shards keep the Arc palette. */
+  --landing-bg: #000000;
 }
 
 html {
-  background: var(--cello-950);
+  background: var(--landing-bg);
   color-scheme: dark;
 }
 
 body {
   margin: 0;
   min-height: 100vh;
-  background: var(--cello-950);
+  background: var(--landing-bg);
   color: var(--color-text);
   font-family: var(--font-sans);
   font-size: var(--text-body);

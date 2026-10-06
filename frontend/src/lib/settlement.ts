@@ -18,5 +18,5 @@ export type LatestSettlement =
     };
 
 export async function getLatestSettlement(): Promise<LatestSettlement> {
-  return { status: "unavailable", reason: "The stats API is not connected yet." };
+  return { status: "unavailable", reason: "live settlements appear here once the app is connected to Arc." };
 }

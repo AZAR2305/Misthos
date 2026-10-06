@@ -30,7 +30,7 @@ function LatestPanel() {
   }, []);
 
   let body: React.ReactNode = <span className="muted">Loading the latest settlement</span>;
-  if (s?.status === "unavailable") body = <>Unavailable. {s.reason}</>;
+  if (s?.status === "unavailable") body = <>Unavailable: {s.reason}</>;
   if (s?.status === "empty") body = <>No settlement yet. Create the first invoice.</>;
   if (s?.status === "ready") body = <>{s.invoiceRef} paid {s.daysEarly} days early</>;
 

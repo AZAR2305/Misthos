@@ -214,8 +214,8 @@ function Scene({ density, quality, post }: { density: number; quality: number; p
 
   return (
     <>
-      <color attach="background" args={["#0A1428"]} />
-      <fog attach="fog" args={["#0A1428", 10, 27]} />
+      <color attach="background" args={["#000000"]} />
+      <fog attach="fog" args={["#000000", 10, 27]} />
       <ambientLight intensity={0.22} color="#B8C7DD" />
       <directionalLight position={[6, 8, 6]} intensity={2.2} color="#CBE8FB" />
       <Environment resolution={128} frames={1}>

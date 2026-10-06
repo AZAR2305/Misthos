@@ -13,7 +13,7 @@ const STEPS = [
   },
   {
     word: "Pay early",
-    text: "The contract pays the supplier in USDC and closes the invoice once. Both agents then write ERC-8004 feedback.",
+    text: "The contract pays the supplier in USDC and closes the invoice exactly once. A small success fee on the discount is paid by the buyer, never by the supplier.",
   },
 ];
 
