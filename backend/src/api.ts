@@ -1,3 +1,4 @@
+import { createHash, randomBytes } from "node:crypto";
 import { Hono, type Context } from "hono";
 import { cors } from "hono/cors";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
@@ -27,7 +28,7 @@ import { enqueue, getJob } from "./jobs";
 import type { Relayer, RegisterPayload } from "./relayer";
 import { rateLimit } from "./ratelimit";
 import { fromNumeric, ser, toNumeric } from "./serialize";
-import { INVOICE_BOOK_ABI, balanced, domain, invoiceId, invoiceTypedData, journalFrom, settlementRows, summarise, toBeancount, toCsv, verifyChain, type InvoiceRecord, type StoredDecision } from "./shared";
+import { INVOICE_BOOK_ABI, balanced, domain, invoiceId, invoiceTypedData, offerTypedData, journalFrom, settlementRows, summarise, toBeancount, toCsv, verifyChain, type InvoiceRecord, type StoredDecision } from "./shared";
 
 export interface AppDeps {
   config: Config;
@@ -380,12 +381,146 @@ export function createApp(d: AppDeps) {
     return ok(c, p);
   });
 
+  // ------------------------------------------------------------------------------------------------ claim links (spec 8.15)
+  //
+  // A buyer invites a supplier to be paid early without any account: the link is a bearer secret (only its SHA-256 is
+  // stored). The supplier opens it, sees plain terms and the payout address that is already fixed on-chain, and signs an
+  // EarlyPayOffer with that wallet. Nothing is paid until the buyer reviews and settles, so a forwarded link can only ever
+  // lead to a payment to the invoice's own supplier address, which a stranger cannot change.
+
+  const hashToken = (t: string) => createHash("sha256").update(t).digest("hex");
+  const TOKEN = /^[A-Za-z0-9_-]{22}$/;
+  const origin = () => config.ORIGINS[0] ?? "";
+
+  interface OfferRow {
+    id: string;
+    chain_invoice_id: string;
+    rate_bps: number;
+    expiry: Date;
+    status: "open" | "claimed" | "expired" | "withdrawn";
+    supplier_address: string;
+    claimed_at: Date | null;
+    signed_offer: unknown;
+    created_at: Date;
+  }
+  const OFFER_COLS = "id, chain_invoice_id, rate_bps, expiry, status::text as status, supplier_address, claimed_at, signed_offer, created_at";
+
+  const createBody = z.object({ invoiceId: hex(64), rateBps: z.number().int().min(0).max(5000), validHours: z.number().int().min(1).max(168).default(72) });
+
+  app.post("/api/standing-offers", async (c) => {
+    const a = need(c, "buyer");
+    const b = await body(c, createBody);
+    const id = b.invoiceId.toLowerCase();
+    const inv = (await indexed()).find((i) => i.id === id);
+    if (!inv) return fail(c, "NOT_FOUND", "That invoice is not in the index yet. Wait a moment and try again.", 404);
+    if (inv.buyer !== a.address) return fail(c, "NOT_YOUR_INVOICE", "Only the buyer named on the invoice can invite the supplier.", 403);
+    if (inv.status !== "approved") return fail(c, "NOT_APPROVED", "Approve the invoice first. Only approved invoices can be paid early.", 409);
+    const nowMs = now().getTime();
+    const expiry = new Date(Math.min(nowMs + b.validHours * 3_600_000, Number(inv.dueDate) * 1000 - 60_000));
+    if (expiry.getTime() <= nowMs + 60_000) return fail(c, "TOO_LATE", "The invoice is due too soon to leave an offer open.", 409);
+    const open = await db.query("select id from standing_offers where chain_invoice_id = $1 and status = 'open' and expiry > $2", [id, now().toISOString()]);
+    if (open.length) return fail(c, "OPEN_LINK_EXISTS", "There is already an open claim link for this invoice. Withdraw it first to make a new one.", 409);
+
+    const token = randomBytes(16).toString("base64url");
+    const row = await db.query<{ id: string }>(
+      "insert into standing_offers (chain_invoice_id, rate_bps, expiry, claim_token_hash, created_by, supplier_address) values ($1,$2,$3,$4,$5,$6) returning id",
+      [id, b.rateBps, expiry.toISOString(), hashToken(token), a.id, inv.supplier],
+    );
+    // The only time the token is ever shown. It is not stored and not logged.
+    return ok(c, { id: row[0]!.id, token, claimUrl: `${origin()}/claim/${token}`, expiresAt: expiry }, 201);
+  });
+
+  app.get("/api/standing-offers", async (c) => {
+    const a = need(c, "buyer");
+    const rows = await db.query<OfferRow>(`select ${OFFER_COLS} from standing_offers where created_by = $1 order by created_at desc`, [a.id]);
+    const t = now().getTime();
+    return ok(c, rows.map((r) => ({ id: r.id, invoiceId: r.chain_invoice_id, rateBps: r.rate_bps, expiresAt: r.expiry, status: r.status === "open" && new Date(r.expiry).getTime() <= t ? "expired" : r.status, supplier: r.supplier_address, claimedAt: r.claimed_at, signedOffer: r.signed_offer })));
+  });
+
+  app.delete("/api/standing-offers/:id", async (c) => {
+    const a = need(c, "buyer");
+    const r = await db.query("update standing_offers set status = 'withdrawn' where id::text = $1 and created_by = $2 and status = 'open' returning id", [c.req.param("id"), a.id]);
+    return r.length ? ok(c, { withdrawn: true }) : fail(c, "NOT_FOUND", "No open claim link with that id.", 404);
+  });
+
+  const byToken = async (token: string) => {
+    if (!TOKEN.test(token)) return null;
+    const r = await db.query<OfferRow>(`select ${OFFER_COLS} from standing_offers where claim_token_hash = $1`, [hashToken(token)]);
+    return r[0] ?? null;
+  };
+
+  /** What the supplier sees before signing anything: the terms, and where the money will go. Nothing here is a secret. */
+  app.get("/api/claims/:token", async (c) => {
+    const row = await byToken(c.req.param("token"));
+    if (!row) return fail(c, "NOT_FOUND", "This claim link is not valid.", 404);
+    const t = now();
+    const expired = new Date(row.expiry).getTime() <= t.getTime();
+    if (row.status !== "open" || expired) return ok(c, { status: row.status === "open" ? "expired" : row.status });
+    const inv = (await indexed()).find((i) => i.id === row.chain_invoice_id);
+    if (!inv || inv.status !== "approved") return ok(c, { status: "unavailable", reason: "The invoice is no longer waiting for payment." });
+    return ok(c, {
+      status: "open",
+      now: Math.floor(t.getTime() / 1000),
+      invoice: { id: inv.id, amount: inv.amount, dueDate: inv.dueDate, buyer: inv.buyer, supplier: inv.supplier },
+      offer: { rateBps: row.rate_bps, expiresAt: row.expiry },
+      chain: { id: config.ARC_CHAIN_ID, book: config.INVOICE_BOOK ?? null },
+    });
+  });
+
+  const acceptBody = z.object({
+    offer: z.object({ invoiceId: hex(64), rateBps: z.number().int().min(0).max(5000), expiry: z.string().regex(/^\d{1,12}$/), nonce: z.string().regex(/^\d{1,40}$/) }),
+    signature: hex(),
+  });
+
+  app.post("/api/claims/:token/accept", async (c) => {
+    if (!d.client || !config.INVOICE_BOOK) return unavailable(c, "the chain is not connected to the server", "Try again later.");
+    const row = await byToken(c.req.param("token"));
+    if (!row) return fail(c, "NOT_FOUND", "This claim link is not valid.", 404);
+    const t = now();
+    if (row.status !== "open" || new Date(row.expiry).getTime() <= t.getTime()) return fail(c, "NOT_OPEN", "This offer is no longer open.", 409);
+    const inv = (await indexed()).find((i) => i.id === row.chain_invoice_id);
+    if (!inv || inv.status !== "approved") return fail(c, "NOT_OPEN", "The invoice is no longer waiting for payment.", 409);
+
+    const { offer, signature } = await body(c, acceptBody);
+    if (offer.invoiceId.toLowerCase() !== inv.id) return fail(c, "OFFER_MISMATCH", "That offer is for a different invoice.", 400);
+    if (offer.rateBps !== row.rate_bps) return fail(c, "OFFER_MISMATCH", "The signed rate is not the rate on the link.", 400);
+    const expirySec = BigInt(offer.expiry);
+    if (expirySec * 1000n > BigInt(new Date(row.expiry).getTime()) || expirySec <= BigInt(Math.floor(t.getTime() / 1000))) {
+      return fail(c, "OFFER_MISMATCH", "The offer must expire no later than the link does, and in the future.", 400);
+    }
+
+    // Only the invoice's own supplier address can sign for it, so a forwarded link cannot redirect the payout.
+    const dom = domain(config.ARC_CHAIN_ID, config.INVOICE_BOOK);
+    const td = offerTypedData(dom, { invoiceId: inv.id, rateBps: offer.rateBps, expiry: expirySec, nonce: BigInt(offer.nonce) });
+    let valid = false;
+    try {
+      valid = (await recoverTypedDataAddress({ ...td, signature })).toLowerCase() === inv.supplier;
+    } catch {
+      /* may be a contract wallet */
+    }
+    if (!valid) valid = await d.client.verifyTypedData({ address: inv.supplier, ...td, signature }).catch(() => false);
+    if (!valid) return fail(c, "BAD_SIGNATURE", `The signature is not from ${inv.supplier}, the wallet this invoice pays.`, 400);
+    const used = await d.client.readContract({ address: config.INVOICE_BOOK, abi: INVOICE_BOOK_ABI, functionName: "usedOfferNonce", args: [inv.supplier, BigInt(offer.nonce)] });
+    if (used) return fail(c, "NONCE_USED", "That offer number was already used. Sign again.", 409);
+
+    const code = { v: 1, chainId: config.ARC_CHAIN_ID, book: config.INVOICE_BOOK, supplier: inv.supplier, offer: { invoiceId: inv.id, rateBps: offer.rateBps, expiry: offer.expiry, nonce: offer.nonce }, sig: signature };
+    // One winner: the update only succeeds while the offer is still open, so two people racing cannot both claim it.
+    const won = await db.query("update standing_offers set status = 'claimed', claimed_at = $2, signed_offer = $3::jsonb where id = $1 and status = 'open' returning id", [row.id, t.toISOString(), JSON.stringify(code)]);
+    if (!won.length) return fail(c, "NOT_OPEN", "This offer was just claimed.", 409);
+    return ok(c, { claimed: true });
+  });
+
+  app.post("/api/claims/:token/decline", async (c) => {
+    const row = await byToken(c.req.param("token"));
+    if (!row) return fail(c, "NOT_FOUND", "This claim link is not valid.", 404);
+    await db.query("update standing_offers set status = 'withdrawn', declined_at = $2 where id = $1 and status = 'open'", [row.id, now().toISOString()]);
+    return ok(c, { declined: true });
+  });
+
   // ------------------------------------------------------------------------------------------------ not built yet: say so, never fake
 
   for (const [method, path, what] of [
     ["post", "/api/rounds", "early-pay rounds (Tier 3)"],
-    ["post", "/api/standing-offers", "standing offers and claim links"],
-    ["get", "/api/claims/:token", "claim links"],
     ["get", "/api/buyer/plan", "the server-side allocator (the plan is computed in the app and by the buyer agent)"],
   ] as const) {
     app[method](path, (c) => fail(c, "NOT_IMPLEMENTED", `Not built yet: ${what}.`, 501));

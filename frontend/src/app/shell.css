@@ -165,16 +165,16 @@
 
 /* ---------- the agent companion: a 3D character docked above the footer ---------- */
 .companion-dock { position: sticky; bottom: 0; height: 0; z-index: 30; pointer-events: none; }
-.companion { position: absolute; right: clamp(12px, 2vw, 28px); bottom: 12px; width: 165px; height: 220px; pointer-events: none; }
+.companion { position: absolute; right: clamp(12px, 2vw, 28px); bottom: 12px; width: 150px; height: 200px; pointer-events: none; }
 .companion-canvas { position: absolute; inset: 0; pointer-events: auto; cursor: pointer; }
 .companion-canvas canvas { display: block; }
 .companion-bubble {
-  position: absolute; right: 128px; bottom: 135px; width: max-content; max-width: 250px; pointer-events: none;
+  position: absolute; right: 116px; bottom: 124px; width: max-content; max-width: 250px; pointer-events: none;
   background: var(--color-agent-bg); border: 1px solid var(--color-agent-border); color: var(--color-agent-text);
   border-radius: var(--radius-md) var(--radius-md) 4px var(--radius-md); padding: 9px 12px; font-size: 0.85rem; line-height: 1.4;
   box-shadow: var(--shadow-pop); animation: bubble-in 220ms var(--ease) both;
 }
-.companion-bubble .tag { color: var(--agent-soft); }
+.companion-bubble .tag { color: var(--agent-soft); background: transparent; border-color: var(--color-agent-border); margin-right: 4px; }
 .companion-x { position: absolute; right: 0; top: 0; width: 24px; height: 24px; border-radius: 50%; border: 1px solid var(--color-border-strong); background: var(--color-surface-1); color: var(--color-text-muted); cursor: pointer; pointer-events: auto; opacity: 0; transition: opacity var(--dur-base) var(--ease); line-height: 1; }
 .companion:hover .companion-x, .companion-x:focus-visible { opacity: 1; }
 .companion-reopen { position: absolute; right: clamp(12px, 2vw, 28px); bottom: 14px; pointer-events: auto; border: 1px solid var(--color-border-strong); background: var(--color-surface-1); color: var(--color-text-muted); border-radius: 999px; padding: 6px 12px; font-size: 0.82rem; cursor: pointer; }
@@ -234,3 +234,24 @@
 .wch-amount { font-family: var(--font-display); font-weight: 600; font-size: clamp(2rem, 4vw, 3rem); letter-spacing: -0.03em; line-height: 1.05; color: var(--color-money); display: flex; align-items: baseline; gap: 8px; }
 .wch-unit { font-size: 0.9rem; font-weight: 500; letter-spacing: 0; color: var(--color-text-muted); font-family: var(--font-sans); }
 @media (max-width: 640px) { .wallet-card-hero { grid-template-columns: 1fr; } .wch-balance { justify-items: start; text-align: left; } }
+
+/* ---------- claim links ---------- */
+.claim-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.claim-list li { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 12px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--color-border); }
+.claim-list li:last-child { border-bottom: 0; }
+.claim-actions { display: flex; gap: 8px; }
+.chip[data-status="open"] { background: var(--tint); color: var(--accent-strong); }
+.chip[data-status="claimed"] { background: var(--color-primary); color: var(--color-on-primary); }
+.claim-terms .claim-big { font-family: var(--font-display); font-weight: 600; font-size: 1.6rem; letter-spacing: -0.02em; }
+@media (max-width: 640px) { .claim-list li { grid-template-columns: 1fr; } }
+
+.code-wrap .code { padding-right: 84px; }
+
+/* ---------- judge tour ---------- */
+.tour { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; counter-reset: tour; }
+.tour li { display: grid; grid-template-columns: 36px minmax(0, 1fr) auto; gap: 14px; align-items: center; padding: 14px 0; border-bottom: 1px solid var(--color-border); }
+.tour li:last-child { border-bottom: 0; }
+.tour p { margin: 2px 0 0; max-width: 70ch; }
+.tour-n { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; background: var(--tint); color: var(--accent-strong); font-weight: 600; font-size: 0.9rem; }
+.stack { display: grid; gap: 24px; align-content: start; }
+@media (max-width: 640px) { .tour li { grid-template-columns: 32px minmax(0, 1fr); } .tour li > :last-child { grid-column: 2; justify-self: start; } }

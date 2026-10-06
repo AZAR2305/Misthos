@@ -40,7 +40,7 @@ function LatestPanel() {
     <div className="hero-latest" aria-live="polite">
       <MiniCurve filled={s?.status === "ready"} />
       <div>
-        <p className="tag">{"{on-chain}"} latest settlement</p>
+        <p className="tag">On-chain latest settlement</p>
         <p className="hero-latest-body">{body}</p>
       </div>
     </div>
@@ -120,7 +120,7 @@ function AgentGuide() {
         {line ? (
           <>
             <p className="tag hero-say-tag">
-              {"{agent}"} {step + 1} / {LINES.length}
+              Agent {step + 1} / {LINES.length}
             </p>
             <p className="hero-say-line">{typed}</p>
             <div className="hero-say-actions">

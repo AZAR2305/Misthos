@@ -219,7 +219,7 @@ export function Agents({ compact = false }: { compact?: boolean }) {
               <p className="stage-label stage-label-buyer">buyer agent</p>
             </>
           )}
-          {settled && <p className="stage-settled tag">{"{on-chain}"} Settled on Arc in USDC</p>}
+          {settled && <p className="stage-settled tag">On-chain Settled on Arc in USDC</p>}
         </div>
         <div className="workbench-tty">
           <AgentTerminal lines={lines} running={running} instant={sceneState.reducedMotion} />

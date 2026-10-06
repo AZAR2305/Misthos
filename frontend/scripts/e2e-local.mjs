@@ -211,7 +211,7 @@ async function main() {
   await shot("11-invoice-paid");
 
   log("10. every page renders with real data, desktop and phone");
-  const pages = ["/", "/app", "/supplier", "/buyer", "/buyer/approvals", "/buyer/policy", "/invoices", `/invoices/${invoiceId}`, "/ledger", "/stats", "/agents", "/kit", "/docs", "/docs/overview", "/docs/deploy", "/claim/abc123token"];
+  const pages = ["/", "/app", "/supplier", "/buyer", "/buyer/approvals", "/buyer/policy", "/invoices", `/invoices/${invoiceId}`, "/ledger", "/stats", "/agents", "/kit", "/judge", "/docs", "/docs/overview", "/docs/deploy", "/claim/abc123token"];
   for (const p of pages) {
     await page.goto(`${BASE}${p}`, { waitUntil: "networkidle" });
     await sleep(900);

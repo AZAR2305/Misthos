@@ -32,6 +32,7 @@ const PUBLIC: Tab[] = [
   { href: "/ledger", label: "Ledger" },
   { href: "/stats", label: "Live stats" },
   { href: "/agents", label: "Agents" },
+  { href: "/judge", label: "Judge tour" },
   { href: "/docs", label: "Docs" },
   { href: "/kit", label: "Developer kit" },
 ];
@@ -232,7 +233,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         ) : acct.mode === "on" && pathSide && acct.me?.side !== pathSide ? (
           <section className="card welcome" data-role={pathSide}>
             <div>
-              <p className="ptag">{"{" + pathSide + "}"}</p>
+              <p className="ptag">{pathSide === "supplier" ? "Supplier" : "Buyer"}</p>
               <h2>This page is for {pathSide}s</h2>
               <p className="muted">Your account is set up as a {acct.me?.side}. Switch sides to use this page; you can switch back at any time.</p>
             </div>

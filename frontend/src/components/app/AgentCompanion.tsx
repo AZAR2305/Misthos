@@ -44,6 +44,10 @@ export function AgentCompanion() {
   const [state, setState] = useState<AgentState>(REST);
   const [bubble, setBubble] = useState<string | null>(null);
   const box = useRef<HTMLDivElement>(null);
+  // Dense pages (ledger, stats, tables, docs) stay clean: the agent lives on the home pages and drops in when something happens.
+  const home = path === "/app" || path === "/supplier" || path === "/buyer" || path.startsWith("/claim/");
+  const [guest, setGuest] = useState(false);
+  const guestTimer = useRef<number | undefined>(undefined);
   const seen = useRef(new Set<string>());
   const timers = useRef<number[]>([]);
 
@@ -100,6 +104,9 @@ export function AgentCompanion() {
   useEffect(
     () =>
       agentBus.subscribe((e) => {
+        setGuest(true);
+        window.clearTimeout(guestTimer.current);
+        guestTimer.current = window.setTimeout(() => setGuest(false), e.kind === "working" ? 90_000 : 8000);
         if (e.kind === "working") {
           setState((s) => ({ ...s, working: true, face: "neutral" }));
           say(e.text ? `${e.text}…` : "Working on it…", 60_000);
@@ -131,7 +138,7 @@ export function AgentCompanion() {
   };
 
   // The agents page already has two agents on stage; a third in the corner would just be in the way.
-  if (!mounted || path.startsWith("/agents")) return null;
+  if (!mounted || path.startsWith("/agents") || (!home && !guest)) return null;
   if (!open) {
     return (
       <div className="companion-dock">
@@ -146,7 +153,7 @@ export function AgentCompanion() {
       <div className="companion" ref={box}>
         {bubble && (
           <div className="companion-bubble" role="status">
-            <span className="tag">{"{agent}"}</span> {bubble}
+            <span className="tag">Agent</span> {bubble}
           </div>
         )}
         <div className="companion-canvas">

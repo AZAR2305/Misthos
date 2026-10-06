@@ -72,9 +72,10 @@ export function StatusChip({ status }: { status: InvoiceStatus | "draft" }) {
   );
 }
 
-/** Where a fact came from: {on-chain}, {agent}, {human}, {testnet}. Only on facts, never decoration. */
+/** Where a fact came from: on-chain, agent, human, testnet. Only on facts, never decoration. */
 export function Tag({ children, tone }: { children: ReactNode; tone?: "agent" }) {
-  return <span className={`ptag ${tone === "agent" ? "ptag-agent" : ""}`}>{`{${children}}`}</span>;
+  const label = typeof children === "string" ? children.charAt(0).toUpperCase() + children.slice(1) : children;
+  return <span className={`ptag ${tone === "agent" ? "ptag-agent" : ""}`}>{label}</span>;
 }
 
 /** USDC amount from 6-decimal minor units. Accent only when it is the number the reader acts on. */

@@ -10,7 +10,7 @@ export const ROLE_HOME: Record<Role, string> = { supplier: "/supplier", buyer: "
 const ROLES: Array<{ role: Role; tag: string; title: string; sub: string; bullets: string[]; cta: string }> = [
   {
     role: "supplier",
-    tag: "{supplier}",
+    tag: "Supplier",
     title: "I am owed money",
     sub: "You send invoices and want to be paid sooner.",
     bullets: ["Create an invoice and sign it once.", "Offer early payment from 0%, and see the price in dollars first.", "Get paid in USDC the moment the buyer accepts."],
@@ -18,7 +18,7 @@ const ROLES: Array<{ role: Role; tag: string; title: string; sub: string; bullet
   },
   {
     role: "buyer",
-    tag: "{buyer}",
+    tag: "Buyer",
     title: "I owe money",
     sub: "You approve invoices and have cash to spare.",
     bullets: ["Approve invoices when the work is done.", "Pay early with spare cash and keep the discount.", "Set caps so nothing can move more than you allow."],

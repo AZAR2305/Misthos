@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { ClaimLinksCard } from "@/components/app/ClaimLinks";
 import { useCallback, useEffect, useState } from "react";
 import { AgentPanel } from "@/components/app/AgentPanel";
 import { useChainData } from "@/components/app/ChainData";
@@ -153,7 +154,7 @@ function Body({ me }: { me: `0x${string}` }) {
             )}
           </Card>
 
-          <Card title="Agent plan" aside={<span className="ptag ptag-agent">{"{agent}"}</span>}>
+          <Card title="Agent plan" aside={<span className="ptag ptag-agent">Agent</span>}>
             {!plan ? (
               <>
                 <p className="muted">
@@ -213,6 +214,8 @@ function Body({ me }: { me: `0x${string}` }) {
             <p className="muted">The contract can only move the USDC you allow. You can raise or lower this whenever you like.</p>
             <button type="button" className="btn btn-ghost" onClick={() => setAllowOpen(true)}>Set allowance</button>
           </Card>
+
+          <ClaimLinksCard />
 
           <Card title="Upcoming payments" aside={<button type="button" className="btn btn-ghost btn-sm" onClick={() => setOblOpen(true)}>Add payment</button>}>
             <p className="muted tiny">Payroll and bills the agent must keep cash for. Saved on this device and sent to your agent only when you ask for a plan.</p>

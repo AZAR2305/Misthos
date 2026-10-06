@@ -174,12 +174,12 @@ async function checkOffer(code: OfferCode, me: `0x${string}`, invoices: readonly
 }
 
 /** The buyer pastes an offer code, sees exactly what will happen, and pays. */
-export function PayEarlyButton({ invoice, label = "Pay early with an offer code" }: { invoice?: InvoiceRecord; label?: string }) {
+export function PayEarlyButton({ invoice, label = "Pay early with an offer code", initialCode }: { invoice?: InvoiceRecord; label?: string; initialCode?: string }) {
   const w = useWallet();
   const chain = useChainData();
   const tx = useTx();
   const [open, setOpen] = useState(false);
-  const [text, setText] = useState("");
+  const [text, setText] = useState(initialCode ?? "");
   const [result, setResult] = useState<Awaited<ReturnType<typeof checkOffer>> | null>(null);
   const [checking, setChecking] = useState(false);
 

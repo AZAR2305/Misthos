@@ -399,7 +399,7 @@ export function Robot({
       {state.bubble && (
         <Html position={[0, AGENT_HEIGHT + 0.55, 0]} center distanceFactor={7} zIndexRange={[20, 0]} className="stage-bubble-wrap">
           <div className="stage-bubble">
-            <span className="tag">{"{agent}"}</span> {state.bubble}
+            <span className="tag">Agent</span> {state.bubble}
           </div>
         </Html>
       )}

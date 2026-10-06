@@ -63,7 +63,7 @@ function Overview({ role }: { role: "supplier" | "buyer" }) {
 
       <section className="card welcome" data-role={role}>
         <div>
-          <p className="ptag">{"{" + role + "}"}</p>
+          <p className="ptag">{role === "supplier" ? "Supplier" : "Buyer"}</p>
           <h2>{role === "supplier" ? "You are set up as a supplier" : "You are set up as a buyer"}</h2>
           <p className="muted">
             {role === "supplier"

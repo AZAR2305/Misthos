@@ -4,7 +4,7 @@ export function Who() {
       <h2 className="display-2 who-title">Built for both sides of an invoice</h2>
       <div className="who-grid">
         <article className="who-card">
-          <p className="tag">{"{supplier}"}</p>
+          <p className="tag">Supplier</p>
           <h3>Get paid days after approval</h3>
           <ul>
             <li>Sign once with your wallet. The invoice is on Arc, and nobody can alter it.</li>
@@ -16,7 +16,7 @@ export function Who() {
           </a>
         </article>
         <article className="who-card">
-          <p className="tag">{"{buyer}"}</p>
+          <p className="tag">Buyer</p>
           <h3>Earn on bills you already owe</h3>
           <ul>
             <li>Idle USDC captures a discount on approved invoices. It is your own cash, with no outside funding.</li>

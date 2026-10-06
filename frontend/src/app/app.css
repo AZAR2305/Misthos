@@ -47,8 +47,9 @@
 .chip[data-tone="ok"] { background: color-mix(in srgb, var(--color-ok) 16%, transparent); border-color: var(--color-ok); color: var(--color-ok); }
 .chip[data-tone="ok-muted"] { border-color: color-mix(in srgb, var(--color-ok) 45%, transparent); color: color-mix(in srgb, var(--color-ok) 80%, var(--color-text)); }
 .chip[data-tone="bad"] { border-color: var(--color-bad); color: var(--color-bad); background: color-mix(in srgb, var(--color-bad) 12%, transparent); }
-.ptag { font-family: var(--font-mono); font-size: 0.72rem; color: var(--color-text-muted); white-space: nowrap; }
-.ptag-agent { color: var(--agent-soft); }
+/* Provenance labels (On-chain, Agent, Supplier...): a quiet pill, never decoration. */
+.ptag { display: inline-flex; align-items: center; gap: 6px; font-family: var(--font-sans); font-size: 0.72rem; font-weight: 600; line-height: 1; letter-spacing: 0.01em; color: var(--color-text-muted); background: var(--color-surface-2); border: 1px solid var(--color-border); border-radius: var(--radius-pill); padding: 4px 9px; white-space: nowrap; }
+.ptag-agent { color: var(--agent-soft); background: var(--color-agent-bg); border-color: var(--color-agent-border); }
 .you { font-size: 0.7rem; padding: 1px 6px; border-radius: var(--radius-pill); background: var(--tint); color: var(--accent); border: 1px solid var(--tint-border); }
 .icon-btn { background: none; border: 1px solid var(--color-border); border-radius: var(--radius-xs); color: var(--color-text-muted); font-size: 0.7rem; padding: 1px 6px; cursor: pointer; }
 .icon-btn:hover { color: var(--accent); border-color: var(--accent-dim); }
@@ -209,3 +210,8 @@
 .theme-option .swatch i { width: 12px; height: 28px; }
 .nav .theme-btn { background: color-mix(in srgb, var(--landing-bg) 55%, transparent); }
 @media (max-width: 640px) { .theme-name { display: none; } }
+
+/* grid children may shrink below their content, so a wide code block scrolls instead of spilling into its neighbour */
+.grid-2 > *, .split > * { min-width: 0; }
+.code-wrap { min-width: 0; max-width: 100%; }
+.code-wrap .code { display: block; overflow-x: auto; }

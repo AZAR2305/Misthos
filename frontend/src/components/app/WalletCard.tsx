@@ -16,7 +16,7 @@ export function WalletCard() {
   return (
     <section className="card wallet-card-hero" aria-label="Your wallet and USDC balance">
       <div className="wch-id">
-        <p className="ptag">{"{your wallet}"}</p>
+        <p className="ptag">Your wallet</p>
         <AddressChip address={w.address} you />
         <p className="muted tiny">
           <span className="dot" data-ok={w.onRightNetwork} aria-hidden="true" /> {w.walletName ?? "Browser wallet"} · {w.onRightNetwork ? CONFIG.networkName : "wrong network"}

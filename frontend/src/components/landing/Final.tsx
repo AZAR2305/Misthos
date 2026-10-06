@@ -30,7 +30,7 @@ export function Final() {
       </div>
       <dl className="proof">
         <div>
-          <dt className="tag">{"{on-chain}"} InvoiceBook contract</dt>
+          <dt className="tag">On-chain InvoiceBook contract</dt>
           <dd>
             {BOOK_OK ? (
               <a className="mono" href={`${EXPLORER}/address/${BOOK}`} target="_blank" rel="noreferrer">
@@ -42,7 +42,7 @@ export function Final() {
           </dd>
         </div>
         <div>
-          <dt className="tag">{"{on-chain}"} USDC on Arc testnet</dt>
+          <dt className="tag">On-chain USDC on Arc testnet</dt>
           <dd className="mono">0x3600…0000</dd>
         </div>
         <div>

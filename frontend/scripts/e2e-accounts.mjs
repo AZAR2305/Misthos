@@ -231,7 +231,80 @@ async function main() {
   await p2.screenshot({ path: path.join(shots, "06-wallet-taken.png") });
   await ctx2.close();
 
-  log("9. sign out");
+  log("9. claim link: the buyer invites the supplier; the supplier, with no account, signs; the buyer pays at 0%");
+  // The buyer has their own Google account and linked wallet, in their own browser.
+  const ctxB = await newCtx();
+  const pb = await ctxB.newPage();
+  watch(pb);
+  await pb.exposeFunction("__mint", (nonce) => idToken("g-buyer", "buyer@example.com", "Buyer Co", nonce));
+  await pb.goto(`${BASE}/app`);
+  await pb.locator("#google-standin").click();
+  await pb.getByRole("heading", { name: "Link your wallet" }).waitFor();
+  await pb.evaluate((a) => window.__connectAs(a), buyer);
+  await pb.locator(".wallet-card", { hasText: "Test wallet" }).click();
+  await pb.getByRole("button", { name: "Link this wallet" }).click();
+  await pb.getByText("How will you use Misthos?").waitFor();
+  await pb.locator(".role-card[data-role=buyer]").click();
+  await pb.waitForURL(/\/buyer$/);
+  // Approve the relayed invoice, then invite the supplier.
+  await pb.goto(`${BASE}/invoices/${relayedId}`, { waitUntil: "networkidle" });
+  await pb.getByRole("button", { name: "Approve invoice" }).click();
+  await pb.getByText("Invite the supplier to be paid early").waitFor({ timeout: 60_000 });
+  await pb.fill("#claim-rate", "0");
+  await pb.getByRole("button", { name: "Create claim link" }).click();
+  await pb.locator(".code-wrap .code").waitFor();
+  const claimUrl = (await pb.locator(".code-wrap .code").innerText()).trim();
+  check(/\/claim\/[A-Za-z0-9_-]{22}$/.test(claimUrl), "the buyer got a claim link: " + claimUrl.replace(/\/claim\/(.{4}).*/, "/claim/$1…"));
+  await pb.screenshot({ path: path.join(shots, "07-claim-link-created.png") });
+
+  // The supplier has no Misthos account: a clean browser, only the wallet.
+  const ctxS = await newCtx();
+  const ps = await ctxS.newPage();
+  watch(ps);
+  await ps.goto(claimUrl.replace(/^https?:\/\/[^/]+/, BASE));
+  await ps.getByText("You receive now").waitFor();
+  check((await ps.getByText("$2,500.00").count()) > 0, "the claim page shows the invoice amount from the server");
+  check((await ps.getByText("you are simply paid early").count()) > 0, "at 0% it says so plainly: no discount, paid early");
+  check((await ps.getByText(supplier.slice(0, 6)).count()) > 0, "it shows the payout address, the invoice's own supplier wallet");
+  await ps.evaluate((a) => window.__connectAs(a), buyer);
+  await ps.locator(".wallet-card", { hasText: "Test wallet" }).click();
+  await ps.getByText("This is not the wallet this invoice pays").waitFor();
+  check(true, "a wallet that is not the payout address cannot accept");
+  await ps.evaluate((a) => window.__switchTo(a), supplier);
+  await ps.getByRole("button", { name: "Accept and sign" }).click();
+  await ps.getByText("The buyer has been sent your offer").waitFor();
+  check(true, "the supplier signed with their wallet, no account");
+  await ps.screenshot({ path: path.join(shots, "08-claim-signed.png") });
+  await ps.reload();
+  await ps.getByText("This link was already used").waitFor();
+  check(true, "the link is single use");
+
+  // The buyer reviews and pays with the stored signature.
+  await pb.goto(`${BASE}/buyer`, { waitUntil: "networkidle" });
+  await pb.getByText("Signed: ready to pay").waitFor({ timeout: 30_000 });
+  await pb.getByRole("button", { name: "Review and pay" }).click();
+  await pb.getByText("You pay in total").waitFor({ timeout: 30_000 });
+  const allow = pb.locator(".modal button", { hasText: "Allow Misthos to use your USDC" });
+  if (await allow.isVisible()) {
+    await allow.click();
+    await pb.locator(".modal button:text-is('Pay early')").waitFor({ timeout: 60_000 });
+  }
+  await pb.locator(".modal button:text-is('Pay early')").click();
+  const settledLogs = await (async () => {
+    for (let i = 0; i < 60; i++) {
+      const l = await rpc("eth_getLogs", [{ address: dep.invoiceBook, fromBlock: "0x0", toBlock: "latest", topics: [keccak256(toHex("EarlySettled(bytes32,uint256,uint256,uint16,uint256,bytes32)")), relayedId] }]);
+      if (l.length) return l;
+      await sleep(500);
+    }
+    return [];
+  })();
+  check(settledLogs.length === 1, "the buyer paid with the stored signature: EarlySettled on the chain");
+  const discountWord = BigInt("0x" + settledLogs[0].data.slice(2 + 64, 2 + 128));
+  check(discountWord === 0n, "cleared at a price of zero: the supplier was simply paid early");
+  await ctxB.close();
+  await ctxS.close();
+
+  log("10. sign out");
   await page.goto(`${BASE}/app`);
   await page.getByRole("button", { name: "Sign out" }).click();
   await text("Sign in to get started").waitFor();

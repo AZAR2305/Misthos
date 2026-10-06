@@ -7,6 +7,7 @@ import { AgentNote, AddressChip, Card, Empty, Modal, Money, Notice, PageHeader, 
 import { useChainData } from "@/components/app/ChainData";
 import { DiscountCurve } from "@/components/app/DiscountCurve";
 import { OfferButton, PayEarlyButton } from "@/components/app/OfferFlows";
+import { InviteSupplier } from "@/components/app/ClaimLinks";
 import { useWallet } from "@/components/wallet/WalletProvider";
 import { ERC20_ABI, INVOICE_BOOK_ABI } from "@/lib/chain/abi";
 import { appChain, publicClient } from "@/lib/chain/client";
@@ -103,7 +104,7 @@ export default function InvoicePage() {
         actions={<StatusChip status={inv.status} />}
         help={
           <>
-            <p><b>This page follows one invoice from signature to payment.</b> Everything marked {"{on-chain}"} can be checked on the explorer by anyone.</p>
+            <p><b>This page follows one invoice from signature to payment.</b> Everything marked On-chain can be checked on the explorer by anyone.</p>
             <p><b>The curve</b> shows the <Term tip="What the buyer keeps for paying before the due date.">discount</Term> for each payment day and rate. The contract uses the same formula to the second.</p>
             <p><b>Actions</b> depend on who you are on this invoice: the supplier signs offers, the buyer approves and pays.</p>
           </>
@@ -254,6 +255,8 @@ export default function InvoicePage() {
               <p className="muted">You are not the supplier or the buyer on this invoice, so you can only read it.</p>
             )}
           </Card>
+
+          <InviteSupplier invoice={inv} />
 
           <Card title="Who is involved">
             <dl className="kv">
