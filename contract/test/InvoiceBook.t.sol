@@ -57,6 +57,7 @@ contract InvoiceBookTest is Test {
             buyer: buyer,
             token: address(usdc),
             amount: amount,
+            // forge-lint: disable-next-line(unsafe-typecast) -- bounded by the test inputs
             dueDate: uint64(T0 + daysUntilDue * 1 days),
             refHash: keccak256("INV-REF"),
             nonce: ++nonceCounter
@@ -100,7 +101,11 @@ contract InvoiceBookTest is Test {
         returns (InvoiceBook.EarlyPayOffer memory)
     {
         return InvoiceBook.EarlyPayOffer({
-            invoiceId: id, rateBps: rate, expiry: uint64(block.timestamp + expiryIn), nonce: nonce
+            // forge-lint: disable-next-line(unsafe-typecast) -- bounded by the test inputs
+            invoiceId: id,
+            rateBps: rate,
+            expiry: uint64(block.timestamp + expiryIn),
+            nonce: nonce
         });
     }
 
@@ -463,6 +468,7 @@ contract InvoiceBookTest is Test {
             buyer: buyer,
             token: address(usdc),
             amount: amount,
+            // forge-lint: disable-next-line(unsafe-typecast) -- bounded by the test inputs
             dueDate: uint64(T0 + secsEarly),
             refHash: bytes32(0),
             nonce: ++nonceCounter
