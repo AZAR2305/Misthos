@@ -1,0 +1,40 @@
+/*
+ * Green-on-black theme (product owner request, 2026-10-06). Loaded after tokens.css, which stays exactly as spec 10.2.
+ * It overrides the semantic tokens and adds an emerald scale. Agent voice stays Bossanova (purple): green is the
+ * brand and the money colour, purple is only ever something an agent said or decided.
+ */
+:root {
+  /* Emerald scale */
+  --g-100: #ddfbea;
+  --g-200: #b4f6d0;
+  --g-300: #7cebb0;
+  --g-400: #3fd98e;
+  --g-500: #1dba72;
+  --g-600: #12925a;
+  --g-700: #0e6e45;
+  --g-800: #0a4b31;
+  --g-900: #072f20;
+  --g-950: #041a12;
+
+  /* Semantic accents */
+  --accent: var(--g-300);
+  --accent-strong: var(--g-400);
+  --accent-ink: #03150c;
+
+  /* Surfaces: near-black with a faint green cast. The page itself is pure black. */
+  --black: #000000;
+  --color-bg: #000000;
+  --color-surface-1: #08110d;
+  --color-surface-2: #0e1a14;
+  --color-border: #1c2c24;
+  --color-border-strong: #2b4034;
+  --color-text-muted: #9fb5a9;
+
+  --color-primary: var(--g-300);
+  --color-on-primary: var(--accent-ink);
+  --color-money: var(--g-300);
+  --color-focus: var(--g-300);
+
+  /* Status: green is also the brand, so "ok" uses a slightly bluer mint to stay distinct from the accent. */
+  --color-ok: #55d6a8;
+}

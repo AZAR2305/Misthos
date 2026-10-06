@@ -26,14 +26,14 @@ export function crystalGeometry(sides: number, seed: number): THREE.BufferGeomet
   const r1: THREE.Vector3[] = [];
   for (let i = 0; i < sides; i++) {
     const a = ((i + (rand() - 0.5) * 0.25) / sides) * Math.PI * 2;
-    const radius = 0.5 * (0.85 + rand() * 0.3);
-    r0.push(new THREE.Vector3(Math.cos(a) * radius, -0.2, Math.sin(a) * radius));
+    const radius = 0.34 * (0.85 + rand() * 0.3);
+    r0.push(new THREE.Vector3(Math.cos(a) * radius, -0.1, Math.sin(a) * radius));
     const b = ((i + 0.5 + (rand() - 0.5) * 0.25) / sides) * Math.PI * 2;
-    const radius1 = 0.34 * (0.85 + rand() * 0.3);
-    r1.push(new THREE.Vector3(Math.cos(b) * radius1, 0.56, Math.sin(b) * radius1));
+    const radius1 = 0.22 * (0.85 + rand() * 0.3);
+    r1.push(new THREE.Vector3(Math.cos(b) * radius1, 0.85, Math.sin(b) * radius1));
   }
-  const top = new THREE.Vector3(0, 1.22, 0);
-  const bottom = new THREE.Vector3(0, -0.88, 0);
+  const top = new THREE.Vector3(0, 1.6, 0);
+  const bottom = new THREE.Vector3(0, -0.75, 0);
   const tris: THREE.Vector3[][] = [];
   for (let i = 0; i < sides; i++) {
     const n = (i + 1) % sides;
@@ -43,7 +43,7 @@ export function crystalGeometry(sides: number, seed: number): THREE.BufferGeomet
     tris.push([r0[i], r1[i], r1[p]]);
     tris.push([top, r1[p], r1[i]]);
   }
-  const centre = new THREE.Vector3(0, 0.15, 0);
+  const centre = new THREE.Vector3(0, 0.3, 0);
   const pos: number[] = [];
   const ab = new THREE.Vector3();
   const ac = new THREE.Vector3();
@@ -64,7 +64,7 @@ export function crystalGeometry(sides: number, seed: number): THREE.BufferGeomet
 }
 
 /** A fragment of an arc: an annular sector, extruded and bevelled. */
-export function wedgeGeometry(angle = Math.PI * 0.32, inner = 0.55, outer = 1.0, depth = 0.2): THREE.BufferGeometry {
+export function wedgeGeometry(angle = Math.PI * 0.26, inner = 0.74, outer = 1.0, depth = 0.1): THREE.BufferGeometry {
   const s = new THREE.Shape();
   const half = angle / 2;
   s.absarc(0, 0, outer, -half, half, false);
@@ -73,10 +73,10 @@ export function wedgeGeometry(angle = Math.PI * 0.32, inner = 0.55, outer = 1.0,
   const g = new THREE.ExtrudeGeometry(s, {
     depth,
     bevelEnabled: true,
-    bevelThickness: 0.045,
-    bevelSize: 0.04,
-    bevelSegments: 1,
-    curveSegments: 3,
+    bevelThickness: 0.025,
+    bevelSize: 0.022,
+    bevelSegments: 2,
+    curveSegments: 5,
   });
   g.center();
   // Lay the arc fragment so its tangent runs along local Y, like the crystals.
@@ -101,11 +101,11 @@ export interface ShardSet {
 }
 
 const PALETTE = {
-  cello600: new THREE.Color("#2A4474"),
-  cello500: new THREE.Color("#3F5C92"),
-  sail500: new THREE.Color("#4FA8E3"),
-  sail300: new THREE.Color("#A7D9FA"),
-  boss500: new THREE.Color("#9C6AAA"),
+  deep: new THREE.Color("#0a5a39"),
+  mid: new THREE.Color("#12925a"),
+  bright: new THREE.Color("#2fcf86"),
+  mint: new THREE.Color("#8ef0bf"),
+  glint: new THREE.Color("#d8fbe8"),
 };
 
 function gauss(rand: () => number) {
@@ -144,10 +144,10 @@ export function buildShardSet(kind: "crystal" | "wedge", count: number, seed: nu
     introDelay[i] = rand();
 
     const pick = rand();
-    if (pick < 0.3) c.copy(PALETTE.cello600).lerp(PALETTE.cello500, rand());
-    else if (pick < 0.72) c.copy(PALETTE.cello500).lerp(PALETTE.sail500, rand());
-    else if (pick < 0.95) c.copy(PALETTE.sail500).lerp(PALETTE.sail300, rand());
-    else c.copy(PALETTE.boss500);
+    if (pick < 0.34) c.copy(PALETTE.deep).lerp(PALETTE.mid, rand());
+    else if (pick < 0.78) c.copy(PALETTE.mid).lerp(PALETTE.bright, rand());
+    else if (pick < 0.96) c.copy(PALETTE.bright).lerp(PALETTE.mint, rand());
+    else c.copy(PALETTE.glint);
     color[i * 3] = c.r;
     color[i * 3 + 1] = c.g;
     color[i * 3 + 2] = c.b;
@@ -158,8 +158,8 @@ export function buildShardSet(kind: "crystal" | "wedge", count: number, seed: nu
       const persp = (11 - z) / 11;
       const x = (rand() - 0.5) * 2 * 10.5 * persp;
       const h = Math.pow(rand(), 1.8);
-      const sy = kind === "crystal" ? 0.5 + h * 1.25 : 0.6 + h * 0.7;
-      const sx = kind === "crystal" ? 0.36 + rand() * 0.42 : 0.5 + rand() * 0.45;
+      const sy = kind === "crystal" ? 0.55 + h * 1.15 : 0.6 + h * 0.6;
+      const sx = kind === "crystal" ? 0.3 + rand() * 0.3 : 0.5 + rand() * 0.4;
       const y = (-3.45 + gauss(rand) * 0.4) * persp;
       F[0].pos.set([x, y, z], i * 3);
       F[0].scale.set([sx, sy, sx], i * 3);
@@ -184,8 +184,8 @@ export function buildShardSet(kind: "crystal" | "wedge", count: number, seed: nu
 
     // ---- F2 / F3: a ring facing the camera. ----
     for (const [fi, radius, thick, zs, smin, srange] of [
-      [2, 4.35, 0.3, 1.4, 0.26, 0.5],
-      [3, 5.25, 0.5, 2.2, 0.3, 0.68],
+      [2, 4.4, 0.2, 1.0, 0.22, 0.38],
+      [3, 5.3, 0.34, 1.6, 0.26, 0.5],
     ] as const) {
       const th = (i / count) * Math.PI * 2 + (rand() - 0.5) * 0.06;
       const r = radius + gauss(rand) * thick;
@@ -193,7 +193,7 @@ export function buildShardSet(kind: "crystal" | "wedge", count: number, seed: nu
       F[fi].pos.set([Math.cos(th) * r, Math.sin(th) * r, z], i * 3);
       const s = smin + Math.pow(rand(), 2) * srange;
       F[fi].scale.set(kind === "crystal" ? [s * 0.85, s * 1.35, s * 0.85] : [s, s, s], i * 3);
-      e.set((rand() - 0.5) * 1.1, (rand() - 0.5) * 1.6, th + (rand() - 0.5) * 0.5, "XYZ");
+      e.set((rand() - 0.5) * 0.5, (rand() - 0.5) * 0.7, th + (rand() - 0.5) * 0.22, "XYZ");
       writeQuat(F[fi].quat, i, e, q);
     }
   }
@@ -204,8 +204,8 @@ export function buildShardSet(kind: "crystal" | "wedge", count: number, seed: nu
 /** An arch (rainbow) with short legs: the central Arc mark, extruded and bevelled so it catches light in facets. */
 export function archMarkGeometry(): THREE.BufferGeometry {
   const outer = 1.0;
-  const inner = 0.6;
-  const leg = 0.55;
+  const inner = 0.7;
+  const leg = 0.5;
   const s = new THREE.Shape();
   s.moveTo(-outer, -leg);
   s.lineTo(-outer, 0);
@@ -217,12 +217,12 @@ export function archMarkGeometry(): THREE.BufferGeometry {
   s.lineTo(-inner, -leg);
   s.closePath();
   const g = new THREE.ExtrudeGeometry(s, {
-    depth: 0.6,
+    depth: 0.34,
     bevelEnabled: true,
-    bevelThickness: 0.09,
-    bevelSize: 0.05,
-    bevelSegments: 1,
-    curveSegments: 12,
+    bevelThickness: 0.05,
+    bevelSize: 0.03,
+    bevelSegments: 3,
+    curveSegments: 40,
   });
   g.center();
   return g;

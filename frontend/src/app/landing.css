@@ -48,9 +48,9 @@
 }
 .btn-sm { height: 36px; padding: 0 14px; font-size: var(--text-small); }
 .btn-primary { background: var(--color-primary); color: var(--color-on-primary); }
-.btn-primary:hover { background: var(--sail-200); }
-.btn-ghost { border-color: color-mix(in srgb, var(--sail-300) 45%, transparent); background: color-mix(in srgb, var(--landing-bg) 55%, transparent); }
-.btn-ghost:hover { background: var(--cello-700); border-color: var(--sail-300); }
+.btn-primary:hover { background: var(--g-200); }
+.btn-ghost { border-color: color-mix(in srgb, var(--accent) 45%, transparent); background: color-mix(in srgb, var(--landing-bg) 55%, transparent); }
+.btn-ghost:hover { background: var(--g-900); border-color: var(--accent); }
 .btn-quiet { background: transparent; color: var(--color-text-muted); }
 .btn-quiet:hover { color: #fff; }
 
@@ -66,7 +66,7 @@
   display: inline-flex; align-items: center; gap: 10px; margin-right: auto;
   font-family: var(--font-display); font-weight: 500; font-size: 1.15rem; letter-spacing: 0.04em;
 }
-.nav-brand svg { color: var(--sail-300); }
+.nav-brand svg { color: var(--accent); }
 .nav-burger {
   width: 36px; height: 36px; display: grid; place-content: center; gap: 7px;
   background: none; border: 0; cursor: pointer;
@@ -75,12 +75,12 @@
 .nav-burger[aria-expanded="true"] span:first-child { transform: translateY(4.25px) rotate(20deg); }
 .nav-burger[aria-expanded="true"] span:last-child { transform: translateY(-4.25px) rotate(-20deg); }
 .nav-cta {
-  background: var(--cello-700); color: var(--sail-300);
+  background: var(--g-900); color: var(--accent);
   font-family: var(--font-mono); font-size: 0.72rem; letter-spacing: 0.22em; text-transform: uppercase;
-  padding: 15px 34px; border: 1px solid var(--cello-600);
+  padding: 15px 34px; border: 1px solid var(--g-800);
   transition: background var(--dur-base) var(--ease);
 }
-.nav-cta:hover { background: var(--cello-600); }
+.nav-cta:hover { background: var(--g-800); }
 .nav-menu {
   position: fixed; inset: 0; z-index: -1;
   background: color-mix(in srgb, var(--landing-bg) 98%, transparent);
@@ -93,8 +93,8 @@
   display: flex; align-items: baseline; gap: 18px;
   font-family: var(--font-display); text-transform: uppercase; font-size: clamp(2rem, 6vw, 4.2rem); line-height: 1.1;
 }
-.nav-menu a .mono { font-size: 0.8rem; color: var(--sail-300); }
-.nav-menu a:hover { color: var(--sail-300); }
+.nav-menu a .mono { font-size: 0.8rem; color: var(--accent); }
+.nav-menu a:hover { color: var(--accent); }
 
 /* ---------- hero ---------- */
 .hero {
@@ -117,7 +117,7 @@
 .hero-latest {
   grid-column: 1; grid-row: 1; justify-self: start;
   display: flex; align-items: center; gap: 14px;
-  background: color-mix(in srgb, var(--cello-900) 82%, transparent);
+  background: color-mix(in srgb, var(--color-surface-1) 82%, transparent);
   border: 1px solid var(--color-border); border-radius: var(--radius-md);
   padding: 10px 16px 10px 12px; max-width: 360px;
 }
@@ -152,7 +152,7 @@
   flex: 0 0 auto; width: clamp(300px, 56vw, 760px); padding: 0 24px;
   display: grid; justify-items: center; gap: 14px; text-align: center; will-change: opacity;
 }
-.step-n { margin: 0; font-size: var(--text-micro); color: var(--sail-300); }
+.step-n { margin: 0; font-size: var(--text-micro); color: var(--accent); }
 .step-text { margin: 0; max-width: 34ch; font-weight: 500; font-size: clamp(0.88rem, 1vw, 0.98rem); line-height: 1.5; }
 
 /* ---------- agents ---------- */
@@ -165,21 +165,21 @@
 .role-card {
   flex: 1 1 180px; display: grid; gap: 4px; text-align: left; cursor: pointer;
   padding: 14px 16px; border-radius: var(--radius-md);
-  background: color-mix(in srgb, var(--cello-900) 70%, transparent);
+  background: color-mix(in srgb, var(--color-surface-1) 70%, transparent);
   border: 1px solid var(--color-border);
   transition: border-color var(--dur-base) var(--ease), background var(--dur-base) var(--ease);
 }
-.role-card[data-hot="true"] { background: var(--cello-800); }
-.role-card[aria-selected="true"][data-role="supplier"] { border-color: var(--boss-500); background: var(--boss-900); }
-.role-card[aria-selected="true"][data-role="buyer"] { border-color: var(--sail-300); background: var(--cello-800); }
+.role-card[data-hot="true"] { background: var(--color-surface-2); }
+.role-card[aria-selected="true"][data-role="supplier"] { border-color: var(--g-500); background: var(--g-900); }
+.role-card[aria-selected="true"][data-role="buyer"] { border-color: var(--g-200); background: var(--g-950); }
 .role-dot { width: 10px; height: 10px; border-radius: 50%; }
-.role-card[data-role="supplier"] .role-dot { background: var(--boss-500); }
-.role-card[data-role="buyer"] .role-dot { background: var(--sail-400); }
+.role-card[data-role="supplier"] .role-dot { background: var(--g-500); }
+.role-card[data-role="buyer"] .role-dot { background: var(--g-200); }
 .role-name { font-weight: 600; }
 .role-tag { font-size: var(--text-small); }
 .role-lines { margin: 0; padding: 0; list-style: none; display: grid; gap: 10px; }
 .role-lines li { padding-left: 16px; position: relative; font-weight: 500; font-size: 0.95rem; max-width: 48ch; }
-.role-lines li::before { content: ""; position: absolute; left: 0; top: 0.7em; width: 6px; height: 1.5px; background: var(--sail-300); }
+.role-lines li::before { content: ""; position: absolute; left: 0; top: 0.7em; width: 6px; height: 1.5px; background: var(--accent); }
 
 .stage {
   border: 1px solid var(--color-border); border-radius: var(--radius-lg); overflow: hidden;
@@ -220,7 +220,7 @@
   color: var(--color-money); max-width: none !important;
 }
 .evidence-fig span { font-size: 0.45em; color: var(--color-text-muted); }
-.source { font-family: var(--font-mono); font-size: var(--text-micro); color: var(--sail-300); text-decoration: underline; text-underline-offset: 3px; width: fit-content; }
+.source { font-family: var(--font-mono); font-size: var(--text-micro); color: var(--accent); text-decoration: underline; text-underline-offset: 3px; width: fit-content; }
 
 /* ---------- final ---------- */
 .final {
@@ -238,7 +238,7 @@
 }
 .proof dt { margin-bottom: 4px; }
 .proof dd { margin: 0; font-weight: 500; font-size: var(--text-small); }
-.proof a { color: var(--sail-300); text-decoration: underline; text-underline-offset: 3px; }
+.proof a { color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
 .foot p { margin: 0; font-size: var(--text-micro); color: var(--color-text-muted); }
 
 /* ---------- small screens ---------- */
@@ -254,3 +254,15 @@
   .feature-right { padding-left: var(--page-gutter); }
   .step { width: 78vw; }
 }
+
+/* ---------- who it is for ---------- */
+.who { min-height: 100svh; padding: 14vh var(--page-gutter); display: grid; align-content: center; gap: clamp(28px, 5vh, 56px); }
+.who-title { max-width: 16em; }
+.who-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: clamp(16px, 2.4vw, 32px); }
+.who-card { display: grid; align-content: start; gap: 14px; padding: clamp(22px, 3vw, 36px); border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: color-mix(in srgb, var(--color-surface-1) 78%, transparent); }
+.who-card h3 { margin: 0; font-family: var(--font-display); font-weight: 500; font-size: clamp(1.4rem, 2.4vw, 2rem); line-height: 1.1; text-transform: uppercase; }
+.who-card ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 10px; }
+.who-card li { position: relative; padding-left: 18px; font-weight: 500; font-size: 0.95rem; max-width: 44ch; }
+.who-card li::before { content: ""; position: absolute; left: 0; top: 0.7em; width: 7px; height: 1.5px; background: var(--accent); }
+.who-card .btn { justify-self: start; margin-top: 8px; }
+@media (max-width: 860px) { .who-grid { grid-template-columns: 1fr; } }

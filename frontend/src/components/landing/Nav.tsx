@@ -15,7 +15,10 @@ export function ArcGlyph({ size = 22 }: { size?: number }) {
 const LINKS = [
   { href: "#why", label: "Why now" },
   { href: "#steps", label: "How it works" },
+  { href: "#who", label: "Who it is for" },
   { href: "#agents", label: "The agents" },
+  { href: "/stats", label: "Live stats" },
+  { href: "/kit", label: "Developer kit" },
   { href: "#proof", label: "Proof" },
 ];
 

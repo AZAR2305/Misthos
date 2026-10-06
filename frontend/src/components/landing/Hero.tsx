@@ -9,7 +9,7 @@ function MiniCurve({ filled }: { filled: boolean }) {
     <svg viewBox="0 0 120 56" width="120" height="56" aria-hidden="true" fill="none">
       <path
         d="M6 50 C 30 50, 38 8, 60 8 S 90 50, 114 50"
-        stroke="var(--sail-300)"
+        stroke="var(--accent)"
         strokeWidth="2"
         strokeLinecap="round"
         strokeDasharray={filled ? undefined : "3 6"}
@@ -52,13 +52,16 @@ export function Hero() {
         <h1 className="display">
           Get paid days after approval, not weeks
         </h1>
-        <p className="lede">Suppliers sign. Agents agree the price of waiting. Arc settles in under a second.</p>
+        <p className="lede">
+          Your invoice is approved. Why wait a month? Two agents agree the price of waiting, and Arc settles it in USDC in
+          under a second.
+        </p>
         <div className="hero-actions">
           <a className="btn btn-primary" href="/app">
             Open app
           </a>
-          <a className="btn btn-ghost" href="#proof">
-            View proof
+          <a className="btn btn-ghost" href="#steps">
+            See how it works
           </a>
         </div>
       </div>

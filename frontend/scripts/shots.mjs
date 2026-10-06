@@ -42,6 +42,7 @@ for (const s of sizes) {
       steps0: steps + vh * 0.05,
       steps2: steps + len * 0.5,
       steps4: steps + len * 0.98,
+      who: top("who"),
       agents: top("agents"),
       why: top("why"),
       final: top("final") + vh * 0.0,

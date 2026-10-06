@@ -40,11 +40,11 @@ const FACE_TARGET: Record<Face, [number, number, number]> = {
   sad: [0, 0, 0.9],
 };
 
-const TINT = { supplier: "#9C6AAA", buyer: "#7FC4F2" } as const; // Bossanova 500 and Sail 400
-const GLOW = { supplier: "#CDB1D6", buyer: "#A7D9FA" } as const; // Boss 300 and Sail 300
+const TINT = { supplier: "#1fae72", buyer: "#8ef0bf" } as const; // emerald and mint: same family, told apart by shade and prop
+const GLOW = { supplier: "#3fd98e", buyer: "#d8fbe8" } as const;
 const X = { supplier: -2.05, buyer: 2.05 } as const;
 const YAW = { supplier: 0.5, buyer: -0.5 } as const;
-const AGENT_HEIGHT = 2.5;
+const AGENT_HEIGHT = 2.9;
 
 function Robot({
   role,
@@ -73,18 +73,20 @@ function Robot({
         const mat = (m as THREE.MeshStandardMaterial).clone();
         if (mat.name === "Main") {
           mat.color.set(TINT[role]);
-          mat.metalness = 0.35;
-          mat.roughness = 0.38;
+          mat.metalness = 0.55;
+          mat.roughness = 0.26;
           mat.emissive.set(TINT[role]);
-          mat.emissiveIntensity = 0.12;
+          mat.emissiveIntensity = 0.2;
         } else if (mat.name === "Grey") {
-          mat.color.set("#2A4474");
+          mat.color.set("#14281f");
           mat.metalness = 0.6;
           mat.roughness = 0.4;
         } else if (mat.name === "Black") {
-          mat.color.set("#0A1428");
+          mat.color.set("#03140c");
+          mat.emissive.set("#3fd98e");
+          mat.emissiveIntensity = 0.6;
           mat.metalness = 0.2;
-          mat.roughness = 0.35;
+          mat.roughness = 0.3;
         }
         return mat;
       });
@@ -195,7 +197,7 @@ function Robot({
       {/* Platform */}
       <mesh position={[0, 0.02, 0]} rotation-x={-Math.PI / 2}>
         <circleGeometry args={[1.45, 64]} />
-        <meshStandardMaterial color="#1B3158" metalness={0.35} roughness={0.55} emissive="#0F1D36" emissiveIntensity={0.6} />
+        <meshStandardMaterial color="#0a1a13" metalness={0.5} roughness={0.4} emissive="#04170e" emissiveIntensity={0.7} />
       </mesh>
       <mesh position={[0, 0.035, 0]} rotation-x={-Math.PI / 2}>
         <ringGeometry args={[1.38, 1.45, 64]} />
@@ -227,17 +229,17 @@ function InvoiceProp() {
     <group ref={ref} position={[1.15, 1.55, 0.5]}>
       <mesh>
         <boxGeometry args={[0.72, 0.95, 0.03]} />
-        <meshStandardMaterial color="#F2F9FE" metalness={0.1} roughness={0.5} emissive="#CDB1D6" emissiveIntensity={0.18} />
+        <meshStandardMaterial color="#F2F9FE" metalness={0.1} roughness={0.5} emissive="#8ef0bf" emissiveIntensity={0.2} />
       </mesh>
       {[0.3, 0.12, -0.06, -0.24].map((y, i) => (
         <mesh key={i} position={[i === 0 ? -0.05 : 0, y, 0.02]}>
           <boxGeometry args={[i === 0 ? 0.42 : 0.52, 0.045, 0.01]} />
-          <meshStandardMaterial color={i === 0 ? "#663A73" : "#8FA3C2"} />
+          <meshStandardMaterial color={i === 0 ? "#0e6e45" : "#7aa592"} />
         </mesh>
       ))}
       <mesh position={[0.2, -0.36, 0.02]}>
         <boxGeometry args={[0.22, 0.08, 0.01]} />
-        <meshStandardMaterial color="#663A73" />
+        <meshStandardMaterial color="#0e6e45" />
       </mesh>
     </group>
   );
@@ -256,7 +258,7 @@ function TreasuryProp() {
       {[0, 1, 2, 3, 4].map((i) => (
         <mesh key={i} position={[(i % 2) * 0.03, i * 0.1 - 0.2, 0]}>
           <cylinderGeometry args={[0.3, 0.3, 0.085, 28]} />
-          <meshStandardMaterial color="#A7D9FA" metalness={0.85} roughness={0.22} emissive="#4FA8E3" emissiveIntensity={0.25} />
+          <meshStandardMaterial color="#8ef0bf" metalness={0.85} roughness={0.22} emissive="#1dba72" emissiveIntensity={0.3} />
         </mesh>
       ))}
     </group>
@@ -305,15 +307,15 @@ function Channel({ message, pulseKey }: { message: Message | null; pulseKey: num
   return (
     <group>
       <points geometry={dots}>
-        <pointsMaterial color="#CDB1D6" size={0.045} sizeAttenuation transparent opacity={0.8} />
+        <pointsMaterial color="#8ef0bf" size={0.045} sizeAttenuation transparent opacity={0.8} />
       </points>
       <mesh ref={packet} visible={false}>
         <sphereGeometry args={[0.1, 16, 16]} />
-        <meshBasicMaterial color="#A7D9FA" toneMapped={false} />
+        <meshBasicMaterial color="#d8fbe8" toneMapped={false} />
       </mesh>
       <mesh ref={pulse} position={[0, 0.06, 0.4]} rotation-x={-Math.PI / 2} visible={false}>
         <ringGeometry args={[0.92, 1, 64]} />
-        <meshBasicMaterial color="#A7D9FA" transparent toneMapped={false} />
+        <meshBasicMaterial color="#8ef0bf" transparent toneMapped={false} />
       </mesh>
     </group>
   );
@@ -348,19 +350,19 @@ export default function AgentStage(p: StageProps) {
   return (
     <StageBoundary>
       <Canvas
-        camera={{ fov: 32, position: [0, 3.1, 8.4], near: 0.1, far: 40 }}
+        camera={{ fov: 30, position: [0, 3.0, 8.2], near: 0.1, far: 40 }}
         dpr={Math.min(dpr, typeof window !== "undefined" ? window.devicePixelRatio : 1)}
         frameloop={p.visible ? "always" : "never"}
         gl={{ antialias: true, alpha: true }}
-        onCreated={({ camera }) => camera.lookAt(0, 1.55, 0)}
+        onCreated={({ camera }) => camera.lookAt(0, 1.25, 0)}
       >
         <PerformanceMonitor ms={250} iterations={6} bounds={() => [40, 58]} onDecline={() => setDpr((d) => Math.max(0.85, d - 0.3))} onIncline={() => setDpr((d) => Math.min(1.5, d + 0.3))} />
-        <ambientLight intensity={0.5} color="#B8C7DD" />
-        <directionalLight position={[3, 6, 5]} intensity={2.4} color="#CBE8FB" />
-        <directionalLight position={[-5, 2, 3]} intensity={1.6} color="#9C6AAA" />
+        <ambientLight intensity={0.55} color="#b4f6d0" />
+        <directionalLight position={[3, 6, 5]} intensity={2.4} color="#e8fff3" />
+        <directionalLight position={[-5, 2, 3]} intensity={1.8} color="#1dba72" />
         <Environment resolution={128} frames={1}>
-          <Lightformer form="rect" intensity={3.5} color="#CBE8FB" position={[3, 4, 4]} scale={[6, 3, 1]} />
-          <Lightformer form="rect" intensity={2.5} color="#9C6AAA" position={[-5, 1, 3]} scale={[3, 6, 1]} />
+          <Lightformer form="rect" intensity={3.5} color="#e8fff3" position={[3, 4, 4]} scale={[6, 3, 1]} />
+          <Lightformer form="rect" intensity={2.6} color="#1dba72" position={[-5, 1, 3]} scale={[3, 6, 1]} />
           <Lightformer form="rect" intensity={1.2} color="#ffffff" position={[0, -4, 2]} scale={[8, 1, 1]} />
         </Environment>
         <Suspense fallback={null}>

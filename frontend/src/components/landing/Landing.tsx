@@ -7,6 +7,7 @@ import { Nav } from "./Nav";
 import { Hero } from "./Hero";
 import { Features } from "./Features";
 import { Steps } from "./Steps";
+import { Who } from "./Who";
 import { Agents } from "./Agents";
 import { Evidence } from "./Evidence";
 import { Final } from "./Final";
@@ -28,7 +29,7 @@ function buildKeys() {
   const el = (id: string) => document.getElementById(id) as HTMLElement;
   const steps = el("steps").offsetTop;
   const stepsLen = el("steps").offsetHeight - vh;
-  const agents = el("agents").offsetTop;
+  const who = el("who").offsetTop;
   const final = el("final").offsetTop;
   const p: Keyframes = [
     [0, 0],
@@ -37,7 +38,7 @@ function buildKeys() {
     [steps - vh * 0.55, 1],
     [steps + vh * 0.12, 2],
     [steps + stepsLen, 2],
-    [agents + vh * 0.35, 1],
+    [who + vh * 0.35, 1],
     [final - vh * 1.1, 1],
     [final - vh * 0.1, 3],
   ];
@@ -46,7 +47,7 @@ function buildKeys() {
     [steps + stepsLen * 0.1, 0],
     [steps + stepsLen * 0.3, 1],
     [steps + stepsLen + vh * 0.05, 1],
-    [agents + vh * 0.15, 0],
+    [who + vh * 0.15, 0],
     [final - vh * 0.9, 0],
     [final - vh * 0.1, 1],
   ];
@@ -115,6 +116,7 @@ export function Landing() {
         <Hero />
         <Features />
         <Steps />
+        <Who />
         <Agents />
         <Evidence />
         <Final />

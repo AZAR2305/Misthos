@@ -8,6 +8,7 @@ import "@fontsource/chakra-petch/600.css";
 import "@fontsource/jetbrains-mono/400.css";
 import "@fontsource/jetbrains-mono/500.css";
 import "../../design/tokens.css";
+import "../../design/theme-green.css";
 import "./globals.css";
 import "./landing.css";
 

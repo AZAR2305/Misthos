@@ -6,7 +6,7 @@ import { Bloom, EffectComposer, SMAA, Vignette } from "@react-three/postprocessi
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { sceneState } from "./scene-store";
-import { archMarkGeometry, buildShardSet, crystalGeometry, wedgeGeometry, type ShardSet } from "./shards";
+import { archMarkGeometry, buildShardSet, crystalGeometry, mulberry32, wedgeGeometry, type ShardSet } from "./shards";
 
 const clamp = (v: number, a = 0, b = 1) => Math.min(b, Math.max(a, v));
 const smooth = (t: number) => t * t * (3 - 2 * t);
@@ -116,7 +116,7 @@ function ShardField({ set, geometry }: { set: ShardSet; geometry: THREE.BufferGe
 
   return (
     <instancedMesh ref={mesh} args={[geometry, undefined, set.count]} frustumCulled={false}>
-      <meshStandardMaterial color="#ffffff" metalness={0.6} roughness={0.28} envMapIntensity={1.3} flatShading />
+      <meshStandardMaterial color="#ffffff" metalness={0.42} roughness={0.15} envMapIntensity={1.7} emissive="#06261a" emissiveIntensity={0.9} flatShading />
     </instancedMesh>
   );
 }
@@ -146,7 +146,7 @@ function ArcMark() {
       const k = (t * 0.28) % 1.35;
       const u = clamp(k);
       const a = Math.PI - smooth(u) * Math.PI;
-      dot.current.position.set(Math.cos(a) * 0.4, Math.sin(a) * 0.4 - 0.02, 0);
+      dot.current.position.set(Math.cos(a) * 0.5, Math.sin(a) * 0.5 - 0.02, 0);
       const s = 0.05 + (1 - Math.abs(u - 0.5) * 2) * 0.025;
       dot.current.scale.setScalar(s / 0.07);
     }
@@ -155,17 +155,45 @@ function ArcMark() {
   return (
     <group ref={group} visible={false}>
       <mesh geometry={geometry}>
-        <meshStandardMaterial color="#4A6CA6" metalness={0.95} roughness={0.22} envMapIntensity={2.4} flatShading />
+        <meshStandardMaterial color="#0f7a4c" metalness={0.9} roughness={0.14} envMapIntensity={2.6} emissive="#052d1d" emissiveIntensity={0.9} flatShading />
       </mesh>
       <mesh position={[0, 0, 0]}>
-        <torusGeometry args={[0.4, 0.022, 8, 64, Math.PI]} />
-        <meshBasicMaterial color="#A7D9FA" toneMapped={false} />
+        <torusGeometry args={[0.5, 0.016, 8, 96, Math.PI]} />
+        <meshBasicMaterial color="#8ef0bf" toneMapped={false} />
       </mesh>
       <mesh ref={dot}>
         <sphereGeometry args={[0.07, 16, 16]} />
-        <meshBasicMaterial color="#F2F9FE" toneMapped={false} />
+        <meshBasicMaterial color="#e8fff3" toneMapped={false} />
       </mesh>
     </group>
+  );
+}
+
+/** A few hundred tiny motes behind the shards: depth without weight. */
+function Dust({ count }: { count: number }) {
+  const ref = useRef<THREE.Points>(null!);
+  const geometry = useMemo(() => {
+    const rand = mulberry32(77);
+    const p = new Float32Array(count * 3);
+    for (let i = 0; i < count; i++) {
+      p[i * 3] = (rand() - 0.5) * 26;
+      p[i * 3 + 1] = (rand() - 0.5) * 15;
+      p[i * 3 + 2] = -7 + rand() * 11;
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.BufferAttribute(p, 3));
+    return g;
+  }, [count]);
+  useFrame(({ clock }) => {
+    const t = sceneState.reducedMotion ? 0 : clock.elapsedTime;
+    if (!ref.current) return;
+    ref.current.rotation.y = t * 0.012;
+    ref.current.position.y = Math.sin(t * 0.12) * 0.25;
+  });
+  return (
+    <points ref={ref} geometry={geometry}>
+      <pointsMaterial color="#8ef0bf" size={0.04} sizeAttenuation transparent opacity={0.5} depthWrite={false} blending={THREE.AdditiveBlending} />
+    </points>
   );
 }
 
@@ -178,7 +206,7 @@ function PointerLight() {
     const on = p.active && !sceneState.reducedMotion;
     ref.current.intensity = on ? 38 * (1 - 0.85 * clamp(sceneState.mark)) : 0;
   });
-  return <pointLight ref={ref} color="#CBE8FB" distance={9} decay={1.7} />;
+  return <pointLight ref={ref} color="#b4f6d0" distance={9} decay={1.7} />;
 }
 
 function CameraRig() {
@@ -206,9 +234,9 @@ function Scene({ density, quality, post }: { density: number; quality: number; p
   const sets = useMemo(() => {
     const n = (v: number) => Math.round(v * density);
     return {
-      crystalA: { set: buildShardSet("crystal", n(230), 11), geometry: crystalGeometry(5, 3) },
-      crystalB: { set: buildShardSet("crystal", n(230), 23), geometry: crystalGeometry(6, 8) },
-      wedge: { set: buildShardSet("wedge", n(270), 37), geometry: wedgeGeometry() },
+      crystalA: { set: buildShardSet("crystal", n(190), 11), geometry: crystalGeometry(5, 3) },
+      crystalB: { set: buildShardSet("crystal", n(190), 23), geometry: crystalGeometry(6, 8) },
+      wedge: { set: buildShardSet("wedge", n(220), 37), geometry: wedgeGeometry() },
     };
   }, [density]);
 
@@ -216,19 +244,20 @@ function Scene({ density, quality, post }: { density: number; quality: number; p
     <>
       <color attach="background" args={["#000000"]} />
       <fog attach="fog" args={["#000000", 10, 27]} />
-      <ambientLight intensity={0.22} color="#B8C7DD" />
-      <directionalLight position={[6, 8, 6]} intensity={2.2} color="#CBE8FB" />
+      <ambientLight intensity={0.3} color="#9fe8c4" />
+      <directionalLight position={[6, 8, 6]} intensity={2.4} color="#e8fff3" />
       <Environment resolution={128} frames={1}>
-        <Lightformer form="rect" intensity={3} color="#CBE8FB" position={[5, 5, 4]} scale={[7, 3, 1]} />
-        <Lightformer form="rect" intensity={1.1} color="#9C6AAA" position={[-6, 1, 3]} scale={[3, 8, 1]} />
-        <Lightformer form="ring" intensity={2} color="#7FC4F2" position={[0, 0, -6]} scale={9} />
-        <Lightformer form="rect" intensity={2.2} color="#A7D9FA" position={[-5, 4, 2]} scale={[2, 6, 1]} />
-        <Lightformer form="rect" intensity={2.2} color="#CBE8FB" position={[6, -2, 2]} scale={[2, 6, 1]} />
+        <Lightformer form="rect" intensity={3.2} color="#e8fff3" position={[5, 5, 4]} scale={[7, 3, 1]} />
+        <Lightformer form="rect" intensity={2.2} color="#1dba72" position={[-6, 1, 3]} scale={[3, 8, 1]} />
+        <Lightformer form="ring" intensity={2.4} color="#3fd98e" position={[0, 0, -6]} scale={9} />
+        <Lightformer form="rect" intensity={2.4} color="#8ef0bf" position={[-5, 4, 2]} scale={[2, 6, 1]} />
+        <Lightformer form="rect" intensity={2.2} color="#d8fbe8" position={[6, -2, 2]} scale={[2, 6, 1]} />
         <Lightformer form="rect" intensity={1.5} color="#ffffff" position={[0, -6, 2]} scale={[10, 1.5, 1]} />
       </Environment>
       <ShardField {...sets.crystalA} />
       <ShardField {...sets.crystalB} />
       <ShardField {...sets.wedge} />
+      <Dust count={density < 1 ? 110 : 240} />
       <ArcMark />
       <PointerLight />
       <CameraRig />
