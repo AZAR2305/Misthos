@@ -12,7 +12,7 @@ The two independent agents (supplier and buyer) and the library under them (CLAU
 | `src/doctor.ts` | `pnpm doctor`: checks the real CLI, login, Arc RPC, USDC, contract, wallets, model key |
 
 ```bash
-pnpm --filter @misthos/agent test        # 60 tests: Appendix B fixtures, protocol, negotiation, fail-closed paths
+pnpm --filter @misthos/agent test        # 67 tests: Appendix B fixtures, protocol, negotiation, fail-closed paths, HTTP layer
 pnpm --filter @misthos/agent doctor      # what is missing before the agents can run
 ```
 
