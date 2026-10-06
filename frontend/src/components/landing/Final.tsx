@@ -1,4 +1,5 @@
-const REPO_URL: string = ""; // VERIFY: set once the public GitHub repo exists. An empty value renders "unavailable".
+// The public repo. VERIFY: it must be public before submission (hackathon rule). An empty string renders "unavailable".
+const REPO_URL: string = "https://github.com/AZAR2305/Misthos";
 
 export function Final() {
   return (
