@@ -25,12 +25,12 @@ export const OFFER_TYPES = {
   ],
 } as const;
 
-export interface Domain {
+export type Domain = {
   name: "Misthos";
   version: "1";
   chainId: number;
   verifyingContract: `0x${string}`;
-}
+};
 
 export function domain(chainId: number, verifyingContract: `0x${string}`): Domain {
   return { name: "Misthos", version: "1", chainId, verifyingContract };
