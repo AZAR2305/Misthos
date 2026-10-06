@@ -320,11 +320,11 @@ export function Robot({
         <group ref={coins} position={[0, cy + R * 0.1, 0]} rotation={[0, 0, 0.32]}>
           {[0, 1, 2, 3].map((i) => {
             const a = (i / 4) * Math.PI * 2;
-            const r = R * 2.1;
+            const r = R * 1.6;
             return (
               <group key={i} position={[Math.sin(a) * r, Math.sin(a * 2 + 1) * R * 0.22, Math.cos(a) * r]}>
                 <group ref={(g) => { coinSpin.current[i] = g; }} rotation={[0, a, 0]}>
-                  <UsdcCoin size={R * 0.34} />
+                  <UsdcCoin size={R * 0.3} />
                 </group>
               </group>
             );
