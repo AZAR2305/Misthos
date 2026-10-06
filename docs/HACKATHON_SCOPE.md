@@ -25,7 +25,7 @@ Agents that hold, allocate and disburse a business's money, running **on Arc wit
 | `/invoices/[id]` negotiation view | **Done** |
 | Claim links | **Done this week** (backend, page, buyer tools, end-to-end test, cleared at 0%) |
 | Beancount export | **Done** (UI and API). `bean-check` in CI is **not** set up |
-| Judge mode | **Mostly done**: public read-only pages plus a guided `/judge` tour. The optional real-testnet sandbox is not built |
+| Judge mode | **Mostly done**: public read-only pages (the guided `/judge` tour page was removed on 6 Oct). The optional real-testnet sandbox is not built |
 | `/stats` | **Done**, recomputed from the chain, labelled testnet |
 | Demo video | **Not done** (owner) |
 | At least one real pilot | **Not done** (owner) |
