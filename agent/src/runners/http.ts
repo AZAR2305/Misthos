@@ -1,3 +1,4 @@
+import { timingSafeEqual } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { ZodError } from "zod";
 import { ProtocolError } from "../agents/buyer.js";
@@ -47,7 +48,7 @@ function readBody(req: IncomingMessage): Promise<unknown> {
   });
 }
 
-function match(routes: Routes, method: string, path: string): { handler: Handler; params: Record<string, string> } | undefined {
+function match(routes: Routes, method: string, path: string): { key: string; handler: Handler; params: Record<string, string> } | undefined {
   for (const [key, handler] of Object.entries(routes)) {
     const [m, pattern] = key.split(" ") as [string, string];
     if (m !== method) continue;
@@ -56,7 +57,7 @@ function match(routes: Routes, method: string, path: string): { handler: Handler
     if (a.length !== b.length) continue;
     const params: Record<string, string> = {};
     if (a.every((seg, i) => (seg.startsWith(":") ? ((params[seg.slice(1)] = decodeURIComponent(b[i]!)), true) : seg === b[i]))) {
-      return { handler, params };
+      return { key, handler, params };
     }
   }
   return undefined;
@@ -67,7 +68,26 @@ function fail(res: ServerResponse, status: number, code: string, message: string
   res.end(JSON.stringify({ ok: false, error: { code, message } }));
 }
 
+const LOOPBACK = new Set(["127.0.0.1", "::1", "::ffff:127.0.0.1"]);
+
+/**
+ * Control routes (settle, plan, policy, decisions, pause) move money or reveal private settings. They answer a caller on
+ * this machine, or a remote caller that presents the control token. Without a token configured, a remote caller never
+ * gets in. Only the routes in `openRoutes` (the negotiation endpoint and health) are open to the other agent.
+ */
+export function controlAllowed(remote: string | undefined, header: string | undefined, token: string | undefined): boolean {
+  if (remote && LOOPBACK.has(remote)) return true;
+  if (!token || !header) return false;
+  const a = Buffer.from(header);
+  const b = Buffer.from(token);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
 export interface ServeOptions {
+  /** Routes ("METHOD /path") any caller may use. Everything else is a control route. Default: all open (tests). */
+  openRoutes?: readonly string[];
+  /** Shared secret for control routes called from another machine (header x-agent-token). */
+  controlToken?: string;
   /** Interface to listen on. Default 127.0.0.1: an agent is private to its own machine unless you say otherwise. */
   host?: string;
   /** Browser origins allowed to call this agent (CORS). Default none. */
@@ -85,7 +105,7 @@ export function serve(port: number, routes: Routes, name: string, opts: ServeOpt
     }
     if (req.method === "OPTIONS") {
       if (origin && allowed.has(origin)) {
-        res.writeHead(204, { "access-control-allow-methods": "GET, POST, OPTIONS", "access-control-allow-headers": "content-type", "access-control-max-age": "600" });
+        res.writeHead(204, { "access-control-allow-methods": "GET, POST, OPTIONS", "access-control-allow-headers": "content-type, x-agent-token", "access-control-max-age": "600" });
       } else res.writeHead(403);
       res.end();
       return;
@@ -94,6 +114,9 @@ export function serve(port: number, routes: Routes, name: string, opts: ServeOpt
       const url = new URL(req.url ?? "/", "http://localhost");
       const found = match(routes, req.method ?? "GET", url.pathname);
       if (!found) return fail(res, 404, "NOT_FOUND", "No such route.");
+      if (opts.openRoutes && !opts.openRoutes.includes(found.key) && !controlAllowed(req.socket.remoteAddress, req.headers["x-agent-token"] as string | undefined, opts.controlToken)) {
+        return fail(res, 403, "FORBIDDEN", "This route is only for the owner of this agent.");
+      }
       const body = req.method === "POST" ? await readBody(req) : undefined;
       const data = await found.handler({ params: found.params, body });
       res.writeHead(200, { "content-type": "application/json" });

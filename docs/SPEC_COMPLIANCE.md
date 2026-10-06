@@ -1,0 +1,81 @@
+# Spec compliance: agents and the idea, against `docs/spec/CLAUDE.pdf` and the Tameion brief
+
+Checked 6 Oct 2026 by reading `agent/src` against spec sections 3.2 to 3.4, 8.1 to 8.7 and 14, and by running the agent tests
+(77 pass). Nothing here was run against a real Circle login or a deployed contract, so "built" means "written and tested
+locally", never "proven on Arc". Statuses: **Done**, **Fixed today**, **Partial**, **Not built**.
+
+## Flow (spec 3.2)
+
+| Step | Status | Evidence |
+|---|---|---|
+| 1 to 3 sign, register, approve | Done (contract, backend relayer, UI) | `contract/`, `backend/src/relayer.ts`; contract tests not run in this session |
+| 4 supplier agent builds the ask and sends rung 1 | Done | `SupplierAgent.start`, signed `OfferMsg` |
+| 5 buyer evaluates eligibility, hurdle, **liquidity floor, obligations**, reputation | **Fixed today** (floor and obligations were missing) | `BuyerAgent.fitsCash` + `fitsCashPath`; reputation flags only from the model-and-code path |
+| 6 supplier climbs a short ladder on reject | Done | `buildLadder` (max 6 rungs), stops on DISPUTED, NOT_ELIGIBLE, REPUTATION_FLAG, NEEDS_HUMAN_APPROVAL |
+| 7 accept: buyer wallet calls `settleEarly(id, offer, sig, decisionHash)` | Done | `BuyerAgent.settle`, idempotency key `settle:<id>:<nonce>` |
+| 8 ERC-8004 feedback by the counterparty | Not built (Tier 2) | listed in `docs/NEXT_STEPS.md` |
+| 9 ledger rows, hash-chained log, `/stats` | Partial | ledger and stats from chain events (backend); the log is chained and verifiable but see "Decision log" |
+
+## Agentic behaviour (spec 3.4, 8.2, 8.3)
+
+| Requirement | Status | Notes |
+|---|---|---|
+| Two independent processes with private information | Done | separate runners, own wallet adapters; the hurdle is never on the wire (test: "never puts the hurdle on the wire") |
+| Zero case: price can clear at 0% | Done | ladder starts at 0; test "zero case" passes with hurdle 0 |
+| Supplier: accelerate / wait / partial; clamp to bounds | Done (partial hands to a person; Tier 3) | `supplierProposalSchema` strict; rates clamped to `maxRate(prefs)` |
+| Adaptive start from past deals (p25 of at least 3) | Partial | maths done and tested; the runner passes an empty history, so a real run always starts at the configured rate. Needs the backend ledger wired in |
+| Supplier uses cash needs and buyer reputation as inputs | Not built | only prefs, history and invoice are in the snapshot |
+| Buyer allocator: exact selection, cash-path check, greedy comparison, explanation | Done | `allocate`, brute force up to 20 invoices; tie-breaks per spec |
+| Buyer settles per offer without the allocator | **Fixed today** | each accepted offer must fit the cash path (`fitsCashPath`) and the daily cap, using the real USDC balance |
+| Escalation above `human_above` to `/buyer/approvals` | Done | `NEEDS_HUMAN_APPROVAL`, `needsApproval` map |
+| Model proposes, code decides | Done | no model output reaches a signer or a contract call; schemas are strict |
+
+## Safety rules (spec 8.5)
+
+| # | Rule | Status |
+|---|---|---|
+| 1 | Untrusted text never in a prompt | Done: snapshots hold numbers and opaque ids; test checks a hostile description never reaches the model |
+| 2 | Numbers from signed fields only | Done |
+| 3 | zod-validate every model output, check evidence refs | Done (supplier refs checked; buyer flags confirmed by code against its own records) |
+| 4 | No model output reaches a signer | Done |
+| 5 | Bounds enforced on chain | Contract (40 tests, not run today) |
+| 6 | Fail closed on model failure | Done: retry once, then needs_approval `MODEL_UNAVAILABLE`; **treasury unreadable now also fails closed** (`TREASURY_UNAVAILABLE`) |
+| 7 | Prompt-injection test | Done |
+| 8 | Peer messages are untrusted | Done: strict schemas, sender and signature verified before any decision |
+| 9 | MCP write tools need `confirm` | N/A: MCP server not built (Tier 2) |
+| 10 | Bids and claim tokens | Claim links built and tested in `backend/` (needs Anvil to run); bids are Tier 3 |
+
+## Protocol (spec 8.6)
+
+Signed offer, accept and reject messages over `POST /negotiate`; reject carries a reason code only; verified against the known
+agent wallet. **Fixed today:** the endpoint is now idempotent. A retried offer (a timeout, a sender restart) gets the same
+answer and settles once; before, a retry of an accepted offer came back as a reject. A different message that reuses a spent
+nonce is still rejected.
+
+## Failure modes judges named (spec 3.13)
+
+| Failure | Status |
+|---|---|
+| Wrong vendor | Done: only the invoice's own supplier may offer; payout address is fixed on chain |
+| Fake invoice | Done: invoice must be registered and approved on chain before any offer is considered |
+| Retry pays twice | Done: deterministic idempotency key, on-chain single-use nonce, idempotent `/negotiate` |
+
+## Fixed in this review
+
+1. The buyer accepted any offer that cleared the hurdle without checking the liquidity floor, obligations or daily cap. It now
+   checks the cash path against the real balance first, and rejects with `LIQUIDITY_FLOOR` or waits for a person.
+2. A retried offer was answered with a reject after it had already settled. Replies are now cached per (invoice, rung, nonce).
+3. Control routes (`/accept`, `/plan`, `/plan/execute`, `/policy`, `/decisions`, `/pause`, `/start`) answered any caller once an
+   agent was exposed beyond localhost, and `/policy` returns the private hurdle. They now answer this machine, or a remote caller
+   with `AGENT_CONTROL_TOKEN`; only `/health` and `/negotiate` are open. Behind a reverse proxy every caller looks local, so
+   keep the control routes off the proxy.
+4. 4 new tests (liquidity, fail closed on treasury, idempotent retry, nonce reuse) and 1 for the control rule: 77 agent tests.
+
+## Still open (agents)
+
+- **Decision log lives in process memory.** It is hash-chained and verifiable, but it is lost on restart, it is not signed with
+  an attester key (spec 8.4) and the agents do not push it to the backend, so `/api/log/verify` has nothing real to check yet.
+- Supplier history (`pastAcceptedBps`) and the buyer's obligation calendar are not read from the backend in a real run.
+- ERC-8004 identity and feedback, MCP server, A2A cards, compliance screening: Tier 2, not built.
+- Circle Agent Wallet adapter has never run against a real login (Appendix A items 5 to 8). First real run will likely need fixes.
+- Contract tests (`forge test`) and the two Anvil backend suites were not run in this session (no Foundry here).

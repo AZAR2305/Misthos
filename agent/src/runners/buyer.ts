@@ -19,6 +19,8 @@ loadEnvFile();
 /** Local by default; the website origin is allowed to call the agent from the browser. Read after .env is loaded. */
 const serveOptions: ServeOptions = {
   host: process.env.AGENT_HOST || undefined,
+  openRoutes: ["GET /health", "POST /negotiate"],
+  controlToken: process.env.AGENT_CONTROL_TOKEN || undefined,
   allowedOrigins: (process.env.AGENT_ALLOWED_ORIGINS ?? "http://localhost:3000").split(","),
 };
 const cfg = loadConfig();
@@ -46,6 +48,8 @@ const buyer = new BuyerAgent({
   chain: viemChainReader(cfg.ARC_RPC_URL, book),
   invoiceBook: book,
   verifier,
+  // The real USDC balance. The buyer's own payment calendar comes from the /plan request; with none given, only the floor applies.
+  treasury: async () => ({ cash: await wallet.balance("USDC"), obligations: [] }),
 });
 
 const obligationSchema = z.strictObject({

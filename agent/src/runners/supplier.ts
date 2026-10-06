@@ -19,6 +19,8 @@ loadEnvFile();
 /** Local by default; the website origin is allowed to call the agent from the browser. Read after .env is loaded. */
 const serveOptions: ServeOptions = {
   host: process.env.AGENT_HOST || undefined,
+  openRoutes: ["GET /health"],
+  controlToken: process.env.AGENT_CONTROL_TOKEN || undefined,
   allowedOrigins: (process.env.AGENT_ALLOWED_ORIGINS ?? "http://localhost:3000").split(","),
 };
 const cfg = loadConfig();

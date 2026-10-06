@@ -3,7 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { z } from "zod";
 import { ProtocolError } from "../src/agents/buyer.js";
 import { ModelUnavailableError } from "../src/agents/model.js";
-import { serve } from "../src/runners/http.js";
+import { controlAllowed, serve } from "../src/runners/http.js";
 import { WalletError } from "../src/wallets/types.js";
 
 /** The HTTP layer both agent processes use: envelope, error mapping, body limits, no leaked internals. */
@@ -118,5 +118,16 @@ describe("agent http envelope", () => {
 
   it("listens on localhost only by default", () => {
     expect(addr.address).toBe("127.0.0.1");
+  });
+});
+
+describe("control routes", () => {
+  it("answer this machine, and a remote caller only with the token", () => {
+    expect(controlAllowed("127.0.0.1", undefined, undefined)).toBe(true);
+    expect(controlAllowed("::1", undefined, "t")).toBe(true);
+    expect(controlAllowed("203.0.113.9", undefined, "t")).toBe(false);
+    expect(controlAllowed("203.0.113.9", "wrong", "t")).toBe(false);
+    expect(controlAllowed("203.0.113.9", "t", "t")).toBe(true);
+    expect(controlAllowed("203.0.113.9", "anything", undefined)).toBe(false);
   });
 });

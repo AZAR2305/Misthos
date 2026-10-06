@@ -263,3 +263,10 @@ middle to hand over an offer, a thumbs up and a jump on accept, a dance on settl
 - **Nav.** Docs is a tab of its own; "More" only appears once a side is chosen and holds the other public pages.
 - **Removed from the UI.** The "contract not live" banner, the Judge tour and Developer kit pages, and the terminal commands
   that were shown to visitors (they point at the Docs instead).
+
+## Agent review fixes (6 Oct 2026)
+- **Liquidity on accept.** `BuyerAgent` needs a `treasury()` source. Every offer is checked with `fitsCashPath` (not the optimiser, whose tie-break would drop a 0% offer) against the real USDC balance, the buyer's calendar and the daily cap before it is accepted. The runner supplies the wallet balance and, until the backend feeds it, an empty calendar, so only the floor and cap apply there. VERIFY: wire the calendar from `/api/obligations`.
+- **Idempotent `/negotiate`.** Replies are cached in process by (invoice, rung, nonce). The cache is lost on restart; the settle idempotency key and the on-chain nonce still prevent a second payment.
+- **Control routes.** Local callers, or a remote caller with `AGENT_CONTROL_TOKEN`. Only `/health` and `/negotiate` are open.
+- **Hero and agent look.** The orbiting rings are gone; the agent is light green in dark mode and four USDC-blue coins spin around it. VERIFY: coin art is a blue disc with a white dollar mark drawn in code, not Circle's official asset (the share link could not be opened from here).
+- Full agent-versus-spec table: `docs/SPEC_COMPLIANCE.md`.

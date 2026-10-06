@@ -252,6 +252,32 @@ export function allocate(input: AllocatorInput): Allocation {
   };
 }
 
+/**
+ * Would paying this one offer early keep the cash path at or above the liquidity floor, within the daily cap?
+ * Used when an offer arrives: the bilateral answer is "does it fit", not "is it the best set" (a zero-discount offer
+ * must still be accepted when the buyer's hurdle is zero, so the optimiser's tie-break cannot decide it).
+ */
+export function fitsCashPath(input: AllocatorInput, id: string): boolean {
+  const { nowSec, cash, policy, obligations, candidates } = input;
+  const c = candidates.find((x) => x.id === id);
+  if (!c || !evaluateOffer(policy, c, nowSec).ok) return false;
+  const p = price(c, nowSec, policy.feeBps);
+  const includeDue = input.includeUnselectedDue ?? true;
+  if (policy.dailyCap > 0n && (input.spentToday ?? 0n) + p.outflow > policy.dailyCap) return false;
+  const when = (o: Obligation) => (o.dueSec < nowSec ? nowSec : o.dueSec);
+  const payables = candidates.filter((x) => x.status === "approved" && x.dueSec > nowSec);
+  const times = new Set<bigint>([nowSec]);
+  for (const o of obligations) times.add(when(o));
+  if (includeDue) for (const x of payables) times.add(x.dueSec);
+  for (const t of times) {
+    let base = cash;
+    for (const o of obligations) if (when(o) <= t) base -= o.amount;
+    if (includeDue) for (const x of payables) if (x.dueSec <= t) base -= x.face;
+    if (base - (p.outflow - (includeDue && p.dueSec <= t ? p.face : 0n)) < policy.liquidityFloor) return false;
+  }
+  return true;
+}
+
 function summarise(items: readonly Priced[]): Plan {
   let totalDiscount = 0n;
   let totalNet = 0n;

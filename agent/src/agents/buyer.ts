@@ -2,6 +2,8 @@ import { z } from "zod";
 import {
   allocate,
   evaluateOffer,
+  fitsCashPath,
+  priceOffer,
   type Allocation,
   type BuyerPolicy,
   type Candidate,
@@ -56,6 +58,12 @@ export interface InvoiceFacts {
   historicalMeanFace?: bigint;
 }
 
+/** What the buyer holds right now: the real USDC balance and its own calendar of payments (spec 8.3 and 3.2 step 5). */
+export interface Treasury {
+  cash: bigint;
+  obligations: readonly Obligation[];
+}
+
 export interface BuyerDeps {
   wallet: WalletAdapter;
   domain: Domain;
@@ -65,6 +73,11 @@ export interface BuyerDeps {
   chain: ChainReader;
   invoiceBook: Address;
   verifier: SignatureVerifier;
+  /**
+   * Read before every accept. The liquidity floor and the cash path are checked against it, so an offer that clears the
+   * hurdle but would breach the floor is rejected. If it cannot be read, nothing is accepted (fail closed).
+   */
+  treasury: () => Promise<Treasury>;
   /** Private ledger lookups used to confirm model flags. */
   facts?: (invoiceId: string) => InvoiceFacts;
   now?: () => number;
@@ -83,6 +96,10 @@ export class BuyerAgent {
   private readonly offers = new Map<string, HeldOffer>();
   /** Offer nonces seen in this process (the contract enforces the same rule on chain). */
   private readonly seenNonces = new Set<string>();
+  /** Answers already given, so a retried offer (a timeout, a restart of the sender) gets the same answer and settles once. */
+  private readonly replies = new Map<string, NegotiateReply>();
+  /** Net + fee paid early so far on the current UTC day, against the daily cap. */
+  private spent = { day: -1, amount: 0n };
   /** Items waiting for a person, with the reason code. Shown on /buyer/approvals. */
   readonly needsApproval = new Map<string, { reasonCode: string; reason: string }>();
 
@@ -109,6 +126,10 @@ export class BuyerAgent {
     const verified = await verifyMessage(this.d.verifier, this.d.domain, msg, onchain.supplier);
     if (!verified.ok) throw new ProtocolError(verified.failure, `The offer signature is not valid (${verified.failure}).`);
 
+    const replyKey = `${id}:${msg.rung}:${msg.offer.nonce}`;
+    const cached = this.replies.get(replyKey);
+    if (cached) return cached;
+
     const nonceKey = `${onchain.supplier.toLowerCase()}:${msg.offer.nonce}`;
     const replayed = this.seenNonces.has(nonceKey) || (await this.d.chain.offerNonceUsed(onchain.supplier, BigInt(msg.offer.nonce)));
     if (replayed) return this.reject(msg, "NOT_ELIGIBLE", nowSec, "The offer nonce was already used.");
@@ -129,7 +150,20 @@ export class BuyerAgent {
       const outcome = ev.reason === "NEEDS_HUMAN_APPROVAL" ? "needs_approval" : "rejected";
       this.log(id, { rung: msg.rung, rateBps: msg.offer.rateBps }, null, outcome, ev.detail, ev.reason === "NEEDS_HUMAN_APPROVAL" ? ev.reason : undefined);
       if (ev.reason === "NEEDS_HUMAN_APPROVAL") this.needsApproval.set(id, { reasonCode: ev.reason, reason: ev.detail });
-      return this.reject(msg, ev.reason, nowSec);
+      return this.remember(replyKey, await this.reject(msg, ev.reason, nowSec));
+    }
+
+    // Liquidity: the offer must fit the cash path above the floor, with obligations and the daily cap (spec 3.2 step 5).
+    const fit = await this.fitsCash(candidate, nowSec);
+    if (fit.kind === "unavailable") {
+      this.seenNonces.delete(nonceKey); // nothing was decided, so the same offer may be sent again
+      this.log(id, { rung: msg.rung }, null, "needs_approval", fit.reason, "TREASURY_UNAVAILABLE");
+      this.needsApproval.set(id, { reasonCode: "TREASURY_UNAVAILABLE", reason: fit.reason });
+      return this.reject(msg, "NEEDS_HUMAN_APPROVAL", nowSec);
+    }
+    if (fit.kind === "no") {
+      this.log(id, { rung: msg.rung, rateBps: msg.offer.rateBps }, null, "rejected", fit.reason, "LIQUIDITY_FLOOR");
+      return this.remember(replyKey, await this.reject(msg, "LIQUIDITY_FLOOR", nowSec));
     }
 
     const decision = this.log(id, { rung: msg.rung, rateBps: msg.offer.rateBps }, null, "auto_apply", `Accepted rung ${msg.rung} at ${msg.offer.rateBps} bps: eligible and at or above the hurdle.`);
@@ -146,7 +180,37 @@ export class BuyerAgent {
       throw e;
     }
     this.needsApproval.delete(id);
-    return signAccept(this.d.wallet, this.d.domain, { invoiceId: id, rung: msg.rung, offerHash: offerHashOf(this.d.domain, msg.offer), ts: nowSec });
+    this.addSpent(candidate, nowSec);
+    return this.remember(replyKey, await signAccept(this.d.wallet, this.d.domain, { invoiceId: id, rung: msg.rung, offerHash: offerHashOf(this.d.domain, msg.offer), ts: nowSec }));
+  }
+
+  private remember(key: string, reply: NegotiateReply): NegotiateReply {
+    this.replies.set(key, reply);
+    return reply;
+  }
+
+  private spentToday(nowSec: number): bigint {
+    const day = Math.floor(nowSec / 86_400);
+    if (this.spent.day !== day) this.spent = { day, amount: 0n };
+    return this.spent.amount;
+  }
+
+  private addSpent(c: Candidate, nowSec: number) {
+    const outflow = priceOffer(c.face, c.offerRateBps, c.dueSec - BigInt(nowSec), this.d.policy.feeBps).outflow;
+    this.spentToday(nowSec);
+    this.spent.amount += outflow;
+  }
+
+  /** Is this offer part of a plan that keeps the cash path above the floor? Uses the real balance. */
+  private async fitsCash(c: Candidate, nowSec: number): Promise<{ kind: "ok" } | { kind: "no"; reason: string } | { kind: "unavailable"; reason: string }> {
+    let t: Treasury;
+    try {
+      t = await this.d.treasury();
+    } catch (e) {
+      return { kind: "unavailable", reason: `The treasury could not be read, so nothing is accepted: ${(e as Error).message}` };
+    }
+    const ok = fitsCashPath({ nowSec: BigInt(nowSec), cash: t.cash, policy: this.d.policy, obligations: t.obligations, candidates: [c], spentToday: this.spentToday(nowSec) }, c.id);
+    return ok ? { kind: "ok" } : { kind: "no", reason: "Accepting would take the cash path under the liquidity floor, or over the daily cap." };
   }
 
   /**
@@ -168,8 +232,14 @@ export class BuyerAgent {
     };
     const ev = evaluateOffer(this.d.policy, candidate, BigInt(this.now()));
     if (!ev.ok) return { settled: false, reasonCode: ev.reason };
+    const fit = await this.fitsCash(candidate, this.now());
+    if (fit.kind !== "ok") {
+      this.log(invoiceId, { rateBps: held.msg.offer.rateBps }, null, fit.kind === "no" ? "rejected" : "needs_approval", fit.reason, fit.kind === "no" ? "LIQUIDITY_FLOOR" : "TREASURY_UNAVAILABLE");
+      return { settled: false, reasonCode: fit.kind === "no" ? "LIQUIDITY_FLOOR" : "NEEDS_HUMAN_APPROVAL" };
+    }
     const decision = this.log(invoiceId, { rateBps: held.msg.offer.rateBps }, null, "auto_apply", "Accepted the held offer on request.");
     const r = await this.settle(held.msg, decision.hash);
+    this.addSpent(candidate, this.now());
     this.needsApproval.delete(invoiceId);
     return { settled: true, txHash: r.txHash, transactionId: r.transactionId };
   }
@@ -195,7 +265,7 @@ export class BuyerAgent {
     const confirmed = await this.confirmedFlags(candidates);
     for (const c of candidates) if (confirmed.some((f) => f.invoice_id === c.id)) c.reputationBlocked = true;
 
-    const allocation = allocate({ nowSec, cash, policy: this.d.policy, obligations, candidates, spentToday });
+    const allocation = allocate({ nowSec, cash, policy: this.d.policy, obligations, candidates, spentToday: spentToday + this.spentToday(Number(nowSec)) });
     this.d.store.append(
       {
         actor: "buyer_agent",
@@ -218,6 +288,8 @@ export class BuyerAgent {
       if (!held) continue;
       const decision = this.log(item.id, { rateBps: item.rateBps, discount: item.discount }, null, "auto_apply", allocation.explanation);
       const r = await this.settle(held.msg, decision.hash);
+      this.spentToday(this.now());
+      this.spent.amount += item.outflow;
       out.push({ id: item.id, txHash: r.txHash, transactionId: r.transactionId });
     }
     return out;

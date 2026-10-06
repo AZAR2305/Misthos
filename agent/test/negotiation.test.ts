@@ -57,11 +57,12 @@ class ScriptedModel implements AgentModel {
   }
 }
 const accelerate = (extra: object = {}) => ({ action: "accelerate_now", reason: "idle cash on the other side", evidence_refs: ["invoice", "prefs"], ...extra });
+const rich = async () => ({ cash: 100_000n * USD, obligations: [] });
 const down = () => new ScriptedModel(() => {
   throw new ModelUnavailableError("The model is unavailable: test");
 });
 
-function setup(opts: { hurdle?: number; humanAbove?: bigint; model?: AgentModel; prefs?: Partial<SupplierPrefs>; buyerExecuteFails?: WalletError; status?: OnChainInvoice["status"] } = {}) {
+function setup(opts: { hurdle?: number; humanAbove?: bigint; model?: AgentModel; prefs?: Partial<SupplierPrefs>; buyerExecuteFails?: WalletError; status?: OnChainInvoice["status"]; treasury?: () => Promise<{ cash: bigint; obligations: [] }> } = {}) {
   const supplier = keyWallet("supplier");
   const buyer = keyWallet("buyer", opts.buyerExecuteFails);
   const onchain: OnChainInvoice = {
@@ -81,7 +82,7 @@ function setup(opts: { hurdle?: number; humanAbove?: bigint; model?: AgentModel;
   const policy: BuyerPolicy = { hurdleAprBps: opts.hurdle ?? 1000, liquidityFloor: 5_000n * USD, perInvoiceCap: 0n, dailyCap: 0n, humanAbove: opts.humanAbove ?? 0n, feeBps: 1000 };
   const buyerStore = new DecisionStore();
   const supplierStore = new DecisionStore();
-  const buyerAgent = new BuyerAgent({ wallet: buyer.wallet, domain: D, model: new ScriptedModel({ risk_flags: [], summary: "none" }), policy, store: buyerStore, chain, invoiceBook: BOOK, verifier: eoaVerifier, now: () => NOW });
+  const buyerAgent = new BuyerAgent({ wallet: buyer.wallet, domain: D, model: new ScriptedModel({ risk_flags: [], summary: "none" }), policy, store: buyerStore, chain, invoiceBook: BOOK, verifier: eoaVerifier, treasury: opts.treasury ?? rich, now: () => NOW });
   const prefs: SupplierPrefs = { costOfWaitingAprBps: 2200, maxRateBps: 1000, startRateBps: 600, stepBps: 200, ...opts.prefs };
   const sent: unknown[] = [];
   const supplierAgent = new SupplierAgent({
@@ -198,13 +199,38 @@ describe("safety rules (spec 8.5)", () => {
     expect(seen).not.toMatch(/ignore|policy|50%|description/i);
   });
 
-  it("replaying an offer is rejected and settles nothing twice", async () => {
+  it("a retried offer (timeout, restart) gets the same accept and settles exactly once", async () => {
     const t = setup({ hurdle: 0, prefs: { startRateBps: 0 } });
     await t.supplierAgent.start(t.inv);
     const first = t.sent[0] as OfferMsg;
     const reply = await t.buyerAgent.handleOffer(messageSchema.parse(JSON.parse(JSON.stringify(first))) as OfferMsg);
+    expect(reply).toMatchObject({ type: "accept", rung: 0 });
+    expect(t.buyer.calls).toHaveLength(1);
+  });
+
+  it("a different message that reuses a spent nonce is rejected and settles nothing", async () => {
+    const t = setup({ hurdle: 0, prefs: { startRateBps: 0 } });
+    await t.supplierAgent.start(t.inv);
+    const first = JSON.parse(JSON.stringify(t.sent[0])) as OfferMsg;
+    const reply = await t.buyerAgent.handleOffer(messageSchema.parse({ ...first, rung: 1 }) as OfferMsg);
     expect(reply).toMatchObject({ type: "reject", reasonCode: "NOT_ELIGIBLE" });
     expect(t.buyer.calls).toHaveLength(1);
+  });
+
+  it("liquidity: an offer above the hurdle is rejected when it would take cash under the floor", async () => {
+    // floor is 5,000 and the wallet holds 5,100, so a $2,000 invoice cannot be paid early
+    const t = setup({ hurdle: 0, prefs: { startRateBps: 0 }, treasury: async () => ({ cash: 5_100n * USD, obligations: [] }) });
+    const r = await t.supplierAgent.start(t.inv);
+    expect(t.buyer.calls).toHaveLength(0);
+    expect(t.supplierAgent.transcript[0]).toMatchObject({ outcome: "LIQUIDITY_FLOOR" });
+    expect(r.kind).toBe("hold_to_due");
+  });
+
+  it("fails closed when the treasury cannot be read: no accept, no settlement, needs_approval", async () => {
+    const t = setup({ hurdle: 0, prefs: { startRateBps: 0 }, treasury: async () => { throw new Error("rpc down"); } });
+    await t.supplierAgent.start(t.inv);
+    expect(t.buyer.calls).toHaveLength(0);
+    expect(t.buyerAgent.needsApproval.get(t.inv.id)?.reasonCode).toBe("TREASURY_UNAVAILABLE");
   });
 
   it("a replay is also caught when the nonce is already used on chain", async () => {
@@ -215,7 +241,7 @@ describe("safety rules (spec 8.5)", () => {
     const chainReject = new BuyerAgent({
       wallet: t.buyer.wallet, domain: D, model: new ScriptedModel({ risk_flags: [], summary: "" }), policy: t.policy, store: new DecisionStore(),
       chain: { invoice: async () => ({ supplier: t.supplier.account.address, buyer: t.buyer.account.address, token: "0x3600000000000000000000000000000000000000", amount: 2_000n * USD, dueDate: BigInt(NOW + 27 * DAY), approvedAt: 0n, status: "approved" }), offerNonceUsed: async () => true },
-      invoiceBook: BOOK, verifier: eoaVerifier, now: () => NOW,
+      invoiceBook: BOOK, verifier: eoaVerifier, treasury: rich, now: () => NOW,
     });
     await original.start(t.inv);
     const msg = messageSchema.parse(JSON.parse(JSON.stringify(t.sent[0]))) as OfferMsg;
@@ -287,7 +313,7 @@ describe("buyer plan", () => {
     const failing = new BuyerAgent({
       wallet: t.buyer.wallet, domain: D, model: down(), policy: t.policy, store: new DecisionStore(),
       chain: { invoice: async () => ({ supplier: t.supplier.account.address, buyer: t.buyer.account.address, token: "0x3600000000000000000000000000000000000000", amount: 2_000n * USD, dueDate: BigInt(NOW + 27 * DAY), approvedAt: 0n, status: "approved" }), offerNonceUsed: async () => false },
-      invoiceBook: BOOK, verifier: eoaVerifier, now: () => NOW,
+      invoiceBook: BOOK, verifier: eoaVerifier, treasury: rich, now: () => NOW,
     });
     await failing.handleOffer(messageSchema.parse(JSON.parse(JSON.stringify(t.sent[0]))) as OfferMsg);
     await expect(failing.plan(12_000n * USD, [])).rejects.toBeInstanceOf(ModelUnavailableError);

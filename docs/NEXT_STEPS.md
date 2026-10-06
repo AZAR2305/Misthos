@@ -21,6 +21,8 @@ Done this session on the frontend: the agent is now an abstract agent core (no p
 light/dark switch, new fonts (Bricolage Grotesque and Plus Jakarta Sans), Docs is its own tab, the Judge tour and Developer
 kit pages and every terminal command shown to visitors were removed.
 
+Agent code against the spec, with what was fixed on 6 Oct: **`docs/SPEC_COMPLIANCE.md`**.
+
 ## 2. Backend review (read of `backend/src`, tests and README)
 
 What is sound: every route returns the `{ ok, data, error }` envelope; writes are refused from foreign origins; Google tokens
