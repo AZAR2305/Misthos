@@ -1,0 +1,19 @@
+{
+  "mcpServers": {
+    "playwright": {
+      "command": "cmd",
+      "args": ["/c", "npx", "-y", "@playwright/mcp@latest", "--browser", "chrome"],
+      "env": { "NODE_OPTIONS": "--require C:/Users/thame/.node-shims/ipv4.js" }
+    },
+    "context7": {
+      "command": "cmd",
+      "args": ["/c", "npx", "-y", "@upstash/context7-mcp@latest"],
+      "env": { "NODE_OPTIONS": "--require C:/Users/thame/.node-shims/ipv4.js" }
+    },
+    "shadcn": {
+      "command": "cmd",
+      "args": ["/c", "npx", "-y", "shadcn@latest", "mcp"],
+      "env": { "NODE_OPTIONS": "--require C:/Users/thame/.node-shims/ipv4.js" }
+    }
+  }
+}

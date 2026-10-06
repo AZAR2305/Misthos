@@ -1,0 +1,53 @@
+# dependencies
+node_modules/
+.pnpm-store/
+
+# build output and caches
+.next/
+out/
+dist/
+build/
+coverage/
+*.tsbuildinfo
+next-env.d.ts
+.turbo/
+.vercel/
+
+# secrets and local environment (commit only .env.example files)
+.env
+.env.local
+.env.*.local
+!.env.example
+*.pem
+*.key
+keystore/
+
+# logs and OS junk
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# editor and tool state
+.vscode/
+.idea/
+.claude/
+*.swp
+
+# generated screenshots and test artifacts
+frontend/shots/
+playwright-report/
+test-results/
+.playwright-mcp/
+
+# large reference media (kept locally, not in the repo)
+docs/reference/
+*.mp4
+*.mov
+
+# Foundry: build output, dry-run broadcasts and dependencies (run `forge install` to restore lib/)
+contract/out/
+contract/cache/
+contract/broadcast/
+contract/lib/

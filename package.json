@@ -1,0 +1,13 @@
+{
+  "name": "misthos",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Misthos Kit: an open agent kit for business payment timing, settled on Arc.",
+  "license": "MIT",
+  "packageManager": "pnpm@10.15.1",
+  "scripts": {
+    "dev": "pnpm --filter @misthos/frontend dev",
+    "build": "pnpm --filter @misthos/frontend build",
+    "shots": "pnpm --filter @misthos/frontend shots"
+  }
+}
