@@ -270,3 +270,8 @@ middle to hand over an offer, a thumbs up and a jump on accept, a dance on settl
 - **Control routes.** Local callers, or a remote caller with `AGENT_CONTROL_TOKEN`. Only `/health` and `/negotiate` are open.
 - **Hero and agent look.** The orbiting rings are gone; the agent is light green in dark mode and four USDC-blue coins spin around it. VERIFY: coin art is a blue disc with a white dollar mark drawn in code, not Circle's official asset (the share link could not be opened from here).
 - Full agent-versus-spec table: `docs/SPEC_COMPLIANCE.md`.
+
+## Theme choice (6 Oct 2026, product owner)
+- Kept Mint (light) and Mint dark; the Arc-palette options (Arc light, Arc dark, Arc midnight) were tried and removed. The Arc palette in the spec (Cello, Sail, Bossanova) is still in `frontend/design/tokens.css` as the spec's source colours. arc.network could not be opened from the build machine, so the palette was never checked against the live site.
+- The two agents are told apart by colour: supplier green, buyer pink-violet (shell, eyes, band, ring colour on the stage).
+- The agent is interactive: it follows the cursor, perks up and widens its eyes on hover, reacts with a different gesture on each click, and can be dragged round to spin it (it settles back). USDC coins spin on their own axes while orbiting at a distance.
