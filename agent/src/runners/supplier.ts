@@ -4,7 +4,7 @@ import { domain } from "../core/index.js";
 import { AnthropicModel } from "../agents/model.js";
 import { SupplierAgent, httpTransport } from "../agents/supplier.js";
 import { viemChainReader } from "../agents/chain.js";
-import { DecisionStore } from "../agents/store.js";
+import { openDecisionStore } from "../agents/log.js";
 import { loadConfig, loadEnvFile, supplierPrefsFromEnv } from "../config.js";
 import { CircleCliAdapter } from "../wallets/circleCli.js";
 import { chainVerifier, WalletError, type Address } from "../wallets/types.js";
@@ -21,12 +21,13 @@ const serveOptions: ServeOptions = {
   host: process.env.AGENT_HOST || undefined,
   openRoutes: ["GET /health"],
   controlToken: process.env.AGENT_CONTROL_TOKEN || undefined,
-  allowedOrigins: (process.env.AGENT_ALLOWED_ORIGINS ?? "http://localhost:3000").split(","),
+  allowedOrigins: (process.env.AGENT_ALLOWED_ORIGINS ?? "").split(","),
 };
 const cfg = loadConfig();
 if (!cfg.SUPPLIER_AGENT_WALLET_ADDRESS || !cfg.BUYER_AGENT_WALLET_ADDRESS || !cfg.INVOICE_BOOK_ADDRESS) {
   throw new Error("Set SUPPLIER_AGENT_WALLET_ADDRESS, BUYER_AGENT_WALLET_ADDRESS and INVOICE_BOOK_ADDRESS in agent/.env (run: pnpm doctor).");
 }
+if (!cfg.BUYER_AGENT_URL) throw new Error("Set BUYER_AGENT_URL in agent/.env: the address where the buyer agent can be reached (run: pnpm doctor).");
 const book = cfg.INVOICE_BOOK_ADDRESS as Address;
 const publicClient = createPublicClient({ transport: http(cfg.ARC_RPC_URL) });
 const verifier = chainVerifier(publicClient);
@@ -39,7 +40,7 @@ const wallet = new CircleCliAdapter({
   verifier,
 });
 const chain = viemChainReader(cfg.ARC_RPC_URL, book);
-const store = new DecisionStore();
+const store = openDecisionStore({ name: "supplier", dataDir: cfg.AGENT_DATA_DIR, wallet, domain: domain(cfg.ARC_CHAIN_ID, book), backendUrl: cfg.BACKEND_URL });
 const paused = new Set<string>();
 const agents = new Map<string, SupplierAgent>();
 
@@ -50,7 +51,7 @@ const agentFor = (invoiceId: string) => {
     model: new AnthropicModel({ apiKey: cfg.ANTHROPIC_API_KEY ?? "", model: cfg.ANTHROPIC_MODEL }),
     prefs: supplierPrefsFromEnv(),
     store,
-    transport: httpTransport(cfg.BUYER_AGENT_URL),
+    transport: httpTransport(cfg.BUYER_AGENT_URL!),
     buyerAgent: cfg.BUYER_AGENT_WALLET_ADDRESS as Address,
     verifier,
     rungSeconds: cfg.LADDER_RUNG_SECONDS,
@@ -63,7 +64,7 @@ const agentFor = (invoiceId: string) => {
 const idSchema = z.string().regex(/^0x[0-9a-fA-F]{64}$/);
 
 serve(
-  Number(new URL(cfg.SUPPLIER_AGENT_URL).port || 4101),
+  cfg.SUPPLIER_AGENT_PORT,
   {
     "GET /health": async () => {
       const w = await wallet.health();
@@ -92,7 +93,7 @@ serve(
       return { paused: true };
     },
     "GET /prefs": async () => supplierPrefsFromEnv(),
-    "GET /decisions": async () => ({ entries: store.all(), verify: store.verify() }),
+    "GET /decisions": async () => ({ entries: store.all(), verify: store.verify(), delivery: { ...store.status(), backend: !!cfg.BACKEND_URL } }),
   },
   "supplier-agent",
   serveOptions,

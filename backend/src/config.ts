@@ -25,7 +25,9 @@ const schema = z.object({
   GOOGLE_ISSUERS: z.string().default("https://accounts.google.com,accounts.google.com"),
   GOOGLE_JWKS_URL: z.string().url().default("https://www.googleapis.com/oauth2/v3/certs"),
   /** Browser origins allowed to call the API with cookies, comma separated. */
-  FRONTEND_ORIGINS: z.string().default("http://localhost:3000"),
+  FRONTEND_ORIGINS: z.string().default(""),
+  /** The agent wallets whose signed decision logs this API accepts (comma separated 0x addresses). Empty: the log is off. */
+  AGENT_WALLETS: z.string().default(""),
   /** Requests per minute per client on /api/auth/* and /api/claims/*. */
   RATE_LIMIT_PER_MIN: z.coerce.number().int().min(1).default(30),
   /** Set to true behind a proxy that sets X-Forwarded-For, so the limiter sees the real client. */
@@ -51,6 +53,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     ...c,
     ISSUERS: c.GOOGLE_ISSUERS.split(",").map((s) => s.trim()).filter(Boolean),
     ORIGINS: c.FRONTEND_ORIGINS.split(",").map((s) => s.trim().replace(/\/$/, "")).filter(Boolean),
+    AGENTS: c.AGENT_WALLETS.split(",").map((s) => s.trim().toLowerCase()).filter((s) => /^0x[0-9a-f]{40}$/.test(s)) as `0x${string}`[],
     INVOICE_BOOK: c.INVOICE_BOOK_ADDRESS?.toLowerCase() as `0x${string}` | undefined,
   };
 }

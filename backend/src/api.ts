@@ -28,7 +28,7 @@ import { enqueue, getJob } from "./jobs";
 import type { Relayer, RegisterPayload } from "./relayer";
 import { rateLimit } from "./ratelimit";
 import { fromNumeric, ser, toNumeric } from "./serialize";
-import { INVOICE_BOOK_ABI, balanced, domain, invoiceId, invoiceTypedData, offerTypedData, journalFrom, settlementRows, summarise, toBeancount, toCsv, verifyChain, type InvoiceRecord, type StoredDecision } from "./shared";
+import { GENESIS_HASH, decisionTypedData, hashDecision, INVOICE_BOOK_ABI, balanced, domain, invoiceId, invoiceTypedData, offerTypedData, journalFrom, settlementRows, summarise, toBeancount, toCsv, verifyChain, type InvoiceRecord, type StoredDecision } from "./shared";
 
 export interface AppDeps {
   config: Config;
@@ -249,12 +249,141 @@ export function createApp(d: AppDeps) {
     return c.body(toBeancount(lines, time), 200, { "content-type": "text/plain; charset=utf-8" });
   });
 
-  app.get("/api/log/verify", async (c) => {
-    const rows = await db.query<{ prev_hash: string; actor: StoredDecision["actor"]; snapshot_json: unknown; proposal_json: unknown; outcome: StoredDecision["outcome"]; reason: string; hash: string }>(
-      "select prev_hash, actor, snapshot_json, proposal_json, outcome, reason, hash from decisions order by created_at, id",
+  // ------------------------------------------------------------------------------------------------ the signed decision log (spec 8.4)
+
+  type LogRow = { prev_hash: string; actor: StoredDecision["actor"]; snapshot_json: unknown; proposal_json: unknown; outcome: StoredDecision["outcome"]; reason: string; hash: string; signer: string; seq: string; signature: string };
+
+  const attestationOk = async (e: { signer: Address; signature: Hex; hash: Hex; prevHash: Hex; actor: string; seq: number }) => {
+    if (!config.INVOICE_BOOK) return false;
+    const td = decisionTypedData(domain(config.ARC_CHAIN_ID, config.INVOICE_BOOK), e);
+    try {
+      if ((await recoverTypedDataAddress({ ...td, signature: e.signature })).toLowerCase() === e.signer) return true;
+    } catch {
+      /* may be a contract wallet */
+    }
+    return d.client ? d.client.verifyTypedData({ address: e.signer, ...td, signature: e.signature }).catch(() => false) : false;
+  };
+
+  const entrySchema = z.strictObject({
+    seq: z.number().int().min(0),
+    prevHash: hex(64),
+    hash: hex(64),
+    actor: z.enum(["supplier_agent", "buyer_agent"]),
+    invoiceRef: z.string().max(80),
+    reasonCode: z.string().max(60).optional(),
+    at: z.number().int().min(0),
+    snapshot: z.unknown(),
+    proposal: z.unknown(),
+    outcome: z.enum(["auto_apply", "needs_approval", "rejected"]),
+    reason: z.string().max(2000),
+    signer: address,
+    signature: hex(),
+  });
+
+  app.use("/api/log/ingest", limited(120));
+  app.post("/api/log/ingest", async (c) => {
+    if (config.AGENTS.length === 0 || !config.INVOICE_BOOK) return unavailable(c, "the decision log is not switched on", "Set AGENT_WALLETS and INVOICE_BOOK_ADDRESS.");
+    const { entries } = await body(c, z.object({ entries: z.array(entrySchema).min(1).max(100) }));
+    // Check everything before storing anything: an agent we do not know, a hash that is not the entry's hash, a signature that is not the agent's.
+    for (const e of entries) {
+      if (!config.AGENTS.includes(e.signer)) return fail(c, "UNKNOWN_AGENT", "That wallet is not one of this deployment's agents.", 403);
+      const recomputed = hashDecision({ prevHash: e.prevHash, actor: e.actor, snapshot: e.snapshot ?? null, proposal: e.proposal ?? null, outcome: e.outcome, reason: e.reason });
+      if (recomputed !== e.hash) return fail(c, "BAD_HASH", `Entry ${e.seq} does not hash to the value sent.`, 422);
+      if (!(await attestationOk(e))) return fail(c, "BAD_SIGNATURE", `Entry ${e.seq} is not signed by ${e.signer}.`, 422);
+    }
+    let stored = 0;
+    try {
+      await db.tx(async (t) => {
+        for (const e of entries) {
+          const same = await t.query<{ hash: string }>("select hash from decisions where signer = $1 and seq = $2", [e.signer, e.seq]);
+          if (same.length) {
+            if (same[0]!.hash !== e.hash) throw Object.assign(new Error(`Entry ${e.seq} of ${e.signer} differs from the one already stored.`), { code: "FORK" });
+            continue; // already stored: delivering again is harmless
+          }
+          const last = await t.query<{ seq: string; hash: string }>("select seq::text as seq, hash from decisions where signer = $1 order by seq desc limit 1", [e.signer]);
+          const wantSeq = last.length ? Number(last[0]!.seq) + 1 : 0;
+          const wantPrev = last.length ? last[0]!.hash : GENESIS_HASH;
+          if (e.seq !== wantSeq || e.prevHash !== wantPrev) throw Object.assign(new Error(`Entry ${e.seq} does not continue the chain: expected entry ${wantSeq}.`), { code: "GAP" });
+          await t.query(
+            `insert into decisions (actor, snapshot_json, proposal_json, outcome, reason_code, reason, prev_hash, hash, signature, signer, seq, invoice_ref, agent_at)
+             values ($1, $2::jsonb, $3::jsonb, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+            [e.actor, JSON.stringify(e.snapshot ?? null), JSON.stringify(e.proposal ?? null), e.outcome, e.reasonCode ?? null, e.reason, e.prevHash, e.hash, e.signature, e.signer, e.seq, e.invoiceRef, e.at],
+          );
+          stored++;
+        }
+      });
+    } catch (err) {
+      const code = (err as { code?: string }).code;
+      if (code === "FORK" || code === "GAP") return fail(c, code === "FORK" ? "LOG_FORK" : "LOG_GAP", (err as Error).message, 409);
+      throw err;
+    }
+    return ok(c, { received: entries.length, stored }, 201);
+  });
+
+  /** The public log: newest first, each entry with its proof. An entry that settled an invoice also names the on-chain transaction that carries its hash. */
+  app.get("/api/log", async (c) => {
+    const q = z
+      .object({ invoice: z.string().max(80).optional(), signer: address.optional(), limit: z.coerce.number().int().min(1).max(200).default(50), offset: z.coerce.number().int().min(0).default(0) })
+      .parse(c.req.query());
+    const where: string[] = ["signer is not null"];
+    const args: unknown[] = [];
+    if (q.invoice) (args.push(q.invoice.toLowerCase()), where.push(`lower(invoice_ref) = $${args.length}`));
+    if (q.signer) (args.push(q.signer), where.push(`signer = $${args.length}`));
+    const total = Number((await db.query<{ n: string }>(`select count(*)::text as n from decisions where ${where.join(" and ")}`, args))[0]!.n);
+    const rows = await db.query<LogRow & { invoice_ref: string; reason_code: string | null; agent_at: string }>(
+      `select prev_hash, actor::text as actor, snapshot_json, proposal_json, outcome::text as outcome, reason, reason_code, hash, signer, seq::text as seq, signature, invoice_ref, agent_at::text as agent_at
+       from decisions where ${where.join(" and ")} order by agent_at desc, seq desc limit ${q.limit} offset ${q.offset}`,
+      args,
     );
-    const r = verifyChain(rows.map((x) => ({ prevHash: x.prev_hash as Hex, actor: x.actor, snapshot: x.snapshot_json, proposal: x.proposal_json, outcome: x.outcome, reason: x.reason, hash: x.hash as Hex })));
-    return ok(c, { count: rows.length, ...r });
+    const onChain = rows.length
+      ? await db.query<{ dh: string; tx_hash: string; block: string }>(
+          "select payload_json->>'decisionHash' as dh, tx_hash, block::text as block from chain_events where name = 'EarlySettled' and payload_json->>'decisionHash' = any($1::text[])",
+          [rows.map((r) => r.hash)],
+        )
+      : [];
+    const settled = new Map(onChain.map((e) => [e.dh.toLowerCase(), e]));
+    return ok(c, {
+      total,
+      items: rows.map((r) => ({
+        seq: Number(r.seq),
+        actor: r.actor,
+        signer: r.signer,
+        invoiceRef: r.invoice_ref,
+        outcome: r.outcome,
+        reasonCode: r.reason_code,
+        reason: r.reason,
+        at: Number(r.agent_at),
+        hash: r.hash,
+        prevHash: r.prev_hash,
+        signature: r.signature,
+        snapshot: r.snapshot_json,
+        proposal: r.proposal_json,
+        settlement: settled.get(r.hash.toLowerCase()) ? { txHash: settled.get(r.hash.toLowerCase())!.tx_hash, block: settled.get(r.hash.toLowerCase())!.block } : null,
+      })),
+    });
+  });
+
+  /** Recompute every agent's chain from the stored rows and re-check every signature. Nothing here trusts what was checked at ingest. */
+  app.get("/api/log/verify", async (c) => {
+    const rows = await db.query<LogRow>(
+      "select prev_hash, actor::text as actor, snapshot_json, proposal_json, outcome::text as outcome, reason, hash, signer, seq::text as seq, signature from decisions where signer is not null order by signer, seq",
+    );
+    const bySigner = new Map<string, LogRow[]>();
+    for (const r of rows) bySigner.set(r.signer, [...(bySigner.get(r.signer) ?? []), r]);
+    const agents = [];
+    for (const [signer, list] of bySigner) {
+      const chain = verifyChain(list.map((x) => ({ prevHash: x.prev_hash as Hex, actor: x.actor, snapshot: x.snapshot_json, proposal: x.proposal_json, outcome: x.outcome, reason: x.reason, hash: x.hash as Hex })));
+      const contiguous = list.every((x, i) => Number(x.seq) === i);
+      let signaturesOk = true;
+      for (const x of list) {
+        if (!(await attestationOk({ signer: signer as Address, signature: x.signature as Hex, hash: x.hash as Hex, prevHash: x.prev_hash as Hex, actor: x.actor, seq: Number(x.seq) }))) {
+          signaturesOk = false;
+          break;
+        }
+      }
+      agents.push({ signer, actor: list[0]!.actor, count: list.length, chainOk: chain.ok && contiguous, badIndex: chain.ok ? (contiguous ? null : list.findIndex((x, i) => Number(x.seq) !== i)) : chain.badIndex, signaturesOk, ok: chain.ok && contiguous && signaturesOk });
+    }
+    return ok(c, { ok: agents.every((a) => a.ok), count: rows.length, agents, known: config.AGENTS });
   });
 
   app.get("/api/agents", async (c) => {

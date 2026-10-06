@@ -56,3 +56,7 @@ frontend/.next-*/
 
 # local embedded database
 backend/.data/
+
+# agent decision logs (kept on the agent machine)
+.agent-data/
+agent/.agent-data/

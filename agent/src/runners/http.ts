@@ -111,7 +111,7 @@ export function serve(port: number, routes: Routes, name: string, opts: ServeOpt
       return;
     }
     try {
-      const url = new URL(req.url ?? "/", "http://localhost");
+      const url = new URL(req.url ?? "/", "http://agent.invalid");
       const found = match(routes, req.method ?? "GET", url.pathname);
       if (!found) return fail(res, 404, "NOT_FOUND", "No such route.");
       if (opts.openRoutes && !opts.openRoutes.includes(found.key) && !controlAllowed(req.socket.remoteAddress, req.headers["x-agent-token"] as string | undefined, opts.controlToken)) {

@@ -92,3 +92,27 @@ const DOMAIN_TYPE = [
 export async function recoverSigner(args: Parameters<typeof recoverTypedDataAddress>[0]): Promise<`0x${string}`> {
   return recoverTypedDataAddress(args);
 }
+
+
+/**
+ * The attester signature on a decision-log entry (spec 8.4: "sign each entry with the attester key"). The agent wallet signs
+ * the entry's hash together with its place in the chain, so the backend can check who wrote it and that nothing was
+ * dropped or reordered. The domain is the same as for offers.
+ */
+export const DECISION_TYPES = {
+  DecisionAttestation: [
+    { name: "hash", type: "bytes32" },
+    { name: "prevHash", type: "bytes32" },
+    { name: "actor", type: "string" },
+    { name: "seq", type: "uint64" },
+  ],
+} as const;
+
+export function decisionTypedData(d: Domain, m: { hash: Hex; prevHash: Hex; actor: string; seq: number }) {
+  return {
+    domain: d,
+    types: DECISION_TYPES,
+    primaryType: "DecisionAttestation" as const,
+    message: { hash: m.hash, prevHash: m.prevHash, actor: m.actor, seq: BigInt(m.seq) },
+  };
+}

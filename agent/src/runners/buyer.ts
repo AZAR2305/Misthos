@@ -4,7 +4,7 @@ import { domain } from "../core/index.js";
 import { BuyerAgent } from "../agents/buyer.js";
 import { AnthropicModel } from "../agents/model.js";
 import { viemChainReader } from "../agents/chain.js";
-import { DecisionStore } from "../agents/store.js";
+import { openDecisionStore } from "../agents/log.js";
 import { offerMsgSchema } from "../protocol/index.js";
 import { buyerPolicyFromEnv, loadConfig, loadEnvFile } from "../config.js";
 import { CircleCliAdapter } from "../wallets/circleCli.js";
@@ -21,7 +21,7 @@ const serveOptions: ServeOptions = {
   host: process.env.AGENT_HOST || undefined,
   openRoutes: ["GET /health", "POST /negotiate"],
   controlToken: process.env.AGENT_CONTROL_TOKEN || undefined,
-  allowedOrigins: (process.env.AGENT_ALLOWED_ORIGINS ?? "http://localhost:3000").split(","),
+  allowedOrigins: (process.env.AGENT_ALLOWED_ORIGINS ?? "").split(","),
 };
 const cfg = loadConfig();
 if (!cfg.BUYER_AGENT_WALLET_ADDRESS || !cfg.INVOICE_BOOK_ADDRESS) {
@@ -38,7 +38,7 @@ const wallet = new CircleCliAdapter({
   usdc: cfg.USDC_ADDRESS as Address,
   verifier,
 });
-const store = new DecisionStore();
+const store = openDecisionStore({ name: "buyer", dataDir: cfg.AGENT_DATA_DIR, wallet, domain: domain(cfg.ARC_CHAIN_ID, book), backendUrl: cfg.BACKEND_URL });
 const buyer = new BuyerAgent({
   wallet,
   domain: domain(cfg.ARC_CHAIN_ID, book),
@@ -72,7 +72,7 @@ const runPlan = async (body: unknown) => {
 };
 
 serve(
-  Number(new URL(cfg.BUYER_AGENT_URL).port || 4102),
+  cfg.BUYER_AGENT_PORT,
   {
     "GET /health": async () => ({ wallet: await wallet.health(), modelConfigured: !!cfg.ANTHROPIC_API_KEY, invoiceBook: book }),
     "POST /negotiate": async ({ body }) => buyer.handleOffer(offerMsgSchema.parse(body)),
@@ -84,7 +84,7 @@ serve(
     },
     "GET /policy": async () => buyerPolicyFromEnv(), // private to this machine: the hurdle is shown only to its owner
     "GET /needs-approval": async () => [...buyer.needsApproval].map(([invoiceId, v]) => ({ invoiceId, ...v })),
-    "GET /decisions": async () => ({ entries: store.all(), verify: store.verify() }),
+    "GET /decisions": async () => ({ entries: store.all(), verify: store.verify(), delivery: { ...store.status(), backend: !!cfg.BACKEND_URL } }),
   },
   "buyer-agent",
   serveOptions,

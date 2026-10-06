@@ -14,8 +14,14 @@ const envSchema = z.object({
   INVOICE_BOOK_ADDRESS: optionalAddr,
   SUPPLIER_AGENT_WALLET_ADDRESS: optionalAddr,
   BUYER_AGENT_WALLET_ADDRESS: optionalAddr,
-  SUPPLIER_AGENT_URL: z.url().default("http://localhost:4101"),
-  BUYER_AGENT_URL: z.url().default("http://localhost:4102"),
+  /** Where the other side's agent can be reached. The supplier agent needs BUYER_AGENT_URL; there is no default address. */
+  BUYER_AGENT_URL: z.preprocess((v) => (v === "" ? undefined : v), z.url().optional()),
+  SUPPLIER_AGENT_PORT: z.coerce.number().int().min(1).max(65535).default(4101),
+  BUYER_AGENT_PORT: z.coerce.number().int().min(1).max(65535).default(4102),
+  /** The Misthos API that receives the signed decision log. Without it the log stays on this machine. */
+  BACKEND_URL: z.preprocess((v) => (v === "" ? undefined : v), z.url().optional()),
+  /** Where this agent keeps its decision log between restarts. */
+  AGENT_DATA_DIR: z.string().default(".agent-data"),
   /** Separate Circle CLI login folders, one per agent (CIRCLE_CLI_HOME). */
   SUPPLIER_CIRCLE_CLI_HOME: optionalText,
   BUYER_CIRCLE_CLI_HOME: optionalText,
