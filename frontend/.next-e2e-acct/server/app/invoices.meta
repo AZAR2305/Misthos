@@ -1,0 +1,39 @@
+{
+  "headers": {
+    "x-nextjs-stale-time": "300",
+    "x-nextjs-prerender": "1",
+    "x-next-cache-tags": "_N_T_/layout,_N_T_/(app)/layout,_N_T_/(app)/invoices/layout,_N_T_/(app)/invoices/page,_N_T_/invoices"
+  },
+  "segmentPaths": [
+    "/_tree",
+    "/_full",
+    "/!KGFwcCk/invoices/__PAGE__"
+  ],
+  "prefetchHints": {
+    "hints": 64,
+    "slots": {
+      "children": {
+        "hints": 96,
+        "slots": {
+          "children": {
+            "hints": 96,
+            "slots": {
+              "children": {
+                "hints": 160,
+                "slots": null
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "routeCache": {
+    "key": "/route-cache/APP_PAGE/dd5bd791f6386a662174e351db6023c9965c128ec3b16d5e065eac2462b70609/$/invoices",
+    "owner": {
+      "kind": "APP_PAGE",
+      "sourceRoute": "/(app)/invoices/page"
+    },
+    "isFallback": false
+  }
+}

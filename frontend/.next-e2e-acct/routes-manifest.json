@@ -1,0 +1,158 @@
+{
+  "version": 3,
+  "pages404": true,
+  "appType": "app",
+  "caseSensitive": false,
+  "basePath": "",
+  "redirects": [
+    {
+      "source": "/:path+/",
+      "destination": "/:path+",
+      "internal": true,
+      "priority": true,
+      "statusCode": 308,
+      "regex": "^(?:/((?:[^/]+?)(?:/(?:[^/]+?))*))/$"
+    }
+  ],
+  "headers": [],
+  "onMatchHeaders": [],
+  "rewrites": {
+    "beforeFiles": [],
+    "afterFiles": [],
+    "fallback": []
+  },
+  "dynamicRoutes": [
+    {
+      "page": "/claim/[token]",
+      "regex": "^/claim/([^/]+?)(?:/)?$",
+      "routeKeys": {
+        "nxtPtoken": "nxtPtoken"
+      },
+      "namedRegex": "^/claim/(?<nxtPtoken>[^/]+?)(?:/)?$"
+    },
+    {
+      "page": "/invoices/[id]",
+      "regex": "^/invoices/([^/]+?)(?:/)?$",
+      "routeKeys": {
+        "nxtPid": "nxtPid"
+      },
+      "namedRegex": "^/invoices/(?<nxtPid>[^/]+?)(?:/)?$"
+    }
+  ],
+  "staticRoutes": [
+    {
+      "page": "/",
+      "regex": "^/(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/(?:/)?$"
+    },
+    {
+      "page": "/_global-error",
+      "regex": "^/_global\\-error(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/_global\\-error(?:/)?$"
+    },
+    {
+      "page": "/_not-found",
+      "regex": "^/_not\\-found(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/_not\\-found(?:/)?$"
+    },
+    {
+      "page": "/agents",
+      "regex": "^/agents(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/agents(?:/)?$"
+    },
+    {
+      "page": "/app",
+      "regex": "^/app(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/app(?:/)?$"
+    },
+    {
+      "page": "/buyer",
+      "regex": "^/buyer(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/buyer(?:/)?$"
+    },
+    {
+      "page": "/buyer/approvals",
+      "regex": "^/buyer/approvals(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/buyer/approvals(?:/)?$"
+    },
+    {
+      "page": "/buyer/policy",
+      "regex": "^/buyer/policy(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/buyer/policy(?:/)?$"
+    },
+    {
+      "page": "/icon.svg",
+      "regex": "^/icon\\.svg(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/icon\\.svg(?:/)?$"
+    },
+    {
+      "page": "/invoices",
+      "regex": "^/invoices(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/invoices(?:/)?$"
+    },
+    {
+      "page": "/kit",
+      "regex": "^/kit(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/kit(?:/)?$"
+    },
+    {
+      "page": "/ledger",
+      "regex": "^/ledger(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/ledger(?:/)?$"
+    },
+    {
+      "page": "/login",
+      "regex": "^/login(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/login(?:/)?$"
+    },
+    {
+      "page": "/stats",
+      "regex": "^/stats(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/stats(?:/)?$"
+    },
+    {
+      "page": "/supplier",
+      "regex": "^/supplier(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/supplier(?:/)?$"
+    },
+    {
+      "page": "/supplier/invoices/new",
+      "regex": "^/supplier/invoices/new(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/supplier/invoices/new(?:/)?$"
+    }
+  ],
+  "dataRoutes": [],
+  "rsc": {
+    "header": "rsc",
+    "varyHeader": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch",
+    "prefetchHeader": "next-router-prefetch",
+    "didPostponeHeader": "x-nextjs-postponed",
+    "contentTypeHeader": "text/x-component",
+    "suffix": ".rsc",
+    "prefetchSegmentHeader": "next-router-segment-prefetch",
+    "prefetchSegmentSuffix": ".segment.rsc",
+    "prefetchSegmentDirSuffix": ".segments",
+    "clientParamParsing": false,
+    "dynamicRSCPrerender": false
+  },
+  "rewriteHeaders": {
+    "pathHeader": "x-nextjs-rewritten-path",
+    "queryHeader": "x-nextjs-rewritten-query"
+  }
+}

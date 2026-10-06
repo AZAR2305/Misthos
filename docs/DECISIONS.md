@@ -208,3 +208,19 @@ middle to hand over an offer, a thumbs up and a jump on accept, a dance on settl
   mint/green; status "ok" is a different, darker green and always has a word or mark. Agents stay violet. (2) Spec 10.2 fonts
   (Chakra Petch/Circular) replaced by Figtree. VERIFY with the product owner if Arc branding must come back.
 - All 15 contrast pairs pass in both themes (`pnpm contrast`); `pnpm e2e:local` passes with the new theme.
+
+## Accounts: Google identity bound to a wallet and a side (7 Oct 2026)
+- **Question from the product owner:** should buyers and suppliers sign in with Google and link an Arc wallet address? **Yes, as
+  an identity layer, not a replacement for the wallet.** Google proves who someone is (real email, recovery, notifications,
+  one account per business). The wallet signs everything binding, so the contract still enforces by signature and a stolen
+  Google session alone cannot move money. Binding is proven by a signed one-time message (no gas); one Google identity maps to
+  one address and the reverse (both unique); each account has one side, switchable with an explicit confirm.
+- **Public pages stay public.** Reads never need an account. Acting as a supplier or buyer does when the app has a server
+  (`NEXT_PUBLIC_API_URL` set). Without a server the app keeps working on a wallet alone with the side stored on the device.
+  That is a deliberate mode, not a fallback for failures: a server that is configured but down shows "unavailable".
+- **Server-side checks only.** The ID token is verified in the backend (signature, issuer, audience, expiry, verified email).
+  Sessions are opaque HttpOnly cookies, SHA-256 stored, with an Origin check on writes.
+- **Not done / VERIFY:** no Circle user-controlled (social-login) wallets yet (VERIFY Arc support and a Circle API key); the
+  relayer is a throwaway key, not a Circle managed wallet; no rate limiting on /api/auth/*; ERC-1271 wallet signatures are
+  coded but untested on Arc; obligations, policy and supplier preferences exist as API endpoints but the UI still keeps them
+  on the device.

@@ -1,0 +1,8 @@
+{
+  "pages": {},
+  "app": {
+    "[project]/frontend/src/app/(app)/supplier/invoices/new/page": []
+  },
+  "appUsingSizeAdjust": true,
+  "pagesUsingSizeAdjust": false
+}

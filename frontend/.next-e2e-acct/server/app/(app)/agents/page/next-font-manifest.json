@@ -1,0 +1,8 @@
+{
+  "pages": {},
+  "app": {
+    "[project]/frontend/src/app/(app)/agents/page": []
+  },
+  "appUsingSizeAdjust": true,
+  "pagesUsingSizeAdjust": false
+}
