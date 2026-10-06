@@ -1,11 +1,11 @@
 "use client";
 
-import { setTheme, useThemeId } from "@/lib/themes";
+import { counterpart, isDarkTheme, setTheme, useThemeId } from "@/lib/themes";
 
 /** One button that flips the whole site (page, 3D scene and agents) between light and dark, and remembers the choice. */
 export function ThemePicker() {
   const id = useThemeId();
-  const dark = id === "mint-dark";
+  const dark = isDarkTheme(id);
   return (
     <button
       type="button"
@@ -14,7 +14,7 @@ export function ThemePicker() {
       aria-checked={dark}
       aria-label={dark ? "Switch to light mode" : "Switch to dark mode"}
       title={dark ? "Light mode" : "Dark mode"}
-      onClick={() => setTheme(dark ? "mint" : "mint-dark")}
+      onClick={() => setTheme(counterpart(id))}
     >
       <svg className="ico-sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
         <circle cx="12" cy="12" r="4" />

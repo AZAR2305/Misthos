@@ -131,6 +131,10 @@ export function Robot({
   const look = useRef({ y: 0, x: 0 });
   const blink = useRef({ next: 2.5, t0: -1 });
   const eyeNow = useRef<[number, number, number, number]>([1, 1, 0, 1]);
+  // Interaction: hover perks it up, a click makes it react, and it can be dragged round to spin it.
+  const hot = useRef(false);
+  const drag = useRef({ down: false, lastX: 0, moved: 0, yaw: 0, vel: 0 });
+  const clicks = useRef(0);
 
   useEffect(() => {
     if (state.poseKey === 0) return;
@@ -184,6 +188,13 @@ export function Robot({
     const want = walking.current ? dir.current * 0.5 : yaw + sceneState.pointer.x * 0.28;
     g.rotation.y += (want - g.rotation.y) * (1 - Math.exp(-dt * 6));
     g.rotation.z += ((walking.current ? -dir.current * 0.12 : 0) - g.rotation.z) * (1 - Math.exp(-dt * 6));
+    // Dragging spins it; on release it keeps some momentum and then settles back to facing forward.
+    const dg = drag.current;
+    if (!dg.down) {
+      dg.yaw += dg.vel * dt;
+      dg.vel *= Math.exp(-dt * 2.2);
+      dg.yaw -= (dg.yaw - Math.round(dg.yaw / (Math.PI * 2)) * Math.PI * 2) * (1 - Math.exp(-dt * 1.6));
+    }
 
     // --- core: float, look at the cursor, gesture ---
     const c = core.current;
@@ -194,21 +205,21 @@ export function Robot({
     look.current.x += (tx - look.current.x) * k;
     const bob = calm ? 0 : Math.sin(now * 1.4 + (role === "buyer" ? 1.3 : 0)) * 0.07;
     c.position.y = cy + bob + hop;
-    c.rotation.set(look.current.x + nodX + busy * 0.12, look.current.y + shakeY, tiltZ);
-    c.scale.setScalar(R * pulse * (calm ? 1 : 1 + Math.sin(now * 1.7) * 0.012));
+    c.rotation.set(look.current.x + nodX + busy * 0.12, look.current.y + shakeY + dg.yaw, tiltZ);
+    c.scale.setScalar(R * pulse * (hot.current ? 1.06 : 1) * (calm ? 1 : 1 + Math.sin(now * 1.7) * 0.012));
     if (shadow.current) {
       const s = 1 - (bob + hop) * 0.35;
       shadow.current.scale.set(s, s, s);
     }
 
     // --- coins: each spins on its own axis while the set orbits the agent ---
-    const speed = (calm ? 0 : 1.6) + busy * 2 + (walking.current ? 1 : 0) + ringBoost;
+    const speed = (calm ? 0 : 1.6) + busy * 2 + (walking.current ? 1 : 0) + ringBoost + (hot.current ? 2.2 : 0) + Math.abs(dg.vel) * 0.6;
     for (const c of coinSpin.current) if (c) c.rotation.y += dt * speed;
-    spin.current += dt * ((calm ? 0 : 0.25) + spinBoost);
+    spin.current += dt * ((calm ? 0 : 0.25) + spinBoost + (hot.current ? 0.5 : 0) + dg.vel * 0.5);
     if (coins.current) coins.current.rotation.y = spin.current + (calm ? 0 : now * 0.2);
 
     // --- eyes: ease to the face, blink now and then, flicker while reading ---
-    const tgt = EYE[state.face];
+    const tgt = hot.current && state.face === "neutral" ? EYE.surprised : EYE[state.face];
     for (let i = 0; i < 4; i++) eyeNow.current[i] += (tgt[i] - eyeNow.current[i]) * (1 - Math.exp(-dt * 9));
     if (!calm && now > blink.current.next) {
       blink.current = { next: now + 2.5 + Math.random() * 3.5, t0: now };
@@ -233,23 +244,49 @@ export function Robot({
       rotation={[0, yaw, 0]}
       onPointerOver={(e) => {
         e.stopPropagation();
-        document.body.style.cursor = "pointer";
+        hot.current = true;
+        document.body.style.cursor = "grab";
         onHover(true);
       }}
       onPointerOut={() => {
+        hot.current = false;
+        drag.current.down = false;
         document.body.style.cursor = "";
         onHover(false);
       }}
-      onClick={(e) => {
+      onPointerDown={(e) => {
         e.stopPropagation();
-        onSelect();
+        (e.target as Element & { setPointerCapture?: (id: number) => void }).setPointerCapture?.(e.pointerId);
+        drag.current = { ...drag.current, down: true, lastX: e.clientX, moved: 0, vel: 0 };
+        document.body.style.cursor = "grabbing";
+      }}
+      onPointerMove={(e) => {
+        const d = drag.current;
+        if (!d.down) return;
+        const dx = e.clientX - d.lastX;
+        d.lastX = e.clientX;
+        d.moved += Math.abs(dx);
+        d.yaw += dx * 0.012;
+        d.vel = dx * 0.35;
+      }}
+      onPointerUp={(e) => {
+        e.stopPropagation();
+        const d = drag.current;
+        d.down = false;
+        document.body.style.cursor = "grab";
+        if (d.moved < 5) {
+          // A click, not a drag: it reacts with a different gesture each time, and the page hears about it.
+          const gestures: Pose[] = ["Wave", "Yes", "ThumbsUp", "Jump", "No"];
+          anim.current = { pose: gestures[clicks.current++ % gestures.length]!, t0: performance.now() / 1000 };
+          onSelect();
+        }
       }}
     >
       {/* The core. Unit radius; scaled by the group. */}
       <group ref={core} position={[0, cy, 0]} scale={R}>
         <mesh castShadow>
           <sphereGeometry args={[1, 64, 64]} />
-          <meshPhysicalMaterial color={dark ? "#a8ecb5" : "#e4f6e8"} metalness={dark ? 0.35 : 0.3} roughness={0.2} clearcoat={1} clearcoatRoughness={0.1} envMapIntensity={1.6} emissive={tint} emissiveIntensity={dark ? 0.05 : 0.02} />
+          <meshPhysicalMaterial color={role === "supplier" ? th.shellSupplier : th.shellBuyer} metalness={dark ? 0.35 : 0.3} roughness={0.2} clearcoat={1} clearcoatRoughness={0.1} envMapIntensity={1.6} emissive={tint} emissiveIntensity={dark ? 0.05 : 0.02} />
         </mesh>
         {/* Visor */}
         <mesh position={[0, 0.06, 0.62]} scale={[0.78, 0.42, 0.45]}>
@@ -280,12 +317,12 @@ export function Robot({
 
       {/* USDC coins in orbit, when the agent stands alone. Each spins on its own axis. */}
       {bare && (
-        <group ref={coins} position={[0, cy + R * 0.1, 0]}>
+        <group ref={coins} position={[0, cy + R * 0.1, 0]} rotation={[0, 0, 0.32]}>
           {[0, 1, 2, 3].map((i) => {
             const a = (i / 4) * Math.PI * 2;
-            const r = R * 1.85;
+            const r = R * 2.1;
             return (
-              <group key={i} position={[Math.sin(a) * r, Math.sin(a * 2 + 1) * R * 0.3, Math.cos(a) * r]}>
+              <group key={i} position={[Math.sin(a) * r, Math.sin(a * 2 + 1) * R * 0.22, Math.cos(a) * r]}>
                 <group ref={(g) => { coinSpin.current[i] = g; }} rotation={[0, a, 0]}>
                   <UsdcCoin size={R * 0.34} />
                 </group>
