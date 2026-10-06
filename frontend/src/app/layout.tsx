@@ -15,13 +15,13 @@ import "./app.css";
 import "./shell.css";
 import { Providers } from "@/components/Providers";
 import { NO_FLASH_SCRIPT } from "@/lib/themes";
+import { SITE_URL } from "@/lib/site";
 
-const SITE = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
 const DESCRIPTION =
   "Two businesses' agents agree the price of waiting on an approved invoice, often 0%. A contract on Arc enforces the signed terms and settles in USDC in under a second.";
 
 export const metadata: Metadata = {
-  metadataBase: new URL(SITE),
+  ...(SITE_URL ? { metadataBase: new URL(SITE_URL) } : {}),
   title: { default: "Misthos: get paid days after approval, not weeks", template: "%s · Misthos" },
   description: DESCRIPTION,
   applicationName: "Misthos",

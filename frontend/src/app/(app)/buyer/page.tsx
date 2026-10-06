@@ -145,7 +145,7 @@ function Body({ me }: { me: `0x${string}` }) {
       )}
 
       <div className="split">
-        <div style={{ display: "grid", gap: 20 }}>
+        <div className="stack">
           <Card title="Invoices you can pay early" aside={<Link className="link" href="/invoices">All invoices</Link>}>
             {approved.length === 0 ? (
               <Empty title="No approved invoices yet" body="When you approve an invoice from a supplier, it shows up here and can be paid early." action={<Link className="btn btn-ghost" href="/buyer/approvals">Go to approvals</Link>} />
@@ -209,7 +209,7 @@ function Body({ me }: { me: `0x${string}` }) {
           </Card>
         </div>
 
-        <div style={{ display: "grid", gap: 20 }}>
+        <div className="stack">
           <Card title="Allowance">
             <p className="muted">The contract can only move the USDC you allow. You can raise or lower this whenever you like.</p>
             <button type="button" className="btn btn-ghost" onClick={() => setAllowOpen(true)}>Set allowance</button>

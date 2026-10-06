@@ -47,7 +47,7 @@ export default function SupplierDashboard() {
               </div>
 
               <div className="split">
-                <div style={{ display: "grid", gap: 16 }}>
+                <div className="stack">
                   {chain.status === "loading" ? (
                     <Skeleton rows={4} />
                   ) : chain.status === "unconfigured" ? (
@@ -59,11 +59,14 @@ export default function SupplierDashboard() {
                       action={<Link className="btn btn-primary" href="/supplier/invoices/new">New invoice</Link>}
                     />
                   ) : (
-                    <InvoiceTable invoices={mine} me={me} side="supplier" />
+                    <>
+                      <InvoiceTable invoices={mine} me={me} side="supplier" />
+                      <p className="muted tiny">Every status and amount is read from Arc. The proof link on each row opens the transaction on the explorer.</p>
+                    </>
                   )}
                 </div>
 
-                <div style={{ display: "grid", gap: 16 }}>
+                <div className="stack">
                   <Card title="Next best step">
                     {approved.length === 0 ? (
                       <p className="muted">

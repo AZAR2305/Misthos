@@ -31,7 +31,7 @@ const PUBLIC: Tab[] = [
   { href: "/invoices", label: "All invoices" },
   { href: "/ledger", label: "Ledger" },
   { href: "/stats", label: "Live stats" },
-  { href: "/agents", label: "Agents" },
+  { href: "/agents", label: "Agent log" },
   { href: "/docs", label: "Docs" },
 ];
 

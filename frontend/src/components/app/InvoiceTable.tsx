@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { AddressChip, Money, StatusChip } from "@/components/ui/kit";
+import { AddressChip, Money, StatusChip, TxLink } from "@/components/ui/kit";
 import type { InvoiceRecord } from "@/lib/chain/invoices";
 import { dateOnly, dueText, invoiceName, useNow } from "@/lib/format";
 import { useInvoiceMeta } from "@/lib/storage";
@@ -25,6 +25,14 @@ export function nextStep(inv: InvoiceRecord, me: string | undefined, now: number
   }
 }
 
+/** The latest on-chain event for an invoice: the transaction anyone can open to check its status. */
+function proofOf(i: InvoiceRecord): { label: string; tx: string } {
+  if (i.settled) return { label: i.settled.kind === "early" ? "Paid early" : "Paid on due date", tx: i.settled.tx };
+  if (i.disputed) return { label: "Disputed", tx: i.disputed.tx };
+  if (i.approved) return { label: "Approved", tx: i.approved.tx };
+  return { label: "Registered", tx: i.registered.tx };
+}
+
 /** Dense, sortable-by-due list. `side` decides which counterparty to show. */
 export function InvoiceTable({ invoices, me, side }: { invoices: InvoiceRecord[]; me?: string; side: "supplier" | "buyer" | "both" }) {
   const [meta] = useInvoiceMeta();
@@ -42,6 +50,7 @@ export function InvoiceTable({ invoices, me, side }: { invoices: InvoiceRecord[]
             <th>Due</th>
             <th>Status</th>
             <th>Next step</th>
+            <th>Proof on Arc</th>
           </tr>
         </thead>
         <tbody>
@@ -60,6 +69,10 @@ export function InvoiceTable({ invoices, me, side }: { invoices: InvoiceRecord[]
               </td>
               <td><StatusChip status={i.status} /></td>
               <td className="muted">{nextStep(i, me, now)}</td>
+              <td className="proof-cell">
+                <span className="muted tiny">{proofOf(i).label}</span>
+                <TxLink hash={proofOf(i).tx} />
+              </td>
             </tr>
           ))}
         </tbody>

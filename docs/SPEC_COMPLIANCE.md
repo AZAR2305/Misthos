@@ -14,7 +14,7 @@ locally", never "proven on Arc". Statuses: **Done**, **Fixed today**, **Partial*
 | 6 supplier climbs a short ladder on reject | Done | `buildLadder` (max 6 rungs), stops on DISPUTED, NOT_ELIGIBLE, REPUTATION_FLAG, NEEDS_HUMAN_APPROVAL |
 | 7 accept: buyer wallet calls `settleEarly(id, offer, sig, decisionHash)` | Done | `BuyerAgent.settle`, idempotency key `settle:<id>:<nonce>` |
 | 8 ERC-8004 feedback by the counterparty | Not built (Tier 2) | listed in `docs/NEXT_STEPS.md` |
-| 9 ledger rows, hash-chained log, `/stats` | Partial | ledger and stats from chain events (backend); the log is chained and verifiable but see "Decision log" |
+| 9 ledger rows, hash-chained log, `/stats` | Done | ledger and stats from chain events; the log is chained, signed, persisted and verified by the API (`/api/log/verify`) |
 
 ## Agentic behaviour (spec 3.4, 8.2, 8.3)
 
@@ -73,8 +73,13 @@ nonce is still rejected.
 
 ## Still open (agents)
 
-- **Decision log lives in process memory.** It is hash-chained and verifiable, but it is lost on restart, it is not signed with
-  an attester key (spec 8.4) and the agents do not push it to the backend, so `/api/log/verify` has nothing real to check yet.
+- **Decision log (was in memory only): fixed on 6 Oct.** Each agent now keeps its chain in a file that survives a restart (a
+  tampered file stops the agent at start), signs every entry with its wallet (EIP-712 `DecisionAttestation`), and delivers it to
+  `POST /api/log/ingest`. The API accepts an entry only from a configured agent wallet (`AGENT_WALLETS`), and only after it
+  recomputes the hash, checks the signature and checks that the entry continues that agent's chain (a gap or a fork is refused).
+  `/api/log/verify` recomputes every chain and every signature from the stored rows; `/api/log` lists entries with the settlement
+  transaction that carries the same hash. Tested: 3 agent tests, 6 API tests. Not yet run with a real Circle wallet: a contract
+  wallet's signature is checked through the chain RPC.
 - Supplier history (`pastAcceptedBps`) and the buyer's obligation calendar are not read from the backend in a real run.
 - ERC-8004 identity and feedback, MCP server, A2A cards, compliance screening: Tier 2, not built.
 - Circle Agent Wallet adapter has never run against a real login (Appendix A items 5 to 8). First real run will likely need fixes.

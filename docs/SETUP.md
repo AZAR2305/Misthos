@@ -155,6 +155,7 @@ Website: **https://console.anthropic.com**
 
 ```powershell
 pnpm --filter @misthos/agent doctor      # every line should say ok
+# in agent/.env also set BUYER_AGENT_URL (where the buyer agent can be reached) and BACKEND_URL (the API) so each decision is signed and delivered
 pnpm --filter @misthos/agent buyer       # terminal 1, http://localhost:4102/health
 pnpm --filter @misthos/agent supplier    # terminal 2, http://localhost:4101/health
 ```
@@ -177,6 +178,8 @@ wallet and one side.
 2. **Backend**: `cd backend && copy .env.example .env`, then fill in `GOOGLE_CLIENT_ID`, `ARC_RPC_URL`,
    `INVOICE_BOOK_ADDRESS`, `DEPLOY_BLOCK` (from step 5) and, to let the server pay gas for suppliers,
    `RELAYER_PRIVATE_KEY` (a **new throwaway key** with a little test USDC; never reuse a funded key; never commit it).
+   Also set `FRONTEND_ORIGINS` (the origin your site is served from; there is no default) and `AGENT_WALLETS` (the two agent wallet
+   addresses, comma separated) so the API accepts and verifies the agents' signed decision logs.
    Run `pnpm --filter @misthos/backend start` and open http://localhost:4000/api/health: every part you configured
    should say so. With no `DATABASE_URL` it keeps an embedded database in `backend/.data`.
 3. **Frontend**: in `frontend/.env.local` set `NEXT_PUBLIC_API_URL=http://localhost:4000` and
