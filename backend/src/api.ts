@@ -10,8 +10,10 @@ import {
   bindWallet,
   chooseSide,
   createChallenge,
+  consumeGoogleNonce,
   createSession,
   destroySession,
+  issueGoogleNonce,
   stepOf,
   upsertGoogleAccount,
   verifyWalletMessage,
@@ -23,6 +25,7 @@ import type { Db } from "./db";
 import { blockTimes, getCursor, loadInvoices, type IndexerStatus } from "./indexer";
 import { enqueue, getJob } from "./jobs";
 import type { Relayer, RegisterPayload } from "./relayer";
+import { rateLimit } from "./ratelimit";
 import { fromNumeric, ser, toNumeric } from "./serialize";
 import { INVOICE_BOOK_ABI, balanced, domain, invoiceId, invoiceTypedData, journalFrom, settlementRows, summarise, toBeancount, toCsv, verifyChain, type InvoiceRecord, type StoredDecision } from "./shared";
 
@@ -64,6 +67,11 @@ export function createApp(d: AppDeps) {
     }
     await next();
   });
+
+  // Guessing games get a tight window: sign-in, wallet linking and (later) claim links.
+  const limited = (limit: number) => rateLimit({ limit, windowMs: 60_000, trustProxy: config.TRUST_PROXY === "true", now: d.now ? () => d.now!().getTime() : undefined });
+  app.use("/api/auth/*", limited(config.RATE_LIMIT_PER_MIN));
+  app.use("/api/claims/*", limited(config.RATE_LIMIT_PER_MIN));
 
   app.use("/api/*", async (c, next) => {
     c.set("account", await accountFromToken(db, getCookie(c, COOKIE), now()));
@@ -129,10 +137,18 @@ export function createApp(d: AppDeps) {
 
   // ------------------------------------------------------------------------------------------------ sign-in and account
 
+  /** The page asks for a one-time nonce, hands it to Google, and the signed token comes back carrying it. */
+  app.get("/api/auth/nonce", async (c) => {
+    if (!d.google) return unavailable(c, "Google sign-in is not configured", "Set GOOGLE_CLIENT_ID on the server.");
+    return ok(c, await issueGoogleNonce(db, now()));
+  });
+
   app.post("/api/auth/google", async (c) => {
     if (!d.google) return unavailable(c, "Google sign-in is not configured", "Set GOOGLE_CLIENT_ID on the server.");
     const { credential } = await body(c, z.object({ credential: z.string().min(20) }));
-    const account = await upsertGoogleAccount(db, await d.google(credential));
+    const profile = await d.google(credential);
+    await consumeGoogleNonce(db, profile.nonce, now());
+    const account = await upsertGoogleAccount(db, profile);
     const s = await createSession(db, account.id, config.SESSION_TTL_DAYS, now());
     setCookie(c, COOKIE, s.token, { httpOnly: true, sameSite: "Lax", secure: config.COOKIE_SECURE === "true", path: "/", expires: s.expiresAt });
     return ok(c, me(account));
@@ -152,7 +168,9 @@ export function createApp(d: AppDeps) {
   app.post("/api/auth/wallet/challenge", async (c) => {
     const a = need(c);
     const { address: addr } = await body(c, z.object({ address }));
-    return ok(c, await createChallenge(db, a, addr, config.ARC_CHAIN_ID, now()));
+    // The site the message names is the page that asked, so a signature collected on a look-alike site is worthless here.
+    const site = c.req.header("origin") && config.ORIGINS.includes(c.req.header("origin")!) ? c.req.header("origin")! : (config.ORIGINS[0] ?? "unknown");
+    return ok(c, await createChallenge(db, a, addr, config.ARC_CHAIN_ID, site, now()));
   });
 
   app.post("/api/auth/wallet/bind", async (c) => {

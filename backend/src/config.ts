@@ -26,6 +26,10 @@ const schema = z.object({
   GOOGLE_JWKS_URL: z.string().url().default("https://www.googleapis.com/oauth2/v3/certs"),
   /** Browser origins allowed to call the API with cookies, comma separated. */
   FRONTEND_ORIGINS: z.string().default("http://localhost:3000"),
+  /** Requests per minute per client on /api/auth/* and /api/claims/*. */
+  RATE_LIMIT_PER_MIN: z.coerce.number().int().min(1).default(30),
+  /** Set to true behind a proxy that sets X-Forwarded-For, so the limiter sees the real client. */
+  TRUST_PROXY: z.enum(["true", "false"]).default("false"),
   SESSION_TTL_DAYS: z.coerce.number().int().default(14),
   COOKIE_SECURE: z.enum(["true", "false"]).default("false"),
   /** Pays gas to submit registerInvoice for suppliers. It never holds user funds. Optional. */

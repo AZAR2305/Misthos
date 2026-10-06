@@ -74,14 +74,20 @@ export function browser(app: ReturnType<typeof createApp>) {
   };
 }
 
+/** What the page does: ask the server for a nonce, have Google embed it in a signed token, post the token back. */
+export async function login(b: ReturnType<typeof browser>, google: Awaited<ReturnType<typeof fakeGoogle>>, profile: { sub: string; email: string; name?: string }) {
+  const n = await b.get("/api/auth/nonce");
+  const credential = await google.sign({ ...profile, nonce: n.json.data.nonce });
+  return b.post("/api/auth/google", { credential });
+}
+
 /** Signs in with a Google token and links + chooses, the whole onboarding, using a real wallet signature. */
 export async function onboard(
   b: ReturnType<typeof browser>,
   google: Awaited<ReturnType<typeof fakeGoogle>>,
   o: { sub: string; email: string; walletIndex: number; side: "supplier" | "buyer" },
 ) {
-  const credential = await google.sign({ sub: o.sub, email: o.email, name: o.email.split("@")[0] });
-  const s = await b.post("/api/auth/google", { credential });
+  const s = await login(b, google, { sub: o.sub, email: o.email, name: o.email.split("@")[0] });
   if (s.status !== 200) throw new Error(`sign-in failed: ${s.text}`);
   const w = wallet(o.walletIndex);
   const ch = await b.post("/api/auth/wallet/challenge", { address: w.address });

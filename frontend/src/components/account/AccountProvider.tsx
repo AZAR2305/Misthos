@@ -89,6 +89,24 @@ export function AccountProvider({ children }: { children: ReactNode }) {
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 
+const shortAddr = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
+
+/**
+ * With accounts on, money moves only from the wallet linked to the account. Returns a sentence saying why not, or null when the
+ * connected wallet may sign. Without accounts any connected wallet may sign (the app then runs on a wallet alone).
+ */
+export function useSignerCheck(): () => string | null {
+  const acct = useAccount();
+  const w = useWallet();
+  return useCallback(() => {
+    if (acct.mode === "off") return null;
+    if (!acct.me) return "Sign in first, then link your wallet.";
+    if (!acct.me.address) return "Link your wallet to your account first.";
+    if (w.address && w.address !== acct.me.address) return `This wallet (${shortAddr(w.address)}) is not the one linked to your account (${shortAddr(acct.me.address)}). Switch to the linked wallet in your wallet app.`;
+    return null;
+  }, [acct, w.address]);
+}
+
 /**
  * The side the person acts as. With accounts it comes from the server (and switching asks the server, with confirm);
  * without a backend it is the per-wallet choice kept on this device.

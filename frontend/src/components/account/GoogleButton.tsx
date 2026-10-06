@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { api } from "@/lib/api";
 import { CONFIG } from "@/lib/config";
 
 interface GoogleId {
-  initialize(cfg: { client_id: string; callback: (r: { credential: string }) => void; auto_select?: boolean; ux_mode?: "popup" }): void;
+  initialize(cfg: { client_id: string; callback: (r: { credential: string }) => void; auto_select?: boolean; ux_mode?: "popup"; nonce?: string }): void;
   renderButton(el: HTMLElement, opts: Record<string, unknown>): void;
 }
 declare global {
@@ -44,13 +45,27 @@ export function GoogleButton({ onCredential }: { onCredential(credential: string
   useEffect(() => {
     if (!CONFIG.googleClientId) return;
     let live = true;
+    // Every sign-in needs a one-time nonce that Google signs into the token, so a captured token cannot be replayed.
+    // It is spent by each attempt, so after a try (good or bad) the button is re-armed with a fresh one.
+    const arm = async () => {
+      const n = await api<{ nonce: string }>("/api/auth/nonce");
+      if (!live || !box.current || !window.google) return;
+      if (!n.ok) return setState("blocked");
+      window.google.accounts.id.initialize({
+        client_id: CONFIG.googleClientId!,
+        nonce: n.data.nonce,
+        ux_mode: "popup",
+        callback: (r) => {
+          cb.current(r.credential);
+          void arm();
+        },
+      });
+      box.current.replaceChildren();
+      window.google.accounts.id.renderButton(box.current, { theme: "outline", size: "large", shape: "pill", text: "continue_with", width: 300 });
+      setState("ready");
+    };
     loadGoogle()
-      .then(() => {
-        if (!live || !box.current || !window.google) return;
-        window.google.accounts.id.initialize({ client_id: CONFIG.googleClientId!, callback: (r) => cb.current(r.credential), ux_mode: "popup" });
-        window.google.accounts.id.renderButton(box.current, { theme: "outline", size: "large", shape: "pill", text: "continue_with", width: 300 });
-        setState("ready");
-      })
+      .then(arm)
       .catch(() => live && setState("blocked"));
     return () => {
       live = false;

@@ -7,7 +7,10 @@ import { useChainData } from "@/components/app/ChainData";
 import { RequireWallet } from "@/components/app/RequireWallet";
 import { AddressChip, Field, Money, Notice, PageHeader, Stepper, Card } from "@/components/ui/kit";
 import { useToast } from "@/components/ui/toast";
+import { useAccount, useSignerCheck } from "@/components/account/AccountProvider";
 import { useWallet } from "@/components/wallet/WalletProvider";
+import { api } from "@/lib/api";
+import { agentBus } from "@/lib/agent-bus";
 import { INVOICE_BOOK_ABI } from "@/lib/chain/abi";
 import { appChain, publicClient } from "@/lib/chain/client";
 import { CONFIG } from "@/lib/config";
@@ -30,7 +33,7 @@ export default function NewInvoice() {
         help={
           <>
             <p><b>What signing does.</b> Your wallet signs the invoice details (amount, buyer, due date). The signature is checked by the contract, so only an invoice you really signed can exist.</p>
-            <p><b>Then it is recorded on Arc.</b> That is one small transaction, paid in USDC from your wallet. After that the buyer can approve it.</p>
+            <p><b>Then it is recorded on Arc.</b> That is one small transaction. If this site has a Misthos server and you are signed in, the server submits it and pays the network fee; otherwise it is paid in USDC from your wallet. After that the buyer can approve it.</p>
             <p><b>Reference and note.</b> The reference becomes a fingerprint on chain (a hash). The note stays on this device only; the chain never sees it.</p>
           </>
         }
@@ -46,6 +49,8 @@ function Form({ me }: { me: `0x${string}` }) {
   const toast = useToast();
   const chain = useChainData();
   const tx = useTx();
+  const acct = useAccount();
+  const signerProblem = useSignerCheck();
 
   const [buyer, setBuyer] = useState("");
   const [amount, setAmount] = useState("");
@@ -80,7 +85,48 @@ function Form({ me }: { me: `0x${string}` }) {
     ? chain.invoices.find((i) => i.supplier === me.toLowerCase() && i.buyer === buyer.trim().toLowerCase() && i.amount === parsed!.amount && i.refHash === refHash)
     : undefined;
 
+  /**
+   * With an account, the Misthos server submits the registration and pays the network fee (it can only submit what the
+   * supplier signed). Returns "done", "failed", or "direct" when this deployment has no relayer, so the wallet pays instead.
+   */
+  const relay = async (s: NonNullable<typeof signed>): Promise<"done" | "failed" | "direct"> => {
+    const wire = { supplier: s.inv.supplier, buyer: s.inv.buyer, token: s.inv.token, amount: s.inv.amount.toString(), dueDate: s.inv.dueDate.toString(), refHash: s.inv.refHash, nonce: s.inv.nonce.toString() };
+    const r = await api<{ jobId?: string; alreadyRegistered?: boolean }>("/api/relay/register", { method: "POST", body: { invoice: wire, signature: s.sig } });
+    if (!r.ok) {
+      if (r.error.code === "UNAVAILABLE") return "direct";
+      toast.push({ kind: "error", title: "Registering did not go through", body: r.error.message });
+      return "failed";
+    }
+    if (r.data.alreadyRegistered) return "done";
+    agentBus.emit({ kind: "working", text: "Registering invoice" });
+    for (let i = 0; i < 90; i++) {
+      await new Promise((res) => setTimeout(res, 1000));
+      const j = await api<{ status: string; error: string | null }>(`/api/jobs/${r.data.jobId}`);
+      if (!j.ok) continue;
+      if (j.data.status === "done") {
+        toast.push({ kind: "success", title: "Invoice registered", body: "Misthos paid the network fee for you." });
+        return "done";
+      }
+      if (j.data.status === "failed") {
+        toast.push({ kind: "error", title: "Registering did not go through", body: j.data.error ?? "The network refused it." });
+        return "failed";
+      }
+    }
+    toast.push({ kind: "error", title: "Registering is taking too long", body: "It may still go through. Check My invoices in a minute." });
+    return "failed";
+  };
+
   const register = async (s: NonNullable<typeof signed>) => {
+    if (acct.mode === "on" && acct.me?.step === "ready" && acct.me.side === "supplier") {
+      const out = await relay(s);
+      if (out === "failed") return;
+      if (out === "done") {
+        saveInvoiceMeta(s.id, { reference: reference.trim(), description: note.trim() });
+        await chain.refresh();
+        router.push(`/invoices/${s.id}`);
+        return;
+      }
+    }
     const hash = await tx.run({ pending: "Registering invoice", done: "Invoice registered" }, (wc, account) =>
       wc.writeContract({ address: CONFIG.book!, abi: INVOICE_BOOK_ABI, functionName: "registerInvoice", args: [s.inv, s.sig], account, chain: appChain }),
     );
@@ -94,6 +140,8 @@ function Form({ me }: { me: `0x${string}` }) {
     setTouched(true);
     if (!valid || !parsed || !CONFIG.book || !w.walletClient) return;
     if (!w.onRightNetwork) return void toast.push({ kind: "error", title: `Switch to ${CONFIG.networkName}`, body: "Your wallet is on a different network." });
+    const problem = signerProblem();
+    if (problem) return void toast.push({ kind: "error", title: "Wrong wallet", body: problem });
     const inv: InvoiceMsg = {
       supplier: me,
       buyer: buyer.trim().toLowerCase() as `0x${string}`,

@@ -21,6 +21,8 @@ export interface GoogleProfile {
   sub: string;
   email: string;
   name: string | null;
+  /** The single-use nonce the page asked Google to embed. The caller must consume it (see consumeGoogleNonce). */
+  nonce: string | null;
 }
 export type GoogleVerifier = (credential: string) => Promise<GoogleProfile>;
 
@@ -40,8 +42,27 @@ export function createGoogleVerifier(o: { clientId: string; issuers: string[]; j
     }
     if (typeof payload.sub !== "string" || typeof payload.email !== "string") throw new AuthError("The Google token has no email.", "BAD_GOOGLE_TOKEN");
     if (payload.email_verified !== true) throw new AuthError("Your Google email is not verified.", "EMAIL_NOT_VERIFIED", 403);
-    return { sub: payload.sub, email: payload.email.toLowerCase(), name: typeof payload.name === "string" ? payload.name : null };
+    return { sub: payload.sub, email: payload.email.toLowerCase(), name: typeof payload.name === "string" ? payload.name : null, nonce: typeof payload.nonce === "string" ? payload.nonce : null };
   };
+}
+
+/**
+ * Sign-in nonces. The page asks for one, hands it to Google, and Google puts it inside the signed ID token. The server
+ * accepts a token only if it carries a nonce it issued, once. So a token captured from a log, a proxy or a screenshot
+ * is useless: it cannot be replayed, even within its one-hour life.
+ */
+export async function issueGoogleNonce(db: Db, now = new Date()): Promise<{ nonce: string; expiresAt: Date }> {
+  const nonce = randomBytes(16).toString("hex");
+  const expiresAt = new Date(now.getTime() + 10 * 60_000);
+  await db.query("insert into google_nonces (nonce, expires_at) values ($1, $2)", [nonce, expiresAt.toISOString()]);
+  return { nonce, expiresAt };
+}
+
+export async function consumeGoogleNonce(db: Db, nonce: string | null, now = new Date()): Promise<void> {
+  const r = nonce
+    ? await db.query("update google_nonces set used_at = $2 where nonce = $1 and used_at is null and expires_at > $2 returning nonce", [nonce, now.toISOString()])
+    : [];
+  if (r.length === 0) throw new AuthError("This sign-in could not be confirmed (it is missing, expired or was already used). Try again.", "BAD_NONCE");
 }
 
 // ---------------------------------------------------------------------------------------------------- accounts
@@ -123,12 +144,13 @@ export async function accountById(db: Db, id: string): Promise<Account> {
 
 // ---------------------------------------------------------------------------------------------------- wallet link
 
-export const challengeMessage = (a: { email: string; address: string; chainId: number; nonce: string; issuedAt: Date; expiresAt: Date }) =>
+export const challengeMessage = (a: { email: string; address: string; chainId: number; site: string; nonce: string; issuedAt: Date; expiresAt: Date }) =>
   [
     "Misthos wants you to link this wallet to your Google account.",
     "",
     `Account: ${a.email}`,
     `Wallet: ${a.address}`,
+    `Site: ${a.site}`,
     `Network: ${a.chainId}`,
     `Nonce: ${a.nonce}`,
     `Issued: ${a.issuedAt.toISOString()}`,
@@ -137,11 +159,11 @@ export const challengeMessage = (a: { email: string; address: string; chainId: n
     "Signing this message sends no transaction and costs nothing.",
   ].join("\n");
 
-export async function createChallenge(db: Db, account: Account, address: Address, chainId: number, now = new Date()) {
+export async function createChallenge(db: Db, account: Account, address: Address, chainId: number, site: string, now = new Date()) {
   const nonce = randomBytes(16).toString("hex");
   const expiresAt = new Date(now.getTime() + 10 * 60_000);
   const lower = address.toLowerCase();
-  const message = challengeMessage({ email: account.email, address: lower, chainId, nonce, issuedAt: now, expiresAt });
+  const message = challengeMessage({ email: account.email, address: lower, chainId, site, nonce, issuedAt: now, expiresAt });
   await db.query("insert into auth_challenges (nonce, account_id, address, message, expires_at) values ($1, $2, $3, $4, $5)", [
     nonce,
     account.id,

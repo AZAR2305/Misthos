@@ -5,6 +5,7 @@ import { keccak256, toHex } from "viem";
 import { useChainData } from "@/components/app/ChainData";
 import { CopyButton, Field, Modal, Money, Notice, Tag } from "@/components/ui/kit";
 import { useToast } from "@/components/ui/toast";
+import { useSignerCheck } from "@/components/account/AccountProvider";
 import { useWallet } from "@/components/wallet/WalletProvider";
 import { ERC20_ABI, INVOICE_BOOK_ABI } from "@/lib/chain/abi";
 import { appChain, publicClient } from "@/lib/chain/client";
@@ -22,6 +23,7 @@ import { friendlyError, useTx } from "@/lib/tx";
 export function OfferButton({ invoice }: { invoice: InvoiceRecord }) {
   const w = useWallet();
   const toast = useToast();
+  const signerProblem = useSignerCheck();
   const [open, setOpen] = useState(false);
   const [ratePct, setRatePct] = useState("0");
   const [hours, setHours] = useState("48");
@@ -42,6 +44,8 @@ export function OfferButton({ invoice }: { invoice: InvoiceRecord }) {
 
   const sign = async () => {
     if (rateBps === null || !hoursOk || !w.walletClient || !w.address || !CONFIG.book) return;
+    const problem = signerProblem();
+    if (problem) return void toast.push({ kind: "error", title: "Wrong wallet", body: problem });
     setBusy(true);
     try {
       const d = domain(CONFIG.chainId, CONFIG.book);

@@ -11,6 +11,7 @@ import { generateKeyPairSync, createSign } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { chromium } from "playwright-core";
+import { keccak256, toHex } from "viem";
 import { mnemonicToAccount } from "viem/accounts";
 
 const MNEMONIC = "test test test test test test test test test test test junk";
@@ -42,10 +43,10 @@ const rpc = async (method, params = []) => (await (await fetch(RPC, { method: "P
 const { publicKey, privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
 const jwk = { ...publicKey.export({ format: "jwk" }), kid: "e2e", alg: "RS256", use: "sig" };
 const b64 = (o) => Buffer.from(typeof o === "string" ? o : JSON.stringify(o)).toString("base64url");
-function idToken(sub, email, name) {
+function idToken(sub, email, name, nonce) {
   const now = Math.floor(Date.now() / 1000);
   const head = b64({ alg: "RS256", typ: "JWT", kid: "e2e" });
-  const body = b64({ iss: "https://accounts.google.com", aud: CLIENT_ID, sub, email, email_verified: true, name, iat: now, exp: now + 3600 });
+  const body = b64({ iss: "https://accounts.google.com", aud: CLIENT_ID, sub, email, email_verified: true, name, nonce, iat: now, exp: now + 3600 });
   const sig = createSign("RSA-SHA256").update(`${head}.${body}`).sign(privateKey).toString("base64url");
   return `${head}.${body}.${sig}`;
 }
@@ -53,8 +54,8 @@ function idToken(sub, email, name) {
 // ---- in the page: Google's button (stand-in) and the browser wallet (stand-in)
 const PAGE_SCRIPT = `(() => {
   window.google = { accounts: { id: {
-    initialize(cfg) { window.__gcb = cfg.callback; },
-    renderButton(el) { const b = document.createElement("button"); b.id = "google-standin"; b.type = "button"; b.textContent = "Continue with Google (stand-in)"; b.onclick = () => window.__gcb({ credential: window.__credential }); el.appendChild(b); },
+    initialize(cfg) { window.__gcfg = cfg; },
+    renderButton(el) { const b = document.createElement("button"); b.id = "google-standin"; b.type = "button"; b.textContent = "Continue with Google (stand-in)"; b.onclick = async () => { const credential = await window.__mint(window.__gcfg.nonce); window.__gcfg.callback({ credential }); }; el.appendChild(b); },
   } } };
   let current = sessionStorage.getItem("__acct");
   const listeners = {};
@@ -123,6 +124,8 @@ async function main() {
   const ctx = await newCtx();
   const page = await ctx.newPage();
   watch(page);
+  const me1 = { sub: "g-supplier", email: "supplier@example.com", name: "Supplier Co" };
+  await page.exposeFunction("__mint", (nonce) => idToken(me1.sub, me1.email, me1.name, nonce));
   const shot = (n) => page.screenshot({ path: path.join(shots, `${n}.png`) });
   const text = (t) => page.getByText(t, { exact: false }).first();
 
@@ -142,7 +145,6 @@ async function main() {
 
   log("5. Google, then link the wallet by signing a message");
   await page.goto(`${BASE}/app`);
-  await page.evaluate((c) => (window.__credential = c), idToken("g-supplier", "supplier@example.com", "Supplier Co"));
   await page.locator("#google-standin").click();
   await page.getByRole("heading", { name: "Link your wallet" }).waitFor();
   await sleep(700); // let the entrance animation finish before the screenshot
@@ -154,8 +156,8 @@ async function main() {
   await page.getByRole("button", { name: "Link this wallet" }).click();
   await text("How will you use Misthos?").waitFor();
   check(true, "the wallet signed the challenge and was linked: step 3");
-  const me1 = await page.evaluate(async (u) => (await (await fetch(`${u}/api/me`, { credentials: "include" })).json()).data, API_URL);
-  check(me1.address === supplier && me1.side === null && me1.step === "side", "the server holds exactly that wallet, no side yet");
+  const meAfterLink = await page.evaluate(async (u) => (await (await fetch(`${u}/api/me`, { credentials: "include" })).json()).data, API_URL);
+  check(meAfterLink.address === supplier && meAfterLink.side === null && meAfterLink.step === "side", "the server holds exactly that wallet, no side yet");
   await shot("03-choose-side");
 
   log("6. choose a side; it persists across a reload");
@@ -168,6 +170,36 @@ async function main() {
   await text("You are set up as a supplier").waitFor();
   check(true, "after a reload the session and the side come back from the server");
   await shot("04-overview");
+
+  log("6b. the supplier creates an invoice; the Misthos server registers it and pays the fee");
+  const relayerAddr = acct(3).address.toLowerCase();
+  await page.goto(`${BASE}/supplier/invoices/new`, { waitUntil: "networkidle" });
+  await page.fill("#buyer", buyer);
+  await page.fill("#amount", "2500");
+  await page.fill("#due", new Date(Date.now() + 30 * 86_400_000).toISOString().slice(0, 10));
+  await page.fill("#ref", "PO-RELAY-1");
+  await page.locator(".preview").waitFor();
+  await page.locator("button[type=submit]").click();
+  await page.waitForURL(/\/invoices\/0x[0-9a-f]{64}/, { timeout: 90_000 });
+  const relayedId = page.url().split("/").pop();
+  const logs = await rpc("eth_getLogs", [{ address: dep.invoiceBook, fromBlock: "0x0", toBlock: "latest", topics: [keccak256(toHex("InvoiceRegistered(bytes32,address,address,address,uint256,uint64,bytes32)")), relayedId] }]);
+  check(logs.length === 1, "the invoice is registered on the chain");
+  const regTx = await rpc("eth_getTransactionByHash", [logs[0].transactionHash]);
+  check(regTx.from.toLowerCase() === relayerAddr, "the registration was sent by the relayer: the supplier's wallet paid no network fee");
+  check(regTx.from.toLowerCase() !== supplier, "...and not by the supplier's own wallet");
+  await shot("04b-relayed-invoice");
+
+  log("6c. signing with a wallet that is not the linked one is refused");
+  await page.evaluate((a) => window.__switchTo(a), buyer);
+  await page.goto(`${BASE}/supplier/invoices/new`, { waitUntil: "networkidle" });
+  await text("This is not the wallet linked to your account").waitFor();
+  await page.fill("#buyer", supplier);
+  await page.fill("#amount", "10");
+  await page.fill("#ref", "PO-WRONG");
+  await page.locator("button[type=submit]").click().catch(() => {});
+  await sleep(1200);
+  check((await page.getByText("Wrong wallet").count()) > 0 || (await page.getByText("is not the one linked").count()) > 0, "a different wallet cannot sign: the app explains why");
+  await page.evaluate((a) => window.__switchTo(a), supplier);
 
   log("7. the guards");
   await page.goto(`${BASE}/buyer`);
@@ -187,8 +219,8 @@ async function main() {
   const ctx2 = await newCtx();
   const p2 = await ctx2.newPage();
   watch(p2);
+  await p2.exposeFunction("__mint", (nonce) => idToken("g-other", "other@example.com", "Other", nonce));
   await p2.goto(`${BASE}/app`);
-  await p2.evaluate((c) => (window.__credential = c), idToken("g-other", "other@example.com", "Other"));
   await p2.locator("#google-standin").click();
   await p2.getByRole("heading", { name: "Link your wallet" }).waitFor();
   await p2.evaluate((a) => window.__connectAs(a), supplier);

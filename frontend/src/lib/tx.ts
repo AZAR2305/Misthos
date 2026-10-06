@@ -3,6 +3,7 @@
 import { useCallback, useState } from "react";
 import type { Hex, WalletClient } from "viem";
 import { useToast } from "@/components/ui/toast";
+import { useSignerCheck } from "@/components/account/AccountProvider";
 import { useWallet } from "@/components/wallet/WalletProvider";
 import { publicClient } from "./chain/client";
 import { agentBus } from "./agent-bus";
@@ -62,6 +63,7 @@ export interface TxLabels {
 export function useTx() {
   const wallet = useWallet();
   const toast = useToast();
+  const signerProblem = useSignerCheck();
   const [busy, setBusy] = useState<string | null>(null);
 
   const run = useCallback(
@@ -72,6 +74,11 @@ export function useTx() {
       }
       if (!wallet.onRightNetwork) {
         toast.push({ kind: "error", title: `Switch to ${CONFIG.networkName}`, body: "Your wallet is on a different network. Use the Switch network button in the top bar." });
+        return undefined;
+      }
+      const problem = signerProblem();
+      if (problem) {
+        toast.push({ kind: "error", title: "Wrong wallet", body: problem });
         return undefined;
       }
       setBusy(labels.pending);
@@ -89,7 +96,7 @@ export function useTx() {
         setBusy(null);
       }
     },
-    [wallet, toast],
+    [wallet, toast, signerProblem],
   );
 
   return { run, busy };
