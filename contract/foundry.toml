@@ -1,0 +1,29 @@
+[profile.default]
+src = "src"
+test = "test"
+script = "script"
+out = "out"
+libs = ["lib"]
+solc_version = "0.8.28"
+optimizer = true
+optimizer_runs = 200
+# OpenZeppelin 5.7 uses MCOPY, so it needs cancun. VERIFY: that Arc testnet supports Cancun opcodes (check before the first deploy).
+evm_version = "cancun"
+remappings = [
+  "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",
+  "forge-std/=lib/forge-std/src/",
+]
+fs_permissions = [{ access = "read-write", path = "./" }]
+
+[rpc_endpoints]
+# Set ARC_RPC_URL in contract/.env. Public endpoint per docs.arc.io (VERIFY: spec 5.3 names the Canteen-hosted RPC from the ARC CLI).
+arc_testnet = "${ARC_RPC_URL}"
+
+[fuzz]
+runs = 512
+
+[fmt]
+line_length = 120
+
+[lint]
+exclude_lints = ["block-timestamp"]
