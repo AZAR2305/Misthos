@@ -1,4 +1,4 @@
-import { BPS, SECONDS_PER_YEAR } from "./money.js";
+import { BPS, SECONDS_PER_YEAR } from "./money";
 
 /** Hard ceilings mirrored from InvoiceBook.sol. Keep in sync with the contract. */
 export const MAX_RATE_BPS = 5000;

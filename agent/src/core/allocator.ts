@@ -1,6 +1,6 @@
-import { formatUsd } from "./money.js";
-import { discountOf, feeOf } from "./pricing.js";
-import { evaluateOffer, type BuyerPolicy, type Candidate, type ReasonCode } from "./policy.js";
+import { formatUsd } from "./money";
+import { discountOf, feeOf } from "./pricing";
+import { evaluateOffer, type BuyerPolicy, type Candidate, type ReasonCode } from "./policy";
 
 /** Spec 8.3: exact search for at most 20 invoices. More than that fails closed; filter before calling. */
 export const MAX_INVOICES = 20;

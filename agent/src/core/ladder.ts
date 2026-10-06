@@ -1,4 +1,4 @@
-import { MAX_RATE_BPS } from "./pricing.js";
+import { MAX_RATE_BPS } from "./pricing";
 
 export interface SupplierPrefs {
   /** The supplier's own cost of waiting (a card APR, for example). Default 2200. */

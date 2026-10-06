@@ -11,6 +11,8 @@ import "../../design/tokens.css";
 import "../../design/theme-green.css";
 import "./globals.css";
 import "./landing.css";
+import "./app.css";
+import { Providers } from "@/components/Providers";
 
 export const metadata: Metadata = {
   title: "Misthos: get paid days after approval, not weeks",
@@ -27,7 +29,9 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        <Providers>{children}</Providers>
+      </body>
     </html>
   );
 }

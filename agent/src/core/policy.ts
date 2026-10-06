@@ -1,4 +1,4 @@
-import { discountOf, feeOf } from "./pricing.js";
+import { discountOf, feeOf } from "./pricing";
 
 /** Reason codes the buyer agent may return. A reject never carries the hurdle value (spec 8.6). */
 export const REASON_CODES = [

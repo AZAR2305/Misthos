@@ -24,6 +24,27 @@ export const INVOICE_BOOK_ABI = parseAbi([
   "function setLimits(uint256 perInvoiceCap, uint256 dailyCap)",
   "function settleEarly(bytes32 id, (bytes32 invoiceId, uint16 rateBps, uint64 expiry, uint256 nonce) offer, bytes sig, bytes32 decisionHash)",
   "function settleOnDue(bytes32 id)",
+  // errors (so reverts decode into names the UI can explain)
+  "error BadParams()",
+  "error BadSignature()",
+  "error NotBuyer()",
+  "error NotApproved()",
+  "error WrongStatus()",
+  "error AlreadyRegistered()",
+  "error TokenNotAllowed()",
+  "error OfferMismatch()",
+  "error OfferExpired()",
+  "error PastDue()",
+  "error RateTooHigh()",
+  "error NonceUsed()",
+  "error DiscountTooLarge()",
+  "error PerInvoiceCapExceeded()",
+  "error DailyCapExceeded()",
+  "error FeeTooHigh()",
+  "error BatchTooLarge()",
+  "error DuplicateInvoice()",
+  "error ERC20InsufficientAllowance(address spender, uint256 allowance, uint256 needed)",
+  "error ERC20InsufficientBalance(address sender, uint256 balance, uint256 needed)",
 ]);
 
 export const ERC20_ABI = parseAbi([
