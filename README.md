@@ -3,8 +3,10 @@
 An open agent kit for business payment timing, settled on Arc. Two businesses' agents agree the price of waiting on
 an approved invoice, often 0%; a contract on Arc enforces the signed terms and settles in under a second.
 
-Status: early. Built so far: the landing page with a 3D scene and two 3D agents (`frontend`). Everything else in
-`docs/spec/CLAUDE-full.txt` is still to build. Testnet only, unaudited. MIT.
+Status: early. Built: the landing page with a 3D scene and two 3D agents (`frontend`); the `InvoiceBook` contract with
+40 tests (`contract`); the agent core library, negotiation protocol, Circle CLI wallet adapter and the supplier and
+buyer agent processes with 60 tests (`agent`); and the Postgres schema (`backend`). Not built yet: the app pages, API
+routes, indexer, managed wallets, MCP server, ERC-8004. Testnet only, unaudited. MIT.
 
 ## Run the landing page
 ```bash
@@ -20,4 +22,5 @@ If `pnpm install` times out on a machine whose Node resolves only IPv6, see the 
 - `frontend/src/components/landing`: the scroll-driven 3D scene (`ShardScene`, `shards`, `scene-store`), the sections,
   and the agent stage (`AgentStage`, `Agents`).
 - `frontend/public/models/RobotExpressive.glb`: CC0 agent model (Tomás Laulhé / Quaternius; morphs by Don McCurdy).
+- `contract/`, `agent/`, `backend/`: each has its own README.
 - `docs/`: decisions, design plan, inspiration notes, and the full build spec.

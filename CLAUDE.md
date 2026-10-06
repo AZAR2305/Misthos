@@ -23,12 +23,16 @@ often 0%. Hackathon: Tameion Agents Hackathon (Canteen x Circle x Arc). Final su
   white = text and human actions, green/amber/red = status only.
 - Mark anything unverified `VERIFY:` in code and in `docs/DECISIONS.md`.
 
-## Repo layout (spec 5.2, built so far)
-- `frontend` Next.js 16 (App Router) + Tailwind 4. Landing page lives in `src/components/landing`.
-- `frontend/design/tokens.css` Arc theme tokens.
-- `docs/` DECISIONS, design-plan, inspiration-notes, spec.
+## Repo layout
+- `frontend/` Next.js 16 (App Router) + Tailwind 4. Landing page and 3D scene in `src/components/landing`; tokens in `design/tokens.css`.
+- `contract/` Foundry: `InvoiceBook.sol`, 40 tests, deploy script. `lib/` is gitignored (`forge install`, see its README).
+- `agent/` core library, negotiation protocol, wallet adapters, supplier and buyer agent processes. `pnpm doctor` shows what is missing.
+- `backend/` Postgres schema (PGlite-tested). API, indexer and job outbox are not built.
+- `docs/` DECISIONS, design plan, inspiration notes, spec.
 
 ## Dev notes
+- Tests: `cd contract && forge test`; `pnpm --filter @misthos/agent test`; `pnpm --filter @misthos/backend test`.
+- Commit in small steps and push to origin/main. Never commit `.env` files (only `.env.example`).
 - `pnpm dev` from the repo root. `pnpm --filter @misthos/frontend shots` captures screenshots at 375/768/1280.
 - This machine's Node resolves only IPv6 for some hosts, which times out. Run npm/pnpm/node network commands with
   `NODE_OPTIONS="--require C:/Users/thame/.node-shims/ipv4.js"` (a shim that forces IPv4 lookups).

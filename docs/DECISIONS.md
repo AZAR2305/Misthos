@@ -84,3 +84,60 @@ and interaction), Context7 (current library docs) and the shadcn registry server
 session start and need approval the first time. The three packages exist on npm (@playwright/mcp, @upstash/context7-mcp,
 shadcn); they have not been launched through Claude Code yet. Each entry sets `NODE_OPTIONS` to the IPv4 shim above
 (path is machine-specific; drop it on a machine without the DNS problem).
+
+## 2026-10-06 restructure, contract, agents, backend
+
+**Repo layout is four folders, not the spec's apps/packages tree.** `frontend/` (Next.js, was apps/web, tokens moved to
+`frontend/design/`), `backend/` (Postgres schema, API and indexer later), `agent/` (core library, protocol, wallets,
+the two agent processes) and `contract/` (Foundry). The spec's `packages/core|wallets|protocol|agents|mcp` map to
+`agent/src/core|wallets|protocol|agents` (MCP not built yet). `docs/` stays at the root. The 17 MB reference video and
+the Foundry `lib/` are gitignored; restore `lib/` with the command in `contract/README.md`.
+
+**Render performance (measured, Intel UHD, uncapped, headless Edge).** Post-processing was about 90% of the frame cost.
+MSAA halved the frame rate and half-float buffers cost about 60% more. The composer now uses 8-bit buffers, no MSAA,
+and SMAA at the top tier only; bloom runs at half resolution; the clearcoat layer and two lights were removed.
+Top tier went from about 38-48 fps to about 100 fps; lower tiers run 140-200 fps. `PerformanceMonitor` steps quality
+down on slow machines; `?q=0|1|2` pins a tier and `?post=0` disables post-processing, for testing.
+
+**Contract.**
+- `evm_version = cancun` because OpenZeppelin 5.7 uses MCOPY. VERIFY: Arc testnet supports Cancun before the first
+  deploy (a dry run against the live chain simulated fine, which does not prove opcode support on the real network).
+- The success fee counts toward the per-invoice and daily caps (spec 7.4 step 5: caps on net + fee). A zero fee
+  recipient means no fee, and then the fee is also not counted.
+- `tokenAllowed` is a mapping with an owner-only `setTokenAllowed` (EURC stretch) instead of a single constant, and
+  `domainSeparator()`, `hashInvoice` and `hashOffer` are exposed for off-chain signers and tests.
+- `settleBatch` is built now (the starter message asks for it on Day 1) even though auctions are Tier 3.
+- Arc mainnet chain id 5042 comes from docs.arc.io; the deploy script refuses it without `CONFIRM_MAINNET=1`.
+- The Foundry tests use a 6-decimal `TestUSDC` and ERC-1271 test wallets. They are unit-test fixtures only.
+- A testnet deployer key was generated with `cast wallet new` into `contract/.env` (gitignored). Address:
+  `0xe56357E6eFe146a33223Dd90f11bCA992C1B137C`. It holds no funds yet: fund it at faucet.circle.com before deploying.
+  The private key is only in that file. A real deploy costs about 0.13 USDC.
+
+**Agents.**
+- Ladder: spec 8.2 says start, start + step, ... up to the ceiling and also "3 to 6 rungs". With the default 0 to 2000 bps
+  and 200 bps steps that is 11 rungs, so when it would exceed 6 the step is widened so the ladder ends at the ceiling in
+  at most 6 rungs (0, 400, 800, 1200, 1600, 2000).
+- Allocator vs Appendix B: spec 8.3 subtracts the face of every unselected invoice that falls due from the cash path, but
+  Appendix B's fixture ("cash above floor 7,000", four invoices totalling 10,700) is only consistent if payables are not
+  on the path. Default follows 8.3; `includeUnselectedDue: false` reproduces the fixture. A payroll test covers the
+  obligation case. Resolve with whoever owns the spec before shipping the buyer page.
+- Message signatures: 8.6 says "signed with EIP-712" without types. Accept, reject and withdraw sign
+  `MisthosMessage(kind, invoiceId, rung, ref, from, ts)` in the Misthos domain; an offer is authenticated by its
+  `EarlyPayOffer` signature, the one the contract verifies.
+- `CircleCliAdapter` flags come from the installed `@circle-fin/cli` 1.1.4 `--help` output (`wallet sign typed-data`,
+  `wallet execute "fn(types)" args --contract --address --chain`, `wallet list --type agent`, `wallet status`, login with
+  `--init` and `--request --otp`). It runs the CLI's JS entry with Node so JSON arguments never go through a shell.
+  VERIFY once logged in: the JSON shape of sign and execute results (we search for a signature and a hash instead of
+  assuming field names) and tuple argument encoding (passed as JSON). Execute may return only a transaction id; so
+  `ExecuteResult.txHash` is optional and the backend indexer is the source of truth for hashes.
+- The Circle CLI refuses to run until its Terms of Use are accepted. We do not accept legal terms for the user and do not
+  set `CIRCLE_ACCEPT_TERMS`. `pnpm doctor` reports this as `TERMS_NOT_ACCEPTED` with the fix. Login (email OTP) is also
+  the user's step.
+- `CircleManagedAdapter` (managed wallets for real suppliers) is not built: it needs a Circle API key and entity secret.
+- The decision log is process-local for now (`DecisionStore`, hash-chained and verifiable); the backend will persist it.
+- Tests use a key-backed wallet, a recording `execute` and a scripted model as stand-ins for a Circle login, the chain and
+  an API key. They live in `agent/test` and are not importable from `src`. The real-chain run is `e2e:testnet` (to build).
+- vitest runs in a single forked process (`pool: forks`): the thread pool ran out of memory on this machine.
+
+**Backend.** `backend/db/schema.sql` is spec section 6 and is applied and constraint-tested against PGlite (Postgres in
+WASM). `gen_random_uuid()` is built in, so no `pgcrypto`. The API routes, indexer and job outbox are not built yet.
