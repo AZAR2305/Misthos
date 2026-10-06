@@ -53,3 +53,6 @@ contract/broadcast/
 contract/lib/
 contract/deployments/31337.json
 frontend/.next-e2e/
+
+# local embedded database
+backend/.data/
