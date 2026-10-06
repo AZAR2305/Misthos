@@ -249,3 +249,13 @@ export function Modal({ open, onClose, title, children, footer }: { open: boolea
     </div>
   );
 }
+
+/** A command or snippet the reader can copy. Every instruction on the kit page is meant to be pasted and run. */
+export function CodeBlock({ children, label }: { children: string; label?: string }) {
+  return (
+    <div className="code-wrap">
+      <span className="code" aria-label={label}>{children}</span>
+      <CopyButton text={children} />
+    </div>
+  );
+}

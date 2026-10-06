@@ -26,13 +26,13 @@ const M = { l: 56, r: 18, t: 16, b: 38 };
 
 export function DiscountCurve({ face, dueSec, startSec, nowSec, rates, settled }: CurveProps) {
   const id = useId();
-  const span = Math.max(1, dueSec - startSec);
+  const span = Math.max(1, Math.round(dueSec - startSec));
   const maxRate = Math.max(...rates, 1);
   const yMaxMinor = discountOf(face, maxRate, BigInt(span)) || 1n;
   const yMax = Number(yMaxMinor) * 1.08;
   const x = (t: number) => M.l + ((t - startSec) / span) * (W - M.l - M.r);
   const y = (minor: bigint) => H - M.b - (Number(minor) / yMax) * (H - M.t - M.b);
-  const at = (rate: number, t: number) => discountOf(face, rate, BigInt(Math.max(0, dueSec - t)));
+  const at = (rate: number, t: number) => discountOf(face, rate, BigInt(Math.max(0, Math.round(dueSec - t))));
   const days = Math.max(1, Math.round(span / 86_400));
   const ticks = [0, 0.25, 0.5, 0.75, 1].map((f) => Math.round(startSec + f * span));
   const yTicks = [0, 0.5, 1].map((f) => BigInt(Math.round(Number(yMaxMinor) * f)));
