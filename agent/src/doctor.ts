@@ -21,22 +21,30 @@ async function main() {
   }
 
   // Circle CLI present and usable
-  let runner: ReturnType<typeof nodeCliRunner> | undefined;
+  let entry: string | undefined;
   try {
-    const entry = resolveCliEntry();
-    runner = nodeCliRunner(entry);
-    const v = await runner(["--version"]);
+    entry = resolveCliEntry();
+    const v = await nodeCliRunner(entry)(["--version"]);
     add("circle cli", v.exitCode === 0, v.exitCode === 0 ? (v.stdout.trim().split("\n").pop() ?? "installed") : "could not run");
   } catch (e) {
     add("circle cli", false, (e as WalletError).hint ?? (e as Error).message);
   }
 
-  if (runner) {
-    const status = await runner(["wallet", "status", "--type", "agent", "--output", "json"]);
-    if (status.exitCode === 0) add("circle login (agent)", true, "status returned; confirm the testnet section shows logged in");
-    else {
-      const err = classifyCliFailure(status);
-      add("circle login (agent)", false, `${err.code}: ${err.message}${err.hint ? ` -> ${err.hint}` : ""}`);
+  const roles = [
+    { name: "supplier", address: cfg?.SUPPLIER_AGENT_WALLET_ADDRESS, home: cfg?.SUPPLIER_CIRCLE_CLI_HOME },
+    { name: "buyer", address: cfg?.BUYER_AGENT_WALLET_ADDRESS, home: cfg?.BUYER_CIRCLE_CLI_HOME },
+  ] as const;
+
+  // Each agent has its own Circle login folder so the two logins never overwrite each other.
+  if (entry) {
+    for (const r of roles) {
+      const runner = nodeCliRunner(entry, 90_000, r.home ? { CIRCLE_CLI_HOME: r.home } : {});
+      const status = await runner(["wallet", "status", "--type", "agent", "--output", "json"]);
+      if (status.exitCode === 0) add(`${r.name} circle login`, true, "status returned; confirm the testnet section shows logged in");
+      else {
+        const err = classifyCliFailure(status, `${r.home ? `CIRCLE_CLI_HOME=${r.home} ` : ""}circle wallet login <email> --testnet`);
+        add(`${r.name} circle login`, false, `${err.code}: ${err.message}${err.hint ? ` -> ${err.hint}` : ""}`);
+      }
     }
   }
 
@@ -51,16 +59,17 @@ async function main() {
         const code = await client.getCode({ address: cfg.INVOICE_BOOK_ADDRESS as `0x${string}` });
         add("invoicebook", !!code && code !== "0x", code && code !== "0x" ? cfg.INVOICE_BOOK_ADDRESS : "no contract code at that address");
       } else add("invoicebook", false, "INVOICE_BOOK_ADDRESS is not set (deploy first: contract/README.md)");
-      for (const [name, a] of [["supplier wallet", cfg.SUPPLIER_AGENT_WALLET_ADDRESS], ["buyer wallet", cfg.BUYER_AGENT_WALLET_ADDRESS]] as const) {
-        if (!a) {
-          add(name, false, "address not set");
+      for (const r of roles) {
+        if (!r.address) {
+          add(`${r.name} wallet`, false, "address not set (circle wallet list --chain ARC-TESTNET --type agent)");
           continue;
         }
-        const bal = await client.readContract({ address: cfg.USDC_ADDRESS as `0x${string}`, abi: erc20Abi, functionName: "balanceOf", args: [a as `0x${string}`] });
-        add(name, true, `${a} USDC balance ${bal} minor units`);
-        if (runner) {
-          const h = await new CircleCliAdapter({ address: a as `0x${string}`, runner }).health();
-          add(`${name} in circle login`, h.ok, h.detail ?? "listed as an agent wallet");
+        const bal = await client.readContract({ address: cfg.USDC_ADDRESS as `0x${string}`, abi: erc20Abi, functionName: "balanceOf", args: [r.address as `0x${string}`] });
+        add(`${r.name} wallet`, bal > 0n, `${r.address} USDC balance ${bal} minor units${bal > 0n ? "" : " (fund it at https://faucet.circle.com)"}`);
+        if (entry) {
+          const runner = nodeCliRunner(entry, 90_000, r.home ? { CIRCLE_CLI_HOME: r.home } : {});
+          const h = await new CircleCliAdapter({ address: r.address as `0x${string}`, runner }).health();
+          add(`${r.name} wallet in login`, h.ok, h.detail ?? "listed as an agent wallet of this login");
         }
       }
     } catch (e) {

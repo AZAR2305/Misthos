@@ -16,6 +16,9 @@ const envSchema = z.object({
   BUYER_AGENT_WALLET_ADDRESS: optionalAddr,
   SUPPLIER_AGENT_URL: z.url().default("http://localhost:4101"),
   BUYER_AGENT_URL: z.url().default("http://localhost:4102"),
+  /** Separate Circle CLI login folders, one per agent (CIRCLE_CLI_HOME). */
+  SUPPLIER_CIRCLE_CLI_HOME: optionalText,
+  BUYER_CIRCLE_CLI_HOME: optionalText,
   ANTHROPIC_API_KEY: optionalText,
   ANTHROPIC_MODEL: z.string().default("claude-sonnet-5-5"),
   LADDER_RUNG_SECONDS: z.coerce.number().int().positive().default(900),

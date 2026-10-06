@@ -5,7 +5,7 @@ an approved invoice, often 0%; a contract on Arc enforces the signed terms and s
 
 Status: early. Built: the landing page with a 3D scene and two 3D agents (`frontend`); the `InvoiceBook` contract with
 40 tests (`contract`); the agent core library, negotiation protocol, Circle CLI wallet adapter and the supplier and
-buyer agent processes with 67 tests (`agent`); and the Postgres schema (`backend`). Not built yet: the app pages, API
+buyer agent processes with 70 tests (`agent`); and the Postgres schema (`backend`). Not built yet: the app pages, API
 routes, indexer, managed wallets, MCP server, ERC-8004. Testnet only, unaudited. MIT.
 
 ## Run the landing page

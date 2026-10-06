@@ -42,13 +42,17 @@ export function resolveCliEntry(): string {
 }
 
 /** Runs the CLI's JS entry with the current Node, so JSON arguments never pass through a shell. */
-export function nodeCliRunner(entry: string = resolveCliEntry(), timeoutMs = 90_000): CliRunner {
+export function nodeCliRunner(
+  entry: string = resolveCliEntry(),
+  timeoutMs = 90_000,
+  extraEnv: Readonly<Record<string, string>> = {},
+): CliRunner {
   return (args) =>
     new Promise((resolve) => {
       execFile(
         process.execPath,
         [entry, ...args],
-        { timeout: timeoutMs, windowsHide: true, maxBuffer: 8 * 1024 * 1024, env: { ...process.env, NODE_NO_WARNINGS: "1" } },
+        { timeout: timeoutMs, windowsHide: true, maxBuffer: 8 * 1024 * 1024, env: { ...process.env, NODE_NO_WARNINGS: "1", ...extraEnv } },
         (err, stdout, stderr) => {
           if (err && (err as NodeJS.ErrnoException).code === "ENOENT") {
             resolve({ stdout, stderr, exitCode: 127, spawnError: "ENOENT" });
@@ -159,6 +163,11 @@ export interface CircleCliAdapterOptions {
   address: Address;
   chain?: string;
   runner?: CliRunner;
+  /**
+   * Folder for this agent's Circle login (sets CIRCLE_CLI_HOME for the CLI). Give the supplier and the buyer
+   * different folders so the two logins do not overwrite each other. Ignored when `runner` is given.
+   */
+  cliHome?: string;
   /** Arc RPC, used only for ERC-20 balanceOf reads. */
   rpcUrl?: string;
   usdc?: Address;
@@ -180,7 +189,7 @@ export class CircleCliAdapter implements WalletAdapter {
   constructor(private readonly o: CircleCliAdapterOptions) {
     if (!/^0x[0-9a-fA-F]{40}$/.test(o.address)) throw new WalletError("NOT_CONFIGURED", "The agent wallet address is not set or is malformed.");
     this.chain = o.chain ?? "ARC-TESTNET";
-    this.runner = o.runner ?? nodeCliRunner();
+    this.runner = o.runner ?? nodeCliRunner(undefined, undefined, o.cliHome ? { CIRCLE_CLI_HOME: o.cliHome } : {});
     this.verifier = o.verifier ?? eoaVerifier;
     this.backoff = o.backoffMs ?? [1_000, 3_000, 8_000];
   }

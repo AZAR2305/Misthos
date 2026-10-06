@@ -26,6 +26,7 @@ const verifier = chainVerifier(publicClient);
 
 const wallet = new CircleCliAdapter({
   address: cfg.BUYER_AGENT_WALLET_ADDRESS as Address,
+  cliHome: cfg.BUYER_CIRCLE_CLI_HOME,
   rpcUrl: cfg.ARC_RPC_URL,
   usdc: cfg.USDC_ADDRESS as Address,
   verifier,
