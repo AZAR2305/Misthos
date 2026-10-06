@@ -212,12 +212,6 @@ export function AppShell({ children }: { children: ReactNode }) {
             Pay and sign only work on {CONFIG.networkName}.
           </Notice>
         )}
-        {chain.status === "unconfigured" && (
-          <Notice kind="info" title="The Misthos contract is not live on this network yet">
-            You can explore every page, but there is nothing to read or sign until it is. Deployment steps for the owner are in the{" "}
-            <Link href="/docs/deploy">docs</Link>.
-          </Notice>
-        )}
         {chain.status === "error" && (
           <Notice kind="error" title="Could not read the chain" action={<button type="button" className="btn btn-ghost btn-sm" onClick={() => void chain.refresh()}>Try again</button>}>
             {chain.error}. Your data is safe; this is only the page failing to fetch it.

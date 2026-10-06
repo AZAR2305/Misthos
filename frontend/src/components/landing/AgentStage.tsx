@@ -10,12 +10,24 @@ import { sceneState } from "./scene-store";
 import { HOME } from "./stage-constants";
 
 /**
- * Two agents on a stage. The robot is "RobotExpressive" by Tomás Laulhé (Quaternius), CC0, with face morph targets by
- * Don McCurdy, as shipped in the three.js examples. They are characters, not widgets: they idle with small gestures of their
- * own, look toward the cursor, walk to meet each other to hand over an offer, and dance when a deal settles. No numbers are
+ * Two agents on a stage. The android is "Xbot" (a Mixamo "Beta" character), as shipped in the three.js examples. They are
+ * characters, not widgets: they idle with small gestures of their own (a nod, a shake of the head), look toward the cursor,
+ * walk to meet each other to hand over an offer, and nod when a deal settles. No numbers are
  * shown here: this is an illustration of the protocol's roles and reason codes, never live data (CLAUDE.md 0.5).
  */
-const MODEL_URL = "/models/RobotExpressive.glb";
+const MODEL_URL = "/models/Xbot.glb";
+
+/** Pose name -> clip in the model. The android has a smaller set than a cartoon robot: the gestures share the nod. */
+const CLIP: Record<Pose | "Walking", string> = {
+  Idle: "idle",
+  Walking: "walk",
+  Yes: "agree",
+  No: "headShake",
+  Wave: "agree",
+  ThumbsUp: "agree",
+  Jump: "agree",
+  Dance: "agree",
+};
 
 export type Role = "supplier" | "buyer";
 export type Pose = "Idle" | "Wave" | "Yes" | "No" | "ThumbsUp" | "Jump" | "Dance";
@@ -39,7 +51,7 @@ export interface Message {
 }
 
 
-const ONE_SHOT: Pose[] = ["Wave", "Yes", "No", "ThumbsUp", "Jump"];
+const ONE_SHOT: Pose[] = ["Wave", "Yes", "No", "ThumbsUp", "Jump", "Dance"];
 const FACE_TARGET: Record<Face, [number, number, number]> = {
   neutral: [0, 0, 0],
   angry: [0.9, 0, 0],
@@ -49,13 +61,13 @@ const FACE_TARGET: Record<Face, [number, number, number]> = {
 const YAW = { supplier: 0.5, buyer: -0.5 } as const;
 const AGENT_HEIGHT = 2.9;
 /** Small gestures an agent makes on its own while it waits. */
-const AMBIENT: Array<[Pose, number]> = [["Wave", 3], ["Yes", 2], ["No", 1], ["ThumbsUp", 1.5], ["Jump", 0.7]];
+const AMBIENT: Array<[Pose, number]> = [["Yes", 3], ["No", 1]];
 
 const pickAmbient = (r: number): Pose => {
   const total = AMBIENT.reduce((s, [, w]) => s + w, 0);
   let x = r * total;
   for (const [p, w] of AMBIENT) if ((x -= w) <= 0) return p;
-  return "Wave";
+  return "Yes";
 };
 
 /** A soft contact shadow so the characters sit on the floor instead of floating. */
@@ -118,26 +130,22 @@ export function Robot({
       const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
       mesh.castShadow = true;
       mesh.receiveShadow = true;
+      mesh.frustumCulled = false;
       const next = mats.map((m) => {
-        const mat: THREE.MeshStandardMaterial =
-          m.name === "Main" ? new THREE.MeshPhysicalMaterial({ name: "Main", clearcoat: 0.7, clearcoatRoughness: 0.26 }) : (m as THREE.MeshStandardMaterial).clone();
-        if (mat.name === "Main") {
-          mat.color.set(tint);
-          mat.metalness = th.metalness;
-          mat.roughness = th.roughness;
-          mat.emissive.set(tint);
-          mat.emissiveIntensity = 0.12;
-          mat.envMapIntensity = 1.4;
-        } else if (mat.name === "Grey") {
+        const mat = (m as THREE.MeshStandardMaterial).clone();
+        if (mat.name.includes("Joints")) {
           mat.color.set(th.joints);
-          mat.metalness = 0.65;
-          mat.roughness = 0.35;
-        } else if (mat.name === "Black") {
-          mat.color.set("#05060a");
+          mat.metalness = 0.7;
+          mat.roughness = 0.32;
           mat.emissive.set(th.eyes);
-          mat.emissiveIntensity = th.eyesIntensity;
-          mat.metalness = 0.2;
-          mat.roughness = 0.28;
+          mat.emissiveIntensity = th.eyesIntensity * 0.35;
+        } else {
+          mat.color.set(tint);
+          mat.metalness = Math.max(th.metalness, 0.6);
+          mat.roughness = Math.min(th.roughness, 0.38);
+          mat.emissive.set(tint);
+          mat.emissiveIntensity = 0.08;
+          mat.envMapIntensity = 1.5;
         }
         return mat;
       });
@@ -146,17 +154,42 @@ export function Robot({
     return c;
   }, [scene, tint, th]);
 
-  // The bones and the eye material the procedural layers drive (typing, breathing, eye flicker).
+  // The bones and the glowing material the procedural layers drive (typing, breathing, glow flicker).
   const parts = useMemo(() => {
-    const bone = (n: string) => model.getObjectByName(n) as THREE.Bone | undefined;
+    const bone = (n: string) => {
+      const o = model.getObjectByName(n);
+      return o && (o as THREE.Bone).isBone ? (o as THREE.Bone) : undefined;
+    };
     let eyes: THREE.MeshStandardMaterial | undefined;
     model.traverse((o) => {
       const m = (o as THREE.Mesh).material as THREE.Material | undefined;
-      if ((o as THREE.Mesh).isMesh && m && !Array.isArray(m) && m.name === "Black") eyes = m as THREE.MeshStandardMaterial;
+      if ((o as THREE.Mesh).isMesh && m && !Array.isArray(m) && m.name.includes("Joints")) eyes = m as THREE.MeshStandardMaterial;
     });
-    return { uaL: bone("UpperArmL"), uaR: bone("UpperArmR"), laL: bone("LowerArmL"), laR: bone("LowerArmR"), head: bone("Head"), eyes };
+    return {
+      uaL: bone("mixamorigLeftArm"),
+      uaR: bone("mixamorigRightArm"),
+      laL: bone("mixamorigLeftForeArm"),
+      laR: bone("mixamorigRightForeArm"),
+      head: bone("mixamorigHead"),
+      spine: bone("mixamorigSpine1"),
+      eyes,
+    };
   }, [model]);
   const workW = useRef(0);
+  // Procedural offsets are layered on top of the clips. A clip only rewrites the bones it animates, so an offset on any other
+  // bone would pile up frame after frame (the head spinning round). Each offset is therefore undone before the next is applied.
+  const layered = useRef(new Map<THREE.Bone, { post: THREE.Quaternion; off: THREE.Quaternion }>());
+  const offset = useCallback((bone: THREE.Bone | undefined, q: THREE.Quaternion | null) => {
+    if (!bone) return;
+    const prev = layered.current.get(bone);
+    if (prev && bone.quaternion.equals(prev.post)) bone.quaternion.multiply(prev.off.clone().invert());
+    if (!q) {
+      layered.current.delete(bone);
+      return;
+    }
+    bone.quaternion.multiply(q);
+    layered.current.set(bone, { post: bone.quaternion.clone(), off: q.clone() });
+  }, []);
   const desk = useRef<THREE.Group>(null!);
   const tmpA = useMemo(() => new THREE.Quaternion(), []);
   const tmpB = useMemo(() => new THREE.Euler(), []);
@@ -182,13 +215,7 @@ export function Robot({
     return out;
   }, [model]);
 
-  // Head bone for look-at. Only used when the clips animate it (they overwrite it each frame, so the offset never accumulates).
-  const head = useMemo(() => {
-    const b = model.getObjectByName("Head") ?? model.getObjectByName("Neck");
-    const bone = b && (b as THREE.Bone).isBone ? (b as THREE.Bone) : null;
-    const animated = !!bone && animations.some((a) => a.tracks.some((t) => t.name.startsWith(`${bone.name}.quaternion`)));
-    return animated ? bone : null;
-  }, [model, animations]);
+  const head = parts.head ?? null;
 
   const current = useRef<{ action: THREE.AnimationAction; once: boolean } | null>(null);
   const walking = useRef(false);
@@ -202,8 +229,8 @@ export function Robot({
 
   /** Cross-fade to a clip from whatever is playing: no pops, no stacking. */
   const play = useCallback(
-    (name: string, once: boolean, fade = 0.35) => {
-      const next = actions[name];
+    (name: Pose | "Walking", once: boolean, fade = 0.35) => {
+      const next = actions[CLIP[name]];
       if (!next) return;
       const prev = current.current?.action;
       next.setLoop(once ? THREE.LoopOnce : THREE.LoopRepeat, once ? 1 : Infinity);
@@ -216,7 +243,7 @@ export function Robot({
   );
 
   useEffect(() => {
-    const idle = actions.Idle;
+    const idle = actions[CLIP.Idle];
     if (!idle) return;
     idle.reset().setEffectiveWeight(1).fadeIn(0.5).play();
     current.current = { action: idle, once: false };
@@ -227,8 +254,7 @@ export function Robot({
 
   useEffect(() => {
     if (state.poseKey === 0 || walking.current) return;
-    if (state.pose === "Dance") play("Dance", false, 0.3);
-    else if (state.pose === "Idle") play("Idle", false, 0.4);
+    if (state.pose === "Idle") play("Idle", false, 0.4);
     else play(state.pose, ONE_SHOT.includes(state.pose));
   }, [state.poseKey, state.pose, play]);
 
@@ -240,7 +266,7 @@ export function Robot({
     const dt = Math.min(rawDt, 0.05); // a stalled frame must not make the agents jump
     const g = group.current;
     if (!g) return;
-    const idle = actions.Idle;
+    const idle = actions[CLIP.Idle];
 
     // --- walking: ease toward the target x, facing the way we go ---
     const dx = targetX.current - posX.current;
@@ -256,7 +282,8 @@ export function Robot({
     } else if (walking.current) {
       walking.current = false;
       posX.current = targetX.current;
-      if (actions.Walking) actions.Walking.timeScale = 1;
+      const walk = actions[CLIP.Walking];
+      if (walk) walk.timeScale = 1;
       play("Idle", false, 0.35);
     }
     g.position.x = posX.current;
@@ -290,15 +317,21 @@ export function Robot({
     const want = walking.current ? dir.current * 1.25 : yaw + sceneState.pointer.x * 0.28;
     g.rotation.y += (want - g.rotation.y) * (1 - Math.exp(-dt * 6));
 
-    // --- head: follows the cursor (applied after the mixer, which rewrites the bone every frame) ---
-    if (head && !walking.current) {
-      const ty = THREE.MathUtils.clamp(sceneState.pointer.x * 0.5 * (role === "supplier" ? 1 : -1) * -1, -0.45, 0.45);
-      const tx = THREE.MathUtils.clamp(-sceneState.pointer.y * 0.3, -0.3, 0.3);
+    // --- head: follows the cursor, and tips down while typing (applied after the mixer, which rewrites the bone every frame) ---
+    const w = workW.current;
+    if (head) {
+      let ty = 0;
+      let tx = 0;
+      if (!walking.current) {
+        ty = THREE.MathUtils.clamp(sceneState.pointer.x * 0.5 * (role === "supplier" ? 1 : -1) * -1, -0.45, 0.45);
+        tx = THREE.MathUtils.clamp(-sceneState.pointer.y * 0.3, -0.3, 0.3);
+      }
       look.current.y += (ty - look.current.y) * (1 - Math.exp(-dt * 5));
       look.current.x += (tx - look.current.x) * (1 - Math.exp(-dt * 5));
-      tmpE.set(look.current.x, look.current.y, 0);
+      const tip = w * (0.22 + 0.03 * Math.sin((sceneState.reducedMotion ? 0 : now) * 0.9));
+      tmpE.set(look.current.x + tip, look.current.y, 0);
       tmpQ.setFromEuler(tmpE);
-      head.quaternion.multiply(tmpQ);
+      offset(head, tmpQ);
     }
 
     // --- breathing: a slow, tiny rise and fall of the whole body ---
@@ -307,26 +340,25 @@ export function Robot({
     // --- working: ease in and out of a typing posture, applied after the clips so it never accumulates ---
     const target = state.working && !walking.current ? 1 : 0;
     workW.current += (target - workW.current) * (1 - Math.exp(-dt * 4.5));
-    const w = workW.current;
-    if (w > 0.002) {
+    if (workW.current > 0.002 || layered.current.has(parts.uaL!)) {
       const t = sceneState.reducedMotion ? 0 : now;
       const stroke = (phase: number) => Math.sin(t * 11 + phase) * (sceneState.reducedMotion ? 0 : 1);
+      const ww = workW.current;
       const lift = (b: THREE.Bone | undefined, x: number, z: number) => {
         if (!b) return;
-        tmpA.setFromEuler(tmpB.set(x * w, 0, z * w));
-        b.quaternion.multiply(tmpA);
+        tmpA.setFromEuler(tmpB.set(x * ww, 0, z * ww));
+        offset(b, ww > 0.002 ? tmpA : null);
       };
-      lift(parts.uaL, 1.0 + 0.05 * stroke(0), 0.12);
-      lift(parts.uaR, 1.0 + 0.05 * stroke(2.1), -0.12);
-      lift(parts.laL, -0.55 + 0.2 * stroke(0.4), 0);
-      lift(parts.laR, -0.55 + 0.2 * stroke(2.6), 0);
-      lift(parts.head, 0.09 + 0.02 * Math.sin(t * 0.9), 0);
+      lift(parts.uaL, -0.9 + 0.05 * stroke(0), 0);
+      lift(parts.uaR, -0.9 + 0.05 * stroke(2.1), 0);
+      lift(parts.laL, 0.2 * stroke(0.4), 0);
+      lift(parts.laR, 0.2 * stroke(2.6), 0);
     }
     if (desk.current) {
-      desk.current.visible = w > 0.01;
-      desk.current.scale.setScalar(Math.max(0.001, w));
+      desk.current.visible = workW.current > 0.01;
+      desk.current.scale.setScalar(Math.max(0.001, workW.current));
     }
-    if (parts.eyes) parts.eyes.emissiveIntensity = th.eyesIntensity * (1 + w * (0.6 + 0.4 * Math.sin(now * 7)));
+    if (parts.eyes) parts.eyes.emissiveIntensity = th.eyesIntensity * 0.35 * (1 + workW.current * (0.6 + 0.4 * Math.sin(now * 7)));
   });
 
   return (
