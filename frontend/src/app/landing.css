@@ -243,7 +243,6 @@
 @media (max-width: 860px) {
   .nav-end { gap: 10px; }
   .nav-cta { font-size: 0.9rem; white-space: nowrap; }
-  .nav .theme-name { display: none; }
   .hero-foot { grid-template-columns: 1fr; justify-items: start; gap: 12px; }
   .hero-net { justify-self: start; }
   .hero-latest { grid-row: auto; }

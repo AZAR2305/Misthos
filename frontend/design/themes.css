@@ -4,7 +4,7 @@
  * matching palette from src/lib/themes.ts (three.js cannot read CSS variables per frame). Keep the two in step.
  *
  * Source (product owner request, 2026-10-07): the Lovable "Team Directory" template,
- * https://team-directory-template.lovable.app, whose stylesheet defines a warm mint primary on stone neutrals, Figtree
+ * https://team-directory-template.lovable.app, whose stylesheet defines a warm mint primary on stone neutrals, Bricolage Grotesque headings with Plus Jakarta Sans text
  * type, and a dark mode that follows the visitor's system setting. The values below are that stylesheet's OKLCH tokens
  * converted to hex (primary oklch(82.34% .1385 148.16) = #82de91; stone neutrals on hue 56-106). Nothing else is copied.
  *
@@ -17,8 +17,8 @@
  */
 
 :root {
-  --font-sans: "Figtree", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-display: "Figtree", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-display: "Bricolage Grotesque", "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
 }
 
 /* ------------------------------------------------------------------ Mint (default, light) */

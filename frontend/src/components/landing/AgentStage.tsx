@@ -1,33 +1,18 @@
 "use client";
 
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { Environment, Html, Lightformer, PerformanceMonitor, Preload, useAnimations, useGLTF } from "@react-three/drei";
-import { Component, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Environment, Html, Lightformer, PerformanceMonitor, Preload } from "@react-three/drei";
+import { Component, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import * as THREE from "three";
-import { clone as cloneSkinned } from "three/examples/jsm/utils/SkeletonUtils.js";
 import { THEMES, useThemeId } from "@/lib/themes";
 import { sceneState } from "./scene-store";
 import { HOME } from "./stage-constants";
 
 /**
- * Two agents on a stage. The android is "Xbot" (a Mixamo "Beta" character), as shipped in the three.js examples. They are
- * characters, not widgets: they idle with small gestures of their own (a nod, a shake of the head), look toward the cursor,
- * walk to meet each other to hand over an offer, and nod when a deal settles. No numbers are
- * shown here: this is an illustration of the protocol's roles and reason codes, never live data (CLAUDE.md 0.5).
+ * Two agents on a stage, each an abstract "agent core" (see Robot below). They idle with small gestures of their own, look
+ * toward the cursor, glide over to hand an offer to each other, and celebrate when a deal settles. No numbers are shown
+ * here: this is an illustration of the protocol's roles and reason codes, never live data (CLAUDE.md 0.5).
  */
-const MODEL_URL = "/models/Xbot.glb";
-
-/** Pose name -> clip in the model. The android has a smaller set than a cartoon robot: the gestures share the nod. */
-const CLIP: Record<Pose | "Walking", string> = {
-  Idle: "idle",
-  Walking: "walk",
-  Yes: "agree",
-  No: "headShake",
-  Wave: "agree",
-  ThumbsUp: "agree",
-  Jump: "agree",
-  Dance: "agree",
-};
 
 export type Role = "supplier" | "buyer";
 export type Pose = "Idle" | "Wave" | "Yes" | "No" | "ThumbsUp" | "Jump" | "Dance";
@@ -39,7 +24,7 @@ export interface AgentState {
   poseKey: number;
   face: Face;
   bubble: string | null;
-  /** Typing at a terminal: arms come up to the keyboard, the head tips down, the eyes flicker as it reads. */
+  /** Reading or typing at a terminal: the rings spin up, the core tips forward, the eyes scan. */
   working?: boolean;
   /** Walk to this x (stage units) when `key` changes. Home is HOME[role]. */
   move?: { x: number; key: number };
@@ -51,23 +36,16 @@ export interface Message {
 }
 
 
-const ONE_SHOT: Pose[] = ["Wave", "Yes", "No", "ThumbsUp", "Jump", "Dance"];
-const FACE_TARGET: Record<Face, [number, number, number]> = {
-  neutral: [0, 0, 0],
-  angry: [0.9, 0, 0],
-  surprised: [0, 0.85, 0],
-  sad: [0, 0, 0.9],
-};
 const YAW = { supplier: 0.5, buyer: -0.5 } as const;
 const AGENT_HEIGHT = 2.9;
 /** Small gestures an agent makes on its own while it waits. */
-const AMBIENT: Array<[Pose, number]> = [["Yes", 3], ["No", 1]];
+const AMBIENT: Array<[Pose, number]> = [["Wave", 3], ["Yes", 2], ["No", 1], ["ThumbsUp", 1.5], ["Jump", 0.7]];
 
 const pickAmbient = (r: number): Pose => {
   const total = AMBIENT.reduce((s, [, w]) => s + w, 0);
   let x = r * total;
   for (const [p, w] of AMBIENT) if ((x -= w) <= 0) return p;
-  return "Yes";
+  return "Wave";
 };
 
 /** A soft contact shadow so the characters sit on the floor instead of floating. */
@@ -88,6 +66,19 @@ function useShadowTexture() {
   }, []);
 }
 
+/** Eye shapes per face: [scale x, scale y, tilt, brightness]. */
+const EYE: Record<Face, [number, number, number, number]> = {
+  neutral: [1, 1, 0, 1],
+  angry: [1.1, 0.55, 0.38, 1.25],
+  surprised: [1.25, 1.5, 0, 1.3],
+  sad: [0.9, 0.7, -0.3, 0.45],
+};
+
+/**
+ * The agent: not a person but a compact "agent core", a glossy shell with a visor and two eyes, gyro rings that carry the
+ * negotiation, and (when it stands alone) USDC-style coins in orbit. It floats, looks toward the cursor, nods, shakes,
+ * hops and spins. Everything is built from primitives, so there is no model file to download and it takes the theme colours.
+ */
 export function Robot({
   role,
   state,
@@ -109,257 +100,148 @@ export function Robot({
   /** Resting body yaw. */
   yaw?: number;
   height?: number;
-  /** No platform, ring or prop: a single character on its own. */
+  /** No platform, ring or prop: a single core on its own, with coins in orbit. */
   bare?: boolean;
 }) {
   const group = useRef<THREE.Group>(null!);
-  const body = useRef<THREE.Group>(null!);
-  const { scene, animations } = useGLTF(MODEL_URL);
+  const core = useRef<THREE.Group>(null!);
+  const ringA = useRef<THREE.Group>(null!);
+  const ringB = useRef<THREE.Group>(null!);
+  const ringC = useRef<THREE.Group>(null!);
+  const coins = useRef<THREE.Group>(null!);
+  const eyeL = useRef<THREE.Mesh>(null!);
+  const eyeR = useRef<THREE.Mesh>(null!);
+  const shadow = useRef<THREE.Mesh>(null!);
   const themeId = useThemeId();
   const th = THEMES[themeId].scene.robot;
   const tint = role === "supplier" ? th.supplier : th.buyer;
   const glow = role === "supplier" ? th.supplierGlow : th.buyerGlow;
   const shadowTex = useShadowTexture();
 
-  // Re-skin the model whenever the theme changes.
-  const model = useMemo(() => {
-    const c = cloneSkinned(scene) as THREE.Group;
-    c.traverse((o) => {
-      const mesh = o as THREE.Mesh;
-      if (!mesh.isMesh) return;
-      const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-      mesh.castShadow = true;
-      mesh.receiveShadow = true;
-      mesh.frustumCulled = false;
-      const next = mats.map((m) => {
-        const mat = (m as THREE.MeshStandardMaterial).clone();
-        if (mat.name.includes("Joints")) {
-          mat.color.set(th.joints);
-          mat.metalness = 0.7;
-          mat.roughness = 0.32;
-          mat.emissive.set(th.eyes);
-          mat.emissiveIntensity = th.eyesIntensity * 0.35;
-        } else {
-          mat.color.set(tint);
-          mat.metalness = Math.max(th.metalness, 0.6);
-          mat.roughness = Math.min(th.roughness, 0.38);
-          mat.emissive.set(tint);
-          mat.emissiveIntensity = 0.08;
-          mat.envMapIntensity = 1.5;
-        }
-        return mat;
-      });
-      mesh.material = Array.isArray(mesh.material) ? next : next[0];
-    });
-    return c;
-  }, [scene, tint, th]);
+  const dark = THEMES[themeId].scene.dark;
+  const R = height * 0.24;
+  const cy = height * 0.52;
+  const eyeMat = useMemo(() => new THREE.MeshBasicMaterial({ color: glow, toneMapped: false }), [glow]);
 
-  // The bones and the glowing material the procedural layers drive (typing, breathing, glow flicker).
-  const parts = useMemo(() => {
-    const bone = (n: string) => {
-      const o = model.getObjectByName(n);
-      return o && (o as THREE.Bone).isBone ? (o as THREE.Bone) : undefined;
-    };
-    let eyes: THREE.MeshStandardMaterial | undefined;
-    model.traverse((o) => {
-      const m = (o as THREE.Mesh).material as THREE.Material | undefined;
-      if ((o as THREE.Mesh).isMesh && m && !Array.isArray(m) && m.name.includes("Joints")) eyes = m as THREE.MeshStandardMaterial;
-    });
-    return {
-      uaL: bone("mixamorigLeftArm"),
-      uaR: bone("mixamorigRightArm"),
-      laL: bone("mixamorigLeftForeArm"),
-      laR: bone("mixamorigRightForeArm"),
-      head: bone("mixamorigHead"),
-      spine: bone("mixamorigSpine1"),
-      eyes,
-    };
-  }, [model]);
-  const workW = useRef(0);
-  // Procedural offsets are layered on top of the clips. A clip only rewrites the bones it animates, so an offset on any other
-  // bone would pile up frame after frame (the head spinning round). Each offset is therefore undone before the next is applied.
-  const layered = useRef(new Map<THREE.Bone, { post: THREE.Quaternion; off: THREE.Quaternion }>());
-  const offset = useCallback((bone: THREE.Bone | undefined, q: THREE.Quaternion | null) => {
-    if (!bone) return;
-    const prev = layered.current.get(bone);
-    if (prev && bone.quaternion.equals(prev.post)) bone.quaternion.multiply(prev.off.clone().invert());
-    if (!q) {
-      layered.current.delete(bone);
-      return;
-    }
-    bone.quaternion.multiply(q);
-    layered.current.set(bone, { post: bone.quaternion.clone(), off: q.clone() });
-  }, []);
-  const desk = useRef<THREE.Group>(null!);
-  const tmpA = useMemo(() => new THREE.Quaternion(), []);
-  const tmpB = useMemo(() => new THREE.Euler(), []);
-
-  // Normalise size and stand the model on y = 0.
-  const fit = useMemo(() => {
-    model.updateMatrixWorld(true);
-    const box = new THREE.Box3().setFromObject(model);
-    const h = box.max.y - box.min.y;
-    if (!Number.isFinite(h) || h <= 0) return { s: 1, y: 0 };
-    const s = height / h;
-    return { s, y: -box.min.y * s };
-  }, [model, height]);
-
-  const { actions, mixer } = useAnimations(animations, body);
-  void mixer;
-  const morphMeshes = useMemo(() => {
-    const out: THREE.Mesh[] = [];
-    model.traverse((o) => {
-      const m = o as THREE.Mesh;
-      if (m.isMesh && m.morphTargetDictionary && m.morphTargetInfluences) out.push(m);
-    });
-    return out;
-  }, [model]);
-
-  const head = parts.head ?? null;
-
-  const current = useRef<{ action: THREE.AnimationAction; once: boolean } | null>(null);
-  const walking = useRef(false);
+  const anim = useRef<{ pose: Pose; t0: number }>({ pose: "Idle", t0: -10 });
+  const nextAmbient = useRef(3 + (role === "buyer" ? 2.5 : 0));
   const dir = useRef(1);
   const targetX = useRef<number>(home);
   const posX = useRef<number>(home);
-  const nextAmbient = useRef(3 + (role === "buyer" ? 2.5 : 0));
+  const walking = useRef(false);
+  const spin = useRef(0);
   const look = useRef({ y: 0, x: 0 });
-  const tmpQ = useMemo(() => new THREE.Quaternion(), []);
-  const tmpE = useMemo(() => new THREE.Euler(), []);
-
-  /** Cross-fade to a clip from whatever is playing: no pops, no stacking. */
-  const play = useCallback(
-    (name: Pose | "Walking", once: boolean, fade = 0.35) => {
-      const next = actions[CLIP[name]];
-      if (!next) return;
-      const prev = current.current?.action;
-      next.setLoop(once ? THREE.LoopOnce : THREE.LoopRepeat, once ? 1 : Infinity);
-      next.clampWhenFinished = true;
-      next.reset().play();
-      if (prev && prev !== next) prev.crossFadeTo(next, fade, true);
-      current.current = { action: next, once };
-    },
-    [actions],
-  );
+  const blink = useRef({ next: 2.5, t0: -1 });
+  const eyeNow = useRef<[number, number, number, number]>([1, 1, 0, 1]);
 
   useEffect(() => {
-    const idle = actions[CLIP.Idle];
-    if (!idle) return;
-    idle.reset().setEffectiveWeight(1).fadeIn(0.5).play();
-    current.current = { action: idle, once: false };
-    return () => {
-      idle.fadeOut(0.2);
-    };
-  }, [actions]);
-
-  useEffect(() => {
-    if (state.poseKey === 0 || walking.current) return;
-    if (state.pose === "Idle") play("Idle", false, 0.4);
-    else play(state.pose, ONE_SHOT.includes(state.pose));
-  }, [state.poseKey, state.pose, play]);
+    if (state.poseKey === 0) return;
+    anim.current = { pose: state.pose, t0: performance.now() / 1000 };
+  }, [state.poseKey, state.pose]);
 
   useEffect(() => {
     if (state.move) targetX.current = state.move.x;
   }, [state.move?.key, state.move?.x]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useFrame(({ clock }, rawDt) => {
-    const dt = Math.min(rawDt, 0.05); // a stalled frame must not make the agents jump
+    const dt = Math.min(rawDt, 0.05);
     const g = group.current;
     if (!g) return;
-    const idle = actions[CLIP.Idle];
+    const now = clock.elapsedTime;
+    const calm = sceneState.reducedMotion;
+    const wall = performance.now() / 1000;
 
-    // --- walking: ease toward the target x, facing the way we go ---
+    // --- walking: glide toward the target x, leaning the way it goes ---
     const dx = targetX.current - posX.current;
-    if (Math.abs(dx) > 0.03) {
+    walking.current = Math.abs(dx) > 0.03;
+    if (walking.current) {
       dir.current = Math.sign(dx);
       const speed = 1.7 * THREE.MathUtils.clamp(Math.abs(dx) / 0.5, 0.45, 1);
       posX.current += dir.current * Math.min(Math.abs(dx), speed * dt);
-      if (!walking.current) {
-        walking.current = true;
-        play("Walking", false, 0.25);
-        if (current.current) current.current.action.timeScale = 1.15;
-      }
-    } else if (walking.current) {
-      walking.current = false;
-      posX.current = targetX.current;
-      const walk = actions[CLIP.Walking];
-      if (walk) walk.timeScale = 1;
-      play("Idle", false, 0.35);
-    }
+    } else posX.current = targetX.current;
     g.position.x = posX.current;
 
-    // --- finish one-shots with a blend instead of a snap ---
-    const cur = current.current;
-    if (!walking.current && cur?.once && idle && cur.action.time >= cur.action.getClip().duration - 0.45) {
-      play("Idle", false, 0.45);
-    }
-
     // --- idle life: a small gesture of its own every few seconds ---
-    const now = clock.elapsedTime;
-    if (!sceneState.reducedMotion && !state.working && !walking.current && state.pose === "Idle" && cur && !cur.once && cur.action === idle && now > nextAmbient.current) {
-      play(pickAmbient(Math.random()), true);
+    if (!calm && !state.working && !walking.current && state.pose === "Idle" && now > nextAmbient.current) {
+      anim.current = { pose: pickAmbient(Math.random()), t0: wall };
       nextAmbient.current = now + 6 + Math.random() * 6;
     }
 
-    // --- face ---
-    const targets = FACE_TARGET[state.face];
-    const k = 1 - Math.exp(-dt * 9);
-    for (const m of morphMeshes) {
-      const dict = m.morphTargetDictionary!;
-      const inf = m.morphTargetInfluences!;
-      ["Angry", "Surprised", "Sad"].forEach((name, i) => {
-        const idx = dict[name];
-        if (idx !== undefined) inf[idx] += (targets[i] - inf[idx]) * k;
-      });
+    // --- pose: a short gesture on top of the float ---
+    const tp = wall - anim.current.t0;
+    const decay = Math.exp(-tp * 1.7);
+    let nodX = 0, shakeY = 0, tiltZ = 0, hop = 0, pulse = 1, spinBoost = 0, ringBoost = 0;
+    switch (anim.current.pose) {
+      case "Yes": if (tp < 2) nodX = Math.sin(tp * 11) * 0.3 * decay; break;
+      case "No": if (tp < 2) shakeY = Math.sin(tp * 13) * 0.55 * decay; break;
+      case "Wave": if (tp < 2.2) { tiltZ = Math.sin(tp * 7) * 0.28 * decay; ringBoost = 4 * decay; } break;
+      case "ThumbsUp": if (tp < 1.4) { pulse = 1 + 0.16 * Math.sin(Math.min(tp / 0.7, 1) * Math.PI); nodX = Math.sin(tp * 9) * 0.18 * decay; } break;
+      case "Jump": if (tp < 1.2) hop = Math.abs(Math.sin(tp * 4.2)) * 0.55 * Math.exp(-tp * 0.9); break;
+      case "Dance": if (tp < 3) { hop = Math.abs(Math.sin(tp * 5)) * 0.3; spinBoost = 5 * Math.min(1, (3 - tp)); ringBoost = 3; tiltZ = Math.sin(tp * 5) * 0.18; } break;
+      default: break;
     }
+    const busy = state.working ? 1 : 0;
 
-    // --- body yaw: face the way it walks, otherwise toward the counterpart and a little toward the cursor ---
-    const want = walking.current ? dir.current * 1.25 : yaw + sceneState.pointer.x * 0.28;
+    // --- body yaw: face the way it goes, otherwise toward the counterpart and a little toward the cursor ---
+    const want = walking.current ? dir.current * 0.5 : yaw + sceneState.pointer.x * 0.28;
     g.rotation.y += (want - g.rotation.y) * (1 - Math.exp(-dt * 6));
+    g.rotation.z += ((walking.current ? -dir.current * 0.12 : 0) - g.rotation.z) * (1 - Math.exp(-dt * 6));
 
-    // --- head: follows the cursor, and tips down while typing (applied after the mixer, which rewrites the bone every frame) ---
-    const w = workW.current;
-    if (head) {
-      let ty = 0;
-      let tx = 0;
-      if (!walking.current) {
-        ty = THREE.MathUtils.clamp(sceneState.pointer.x * 0.5 * (role === "supplier" ? 1 : -1) * -1, -0.45, 0.45);
-        tx = THREE.MathUtils.clamp(-sceneState.pointer.y * 0.3, -0.3, 0.3);
-      }
-      look.current.y += (ty - look.current.y) * (1 - Math.exp(-dt * 5));
-      look.current.x += (tx - look.current.x) * (1 - Math.exp(-dt * 5));
-      const tip = w * (0.22 + 0.03 * Math.sin((sceneState.reducedMotion ? 0 : now) * 0.9));
-      tmpE.set(look.current.x + tip, look.current.y, 0);
-      tmpQ.setFromEuler(tmpE);
-      offset(head, tmpQ);
+    // --- core: float, look at the cursor, gesture ---
+    const c = core.current;
+    const k = 1 - Math.exp(-dt * 5);
+    const ty = walking.current ? 0 : THREE.MathUtils.clamp(sceneState.pointer.x * 0.5 * (role === "supplier" ? 1 : -1) * -1, -0.5, 0.5);
+    const tx = walking.current ? 0 : THREE.MathUtils.clamp(-sceneState.pointer.y * 0.3, -0.3, 0.3);
+    look.current.y += (ty - look.current.y) * k;
+    look.current.x += (tx - look.current.x) * k;
+    const bob = calm ? 0 : Math.sin(now * 1.4 + (role === "buyer" ? 1.3 : 0)) * 0.07;
+    c.position.y = cy + bob + hop;
+    c.rotation.set(look.current.x + nodX + busy * 0.12, look.current.y + shakeY, tiltZ);
+    c.scale.setScalar(R * pulse * (calm ? 1 : 1 + Math.sin(now * 1.7) * 0.012));
+    if (shadow.current) {
+      const s = 1 - (bob + hop) * 0.35;
+      shadow.current.scale.set(s, s, s);
     }
 
-    // --- breathing: a slow, tiny rise and fall of the whole body ---
-    if (body.current) body.current.scale.y = fit.s * (1 + (sceneState.reducedMotion ? 0 : Math.sin(now * 1.7) * 0.008));
+    // --- rings: slow gyro; faster when busy, walking or celebrating ---
+    const speed = (calm ? 0 : 0.35) + busy * 1.8 + (walking.current ? 0.8 : 0) + ringBoost;
+    ringA.current.rotation.z += dt * speed * 1.0;
+    ringB.current.rotation.x += dt * speed * 0.8;
+    ringC.current.rotation.y -= dt * speed * 0.6;
+    spin.current += dt * ((calm ? 0 : 0.25) + spinBoost);
+    if (coins.current) coins.current.rotation.y = spin.current + (calm ? 0 : now * 0.2);
 
-    // --- working: ease in and out of a typing posture, applied after the clips so it never accumulates ---
-    const target = state.working && !walking.current ? 1 : 0;
-    workW.current += (target - workW.current) * (1 - Math.exp(-dt * 4.5));
-    if (workW.current > 0.002 || layered.current.has(parts.uaL!)) {
-      const t = sceneState.reducedMotion ? 0 : now;
-      const stroke = (phase: number) => Math.sin(t * 11 + phase) * (sceneState.reducedMotion ? 0 : 1);
-      const ww = workW.current;
-      const lift = (b: THREE.Bone | undefined, x: number, z: number) => {
-        if (!b) return;
-        tmpA.setFromEuler(tmpB.set(x * ww, 0, z * ww));
-        offset(b, ww > 0.002 ? tmpA : null);
-      };
-      lift(parts.uaL, -0.9 + 0.05 * stroke(0), 0);
-      lift(parts.uaR, -0.9 + 0.05 * stroke(2.1), 0);
-      lift(parts.laL, 0.2 * stroke(0.4), 0);
-      lift(parts.laR, 0.2 * stroke(2.6), 0);
+    // --- eyes: ease to the face, blink now and then, flicker while reading ---
+    const tgt = EYE[state.face];
+    for (let i = 0; i < 4; i++) eyeNow.current[i] += (tgt[i] - eyeNow.current[i]) * (1 - Math.exp(-dt * 9));
+    if (!calm && now > blink.current.next) {
+      blink.current = { next: now + 2.5 + Math.random() * 3.5, t0: now };
     }
-    if (desk.current) {
-      desk.current.visible = workW.current > 0.01;
-      desk.current.scale.setScalar(Math.max(0.001, workW.current));
-    }
-    if (parts.eyes) parts.eyes.emissiveIntensity = th.eyesIntensity * 0.35 * (1 + workW.current * (0.6 + 0.4 * Math.sin(now * 7)));
+    const bt = (now - blink.current.t0) / 0.16;
+    const lid = bt >= 0 && bt <= 1 ? Math.abs(1 - 2 * bt) : 1;
+    const [sx, sy, tilt, br] = eyeNow.current;
+    const scan = busy && !calm ? Math.sin(now * 5) * 0.08 : 0;
+    eyeL.current.scale.set(sx, sy * lid, 1);
+    eyeR.current.scale.set(sx, sy * lid, 1);
+    eyeL.current.rotation.z = tilt;
+    eyeR.current.rotation.z = -tilt;
+    eyeL.current.position.x = -0.2 + scan;
+    eyeR.current.position.x = 0.2 + scan;
+    eyeMat.color.set(glow).multiplyScalar(br * (1 + busy * 0.4 * (0.5 + 0.5 * Math.sin(now * 9))));
   });
+
+  const ring = (r: number, w: number) => (
+    <>
+      <mesh>
+        <torusGeometry args={[r, w, 12, 128]} />
+        <meshStandardMaterial color={th.joints} metalness={0.85} roughness={0.25} emissive={glow} emissiveIntensity={0.18} />
+      </mesh>
+      <mesh position={[r, 0, 0]}>
+        <sphereGeometry args={[w * 3.2, 16, 16]} />
+        <meshBasicMaterial color={glow} toneMapped={false} />
+      </mesh>
+    </>
+  );
 
   return (
     <group
@@ -380,17 +262,71 @@ export function Robot({
         onSelect();
       }}
     >
-      <group ref={body} scale={fit.s} position={[0, fit.y, 0]}>
-        <primitive object={model} />
+      {/* The core. Unit radius; scaled by the group. */}
+      <group ref={core} position={[0, cy, 0]} scale={R}>
+        <mesh castShadow>
+          <sphereGeometry args={[1, 64, 64]} />
+          <meshPhysicalMaterial color={dark ? "#26241f" : "#f2f1ee"} metalness={dark ? 0.75 : 0.35} roughness={dark ? 0.22 : 0.18} clearcoat={1} clearcoatRoughness={0.1} envMapIntensity={1.6} emissive={tint} emissiveIntensity={dark ? 0.05 : 0.02} />
+        </mesh>
+        {/* Visor */}
+        <mesh position={[0, 0.06, 0.62]} scale={[0.78, 0.42, 0.45]}>
+          <sphereGeometry args={[1, 48, 48]} />
+          <meshPhysicalMaterial color="#05060a" metalness={0.6} roughness={0.08} clearcoat={1} clearcoatRoughness={0.05} envMapIntensity={1.2} />
+        </mesh>
+        <mesh ref={eyeL} position={[-0.2, 0.08, 1.06]} material={eyeMat}>
+          <capsuleGeometry args={[0.065, 0.12, 8, 16]} />
+        </mesh>
+        <mesh ref={eyeR} position={[0.2, 0.08, 1.06]} material={eyeMat}>
+          <capsuleGeometry args={[0.065, 0.12, 8, 16]} />
+        </mesh>
+        {/* Equator band: the agent's colour */}
+        <mesh rotation={[Math.PI / 2, 0, 0]} position={[0, -0.32, 0]} scale={[0.95, 0.95, 1]}>
+          <torusGeometry args={[1, 0.012, 8, 128]} />
+          <meshBasicMaterial color={glow} toneMapped={false} />
+        </mesh>
+        {/* Antenna: a small signal node on top */}
+        <mesh position={[0, 1.18, 0]}>
+          <cylinderGeometry args={[0.025, 0.025, 0.3, 12]} />
+          <meshStandardMaterial color={th.joints} metalness={0.8} roughness={0.3} />
+        </mesh>
+        <mesh position={[0, 1.38, 0]}>
+          <sphereGeometry args={[0.09, 16, 16]} />
+          <meshBasicMaterial color={glow} toneMapped={false} />
+        </mesh>
+        {/* Gyro rings */}
+        <group ref={ringA} rotation={[Math.PI / 2.4, 0, 0]}>{ring(1.55, 0.014)}</group>
+        <group ref={ringB} rotation={[0.3, 0, Math.PI / 2.8]}>{ring(1.8, 0.011)}</group>
+        <group ref={ringC} rotation={[Math.PI / 2, 0, 0.5]}>{ring(2.05, 0.009)}</group>
       </group>
+
+      {/* USDC-style coins in orbit, when the agent stands alone. */}
+      {bare && (
+        <group ref={coins} position={[0, cy + R * 0.2, 0]}>
+          {[0, 1, 2].map((i) => {
+            const a = (i / 3) * Math.PI * 2;
+            const r = R * 2.45;
+            return (
+              <group key={i} position={[Math.sin(a) * r, Math.sin(a * 2) * R * 0.35, Math.cos(a) * r]} rotation={[0, a, 0]}>
+                <mesh rotation={[Math.PI / 2, 0, 0]} castShadow>
+                  <cylinderGeometry args={[R * 0.2, R * 0.2, R * 0.04, 48]} />
+                  <meshStandardMaterial color={THEMES[themeId].scene.dark ? "#e9fbed" : "#ffffff"} metalness={0.7} roughness={0.22} emissive={glow} emissiveIntensity={0.18} />
+                </mesh>
+                <mesh position={[0, 0, R * 0.025]}>
+                  <torusGeometry args={[R * 0.135, R * 0.01, 8, 40]} />
+                  <meshBasicMaterial color={glow} toneMapped={false} />
+                </mesh>
+              </group>
+            );
+          })}
+        </group>
+      )}
 
       <mesh position={[0, 0.006, 0]} rotation-x={-Math.PI / 2} receiveShadow>
         <planeGeometry args={[8, 8]} />
         <shadowMaterial transparent opacity={THEMES[themeId].scene.dark ? 0.35 : 0.2} />
       </mesh>
-      {/* Floor: soft contact shadow, a pad and a glowing ring */}
-      <mesh position={[0, 0.012, 0]} rotation-x={-Math.PI / 2}>
-        <circleGeometry args={[1.5, 40]} />
+      <mesh ref={shadow} position={[0, 0.012, 0]} rotation-x={-Math.PI / 2}>
+        <circleGeometry args={[R * 1.7, 40]} />
         <meshBasicMaterial map={shadowTex} transparent depthWrite={false} />
       </mesh>
       {!bare && (
@@ -406,30 +342,9 @@ export function Robot({
           {role === "supplier" ? <InvoiceProp accent={tint} /> : <TreasuryProp accent={tint} />}
         </>
       )}
-      {/* A standing desk and keyboard that rise out of the floor when the agent starts typing. */}
-      <group ref={desk} position={[0, 1.12, 0.74]} visible={false}>
-        <mesh castShadow receiveShadow>
-          <boxGeometry args={[1.5, 0.07, 0.78]} />
-          <meshStandardMaterial color={th.joints} metalness={0.3} roughness={0.5} />
-        </mesh>
-        <mesh position={[0, 0.06, 0.04]} castShadow>
-          <boxGeometry args={[1.0, 0.04, 0.34]} />
-          <meshStandardMaterial color={th.platform} metalness={0.2} roughness={0.55} emissive={tint} emissiveIntensity={0.08} />
-        </mesh>
-        {[-0.1, 0, 0.1].map((z) => (
-          <mesh key={z} position={[0, 0.085, z + 0.04]}>
-            <boxGeometry args={[0.88, 0.012, 0.045]} />
-            <meshStandardMaterial color={tint} emissive={tint} emissiveIntensity={0.5} />
-          </mesh>
-        ))}
-        <mesh position={[0, -0.61, 0]} castShadow>
-          <cylinderGeometry args={[0.05, 0.05, 1.18, 12]} />
-          <meshStandardMaterial color={th.joints} metalness={0.5} roughness={0.4} />
-        </mesh>
-      </group>
 
       {state.bubble && (
-        <Html position={[0, AGENT_HEIGHT + 0.55, 0]} center distanceFactor={7} zIndexRange={[20, 0]} className="stage-bubble-wrap">
+        <Html position={[0, cy + R * 2.6, 0]} center distanceFactor={7} zIndexRange={[20, 0]} className="stage-bubble-wrap">
           <div className="stage-bubble">
             <span className="tag">Agent</span> {state.bubble}
           </div>
@@ -639,4 +554,3 @@ export default function AgentStage(p: StageProps) {
   );
 }
 
-useGLTF.preload(MODEL_URL);

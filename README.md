@@ -23,6 +23,6 @@ If `pnpm install` times out on a machine whose Node resolves only IPv6, see the 
 - `frontend/design/tokens.css`: Arc theme tokens.
 - `frontend/src/components/landing`: the scroll-driven 3D scene (`ShardScene`, `shards`, `scene-store`), the sections,
   and the agent stage (`AgentStage`, `Agents`).
-- `frontend/public/models/Xbot.glb`: agent model (Mixamo "Beta" android, from the three.js examples).
+
 - `contract/`, `agent/`, `backend/`: each has its own README.
 - `docs/`: decisions, design plan, inspiration notes, and the full build spec.

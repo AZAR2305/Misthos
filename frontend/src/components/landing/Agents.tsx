@@ -80,11 +80,6 @@ const SCENARIOS: Scenario[] = [
   },
 ];
 
-const RUN_IT = [
-  { who: "Supplier agent", cmd: "pnpm --filter @misthos/agent supplier" },
-  { who: "Buyer agent", cmd: "pnpm --filter @misthos/agent buyer" },
-];
-
 export function Agents({ compact = false }: { compact?: boolean }) {
   const section = useRef<HTMLElement>(null);
   const [near, setNear] = useState(false);
@@ -96,7 +91,6 @@ export function Agents({ compact = false }: { compact?: boolean }) {
   const [running, setRunning] = useState(false);
   const [settled, setSettled] = useState(false);
   const [which, setWhich] = useState(SCENARIOS[0]!.id);
-  const [copied, setCopied] = useState<string | null>(null);
   const timers = useRef<number[]>([]);
   const counter = useRef(1);
   const played = useRef(false);
@@ -166,16 +160,6 @@ export function Agents({ compact = false }: { compact?: boolean }) {
     return () => clearTimeout(t);
   }, [near, visible]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const copy = async (cmd: string) => {
-    try {
-      await navigator.clipboard.writeText(cmd);
-      setCopied(cmd);
-      window.setTimeout(() => setCopied(null), 1600);
-    } catch {
-      /* clipboard blocked: the command is still on screen */
-    }
-  };
-
   return (
     <section id={compact ? undefined : "agents"} ref={section} className={compact ? "agents agents-compact" : "agents"}>
       {!compact && (
@@ -238,22 +222,6 @@ export function Agents({ compact = false }: { compact?: boolean }) {
             Reset
           </button>
         </div>
-      </div>
-
-      <div className="runit">
-        <p className="sec-eyebrow">Run the real agents</p>
-        <ul>
-          {RUN_IT.map((r) => (
-            <li key={r.cmd}>
-              <span className="muted">{r.who}</span>
-              <code>{r.cmd}</code>
-              <button type="button" className="btn btn-ghost btn-sm" onClick={() => void copy(r.cmd)}>
-                {copied === r.cmd ? "Copied" : "Copy"}
-              </button>
-            </li>
-          ))}
-        </ul>
-        <p className="muted tiny">Each agent needs its own Circle wallet and a model key.</p>
       </div>
     </section>
   );

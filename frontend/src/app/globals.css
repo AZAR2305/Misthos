@@ -26,8 +26,7 @@
 }
 
 :root {
-  /* Figtree for body and headings, as in the Lovable Team Directory template the colours come from (docs/DECISIONS.md). */
-  --font-display: "Figtree", ui-sans-serif, system-ui, sans-serif;
+  /* Bricolage Grotesque for headings, Plus Jakarta Sans for text (docs/DECISIONS.md). */
   --page-gutter: clamp(20px, 5vw, 72px);
 }
 

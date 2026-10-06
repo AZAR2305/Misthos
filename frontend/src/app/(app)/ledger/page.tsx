@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useChainData } from "@/components/app/ChainData";
 import { RequireWallet } from "@/components/app/RequireWallet";
@@ -111,7 +112,7 @@ function DecisionLog() {
       <Empty
         title="No agent is running"
         body="Each agent keeps its own log while it runs. Start an agent to see what it decides and why."
-        action={<span className="code">pnpm --filter @misthos/agent buyer</span>}
+        action={<Link className="link" href="/docs/run-the-agents">How to start an agent</Link>}
       />
     );
   }

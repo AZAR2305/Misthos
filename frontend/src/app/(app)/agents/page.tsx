@@ -83,9 +83,7 @@ function Agent({ role }: { role: "supplier" | "buyer" }) {
         </>
       ) : h.state === "offline" ? (
         <>
-          <p className="muted tiny">Start it on the machine that holds its wallet:</p>
-          <CodeBlock>{`pnpm --filter @misthos/agent ${role}`}</CodeBlock>
-          <p className="muted tiny">First check what is missing with <span className="inline-code">pnpm --filter @misthos/agent doctor</span>. Setup steps: <Link className="link" href="/docs/run-the-agents">Run the agents</Link>.</p>
+          <p className="muted tiny">Your agent is not running. Start it on the machine that holds its wallet: <Link className="link" href="/docs/run-the-agents">Run the agents</Link>.</p>
         </>
       ) : null}
     </Card>

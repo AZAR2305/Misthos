@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { Card, Notice } from "@/components/ui/kit";
 import { useAgentHealth } from "@/lib/hooks";
 
@@ -32,7 +33,7 @@ export function AgentPanel({ role, url }: { role: "supplier" | "buyer"; url: str
           <p className="muted">
             {role === "supplier" ? "A supplier agent can negotiate for you." : "A buyer agent can plan and settle for you."} You can do everything by hand without one.
           </p>
-          <span className="code">{`pnpm --filter @misthos/agent ${role}`}</span>
+          <Link className="link" href="/docs/run-the-agents">How to start it</Link>
           <button type="button" className="btn btn-ghost btn-sm" onClick={h.recheck}>Check again</button>
         </>
       ) : (

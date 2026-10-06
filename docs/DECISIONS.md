@@ -251,7 +251,15 @@ middle to hand over an offer, a thumbs up and a jump on accept, a dance on settl
 - **Claim links (spec 8.15).** Buyer creates a standing offer for an approved invoice; the link is a 128-bit bearer token (only its SHA-256 is stored, shown once). The supplier needs no account: the page shows the terms and the payout address, which is the invoice's own supplier wallet fixed on-chain, and only that wallet's signature is accepted, so a forwarded link cannot redirect money. One claim wins atomically. Nothing is paid until the buyer reviews and settles with the stored signature. End-to-end test: cleared at 0%, EarlySettled on a real local chain. Not done from 8.15: first-payment-to-a-new-address human confirmation (every payment is a human click in the UI today) and email-created managed wallets (needs a Circle API key).
 - **UI.** Provenance labels are pills (On-chain, Agent), not braces. The agent companion shows only on the home pages and when something happens. New `/judge` page with a click-in-order tour, live figures and an honest built / pending / not-built list. `docs/HACKATHON_SCOPE.md` compares the project with what Tameion asked.
 
-## Realistic android, head fix, no contract banner (6 Oct 2026)
-- **Model.** The agents are now `Xbot.glb` (Mixamo "Beta" android, as shipped in the three.js examples) instead of the cartoon RobotExpressive: a realistic humanoid, still real-time 3D. It has fewer clips (idle, walk, agree, headShake, sad_pose, run, sneak_pose), so Wave, ThumbsUp, Jump and Dance all play the nod ("agree"); there are no face morphs, so the face states no longer change the face. VERIFY: Xbot licence (Mixamo, free for use in projects); confirm before launch. The old GLB stays in `public/models` for now.
-- **Head spin.** Procedural offsets (look-at, typing posture) were multiplied onto bones every frame. A bone the clip does not rewrite kept the offset and the head turned round and down. Offsets are now undone before they are re-applied, so they cannot accumulate.
-- **Banner.** The "contract is not live on this network yet" notice on the app pages is removed. The error banner for a failing chain read stays.
+## Agent core, light/dark toggle, fonts, cleaner UI (6 Oct 2026)
+- **Agent model.** The cartoon robot and the human/android GLBs are gone. Each agent is now an abstract "agent core" built
+  in code (three.js primitives, no model file): a dark glass shell with a visor and two eyes, gyro rings, an antenna node and,
+  when it stands alone, USDC-style coins in orbit. It floats, follows the cursor, nods, shakes, hops and spins, walks (glides)
+  between positions and shows faces through the eyes (angry, surprised, sad). It takes the theme colours (mint = supplier,
+  violet = buyer). Rationale: a person or a toy robot does not say "payments agent"; a coin-and-ring object does.
+- **Head spin (historical).** Procedural bone offsets used to pile up each frame; no bones are driven any more.
+- **Theme.** The Theme menu is now one light/dark switch (sun/moon). Stored choice, `?theme=` and the system setting still apply.
+- **Fonts.** Bricolage Grotesque for headings, Plus Jakarta Sans for text (both via `@fontsource`, no network at build).
+- **Nav.** Docs is a tab of its own; "More" only appears once a side is chosen and holds the other public pages.
+- **Removed from the UI.** The "contract not live" banner, the Judge tour and Developer kit pages, and the terminal commands
+  that were shown to visitors (they point at the Docs instead).
