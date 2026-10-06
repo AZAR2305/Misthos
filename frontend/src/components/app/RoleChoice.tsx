@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import type { PointerEvent } from "react";
+import { useState, type PointerEvent } from "react";
 import type { Role } from "@/lib/storage";
 import { Crystals } from "./Gate";
 
@@ -66,8 +66,9 @@ function Art({ role }: { role: Role }) {
 }
 
 /** Shown right after a wallet connects, until a side is chosen. The choice is remembered per wallet and is never binding. */
-export function RoleChoice({ address, onChoose }: { address: string; onChoose(role: Role): void }) {
+export function RoleChoice({ address, onChoose }: { address: string; onChoose(role: Role): void | null | string | Promise<void | null | string> }) {
   const router = useRouter();
+  const [error, setError] = useState<string | null>(null);
   return (
     <section className="gate role-stage" aria-labelledby="role-title">
       <Crystals />
@@ -77,6 +78,7 @@ export function RoleChoice({ address, onChoose }: { address: string; onChoose(ro
           How will you use Misthos?
         </h1>
         <p className="lead gate-lead">Pick the side that fits today. You can switch from the top bar whenever you like; the same wallet can be both.</p>
+        {error && <p className="field-error" role="alert">{error}</p>}
         <div className="role-cards">
           {ROLES.map((r, i) => (
             <button
@@ -87,8 +89,9 @@ export function RoleChoice({ address, onChoose }: { address: string; onChoose(ro
               style={{ ["--d" as string]: `${120 + i * 110}ms` }}
               onPointerMove={tilt}
               onPointerLeave={untilt}
-              onClick={() => {
-                onChoose(r.role);
+              onClick={async () => {
+                const refused = await onChoose(r.role);
+                if (typeof refused === "string") return setError(refused);
                 router.push(ROLE_HOME[r.role]);
               }}
             >

@@ -105,7 +105,8 @@
 @media (max-width: 960px) {
   .hero { min-height: auto; }
   .hero-copy { max-width: none; padding-top: 96px; }
-  .hero-guide { position: relative; inset: auto; height: min(92vw, 520px); order: 2; margin: 8px calc(var(--page-gutter) * -1) 0; }
+  .hero-agent { inset: 0 0 clamp(150px, 40vw, 190px) 0; }
+  .hero-guide { position: relative; inset: auto; height: min(125vw, 640px); order: 2; margin: 8px calc(var(--page-gutter) * -1) 0; }
   .hero-say { position: absolute; left: var(--page-gutter); right: var(--page-gutter); top: auto; bottom: 4px; width: auto;
     background: color-mix(in srgb, var(--color-surface-1) 86%, transparent); backdrop-filter: blur(10px);
     border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: 14px 16px; }
@@ -213,7 +214,8 @@
 /* ---------- small screens ---------- */
 @media (max-width: 860px) {
   .nav-end { gap: 10px; }
-  .nav-cta { font-size: 0.9rem; }
+  .nav-cta { font-size: 0.9rem; white-space: nowrap; }
+  .nav .theme-name { display: none; }
   .hero-foot { grid-template-columns: 1fr; justify-items: start; gap: 12px; }
   .hero-scroll, .hero-net { grid-column: 1; justify-self: start; }
   .hero-latest { grid-row: auto; }
@@ -221,4 +223,9 @@
   .row, .steps-list .row { grid-template-columns: 1fr; }
   .agents, .evidence { grid-template-columns: 1fr; }
   .proof, .who-grid { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 520px) {
+  .nav { grid-template-columns: 1fr auto; }
+  .nav-mark { display: none; }
 }
