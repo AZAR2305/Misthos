@@ -26,8 +26,8 @@
 }
 
 :root {
-  /* Display face for the landing. Chakra Petch is free (OFL) and close to the squared techno feel of the reference. */
-  --font-display: "Chakra Petch", var(--font-sans);
+  /* Figtree for body and headings, as in the Lovable Team Directory template the colours come from (docs/DECISIONS.md). */
+  --font-display: "Figtree", ui-sans-serif, system-ui, sans-serif;
   --page-gutter: clamp(20px, 5vw, 72px);
 }
 
@@ -47,11 +47,6 @@ body {
   font-variant-numeric: tabular-nums;
   overflow-x: hidden;
 }
-
-/* Lenis */
-html.lenis, html.lenis body { height: auto; }
-.lenis.lenis-smooth { scroll-behavior: auto !important; }
-.lenis.lenis-stopped { overflow: hidden; }
 
 :focus-visible {
   outline: 2px solid var(--color-focus);

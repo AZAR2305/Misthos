@@ -7,7 +7,7 @@ import { pathToFileURL } from "node:url";
 
 const [dirArg, ...pages] = process.argv.slice(2);
 const dir = path.resolve(dirArg);
-const THEMES = ["violet-night", "violet-light", "midnight-coral", "emerald"];
+const THEMES = ["mint", "mint-dark"];
 const browser = await chromium.launch({ channel: "msedge" });
 for (const p of pages) {
   const cells = THEMES.map(

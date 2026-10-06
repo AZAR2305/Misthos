@@ -190,3 +190,21 @@ middle to hand over an offer, a thumbs up and a jump on accept, a dance on settl
 - Floating crystals on the gate are CSS shapes, not WebGL, so the app pages stay light. Entrance and hover motion is CSS only and is switched off under prefers-reduced-motion.
 - `--role-supplier` and `--role-buyer` are new theme variables (same hues as the agents on the landing page).
 - VERIFY: Magic Patterns was used for layout ideas only; nothing was copied from its output.
+
+## Landing rebuilt from the Locomotive recording; mint theme from a Lovable template (7 Oct 2026)
+- **Layout reference:** `docs/reference/Recording 2026-10-06 192725.mp4` (10 s): lisa.locomotive.ca, a light grey studio, one large 3D
+  character, a minimal header (wordmark left, mark centre, one link right), big plain type, and an assistant that says short lines
+  after "[click] to start". We took the pattern only: no Locomotive name, copy, character or assets. The hero is now one agent
+  (CC0 RobotExpressive, bare, full body) on a studio gradient; click starts a five-line tour (typed text, a pose per line, the
+  agent changes side colour when it talks about buyers). Nothing plays before the first click; reduced motion turns off typing and
+  auto-advance. The crystal field, the pinned horizontal carousel, Lenis smooth scroll and the post-processing stack were removed;
+  the rest of the page is plain ruled rows.
+- **Colours and type:** the product owner asked for the look of the Lovable "Team Directory" template
+  (https://team-directory-template.lovable.app). Its published stylesheet defines a mint primary (oklch 82.34% .1385 148.16 =
+  #82de91) on stone neutrals, Figtree, and a dark mode that follows the system setting. We converted those tokens to hex in
+  `design/themes.css` as two themes, `mint` (default, light) and `mint-dark` (chosen automatically when the system is dark and no
+  choice is saved). The four earlier themes were removed. Fonts: Figtree via `@fontsource/figtree`.
+- **Deviations from CLAUDE.md:** (1) "green = status only": the template's primary is green, so the primary fill and links are
+  mint/green; status "ok" is a different, darker green and always has a word or mark. Agents stay violet. (2) Spec 10.2 fonts
+  (Chakra Petch/Circular) replaced by Figtree. VERIFY with the product owner if Arc branding must come back.
+- All 15 contrast pairs pass in both themes (`pnpm contrast`); `pnpm e2e:local` passes with the new theme.

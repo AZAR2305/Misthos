@@ -74,18 +74,29 @@ function useShadowTexture() {
   }, []);
 }
 
-function Robot({
+export function Robot({
   role,
   state,
   active,
   onSelect,
   onHover,
+  home = HOME[role],
+  yaw = YAW[role],
+  height = AGENT_HEIGHT,
+  bare = false,
 }: {
   role: Role;
   state: AgentState;
   active: boolean;
   onSelect: () => void;
   onHover: (over: boolean) => void;
+  /** Stage x the agent stands at (default: its side of the two-agent stage). */
+  home?: number;
+  /** Resting body yaw. */
+  yaw?: number;
+  height?: number;
+  /** No platform, ring or prop: a single character on its own. */
+  bare?: boolean;
 }) {
   const group = useRef<THREE.Group>(null!);
   const body = useRef<THREE.Group>(null!);
@@ -136,9 +147,9 @@ function Robot({
     const box = new THREE.Box3().setFromObject(model);
     const h = box.max.y - box.min.y;
     if (!Number.isFinite(h) || h <= 0) return { s: 1, y: 0 };
-    const s = AGENT_HEIGHT / h;
+    const s = height / h;
     return { s, y: -box.min.y * s };
-  }, [model]);
+  }, [model, height]);
 
   const { actions, mixer } = useAnimations(animations, body);
   void mixer;
@@ -162,8 +173,8 @@ function Robot({
   const current = useRef<{ action: THREE.AnimationAction; once: boolean } | null>(null);
   const walking = useRef(false);
   const dir = useRef(1);
-  const targetX = useRef<number>(HOME[role]);
-  const posX = useRef<number>(HOME[role]);
+  const targetX = useRef<number>(home);
+  const posX = useRef<number>(home);
   const nextAmbient = useRef(3 + (role === "buyer" ? 2.5 : 0));
   const look = useRef({ y: 0, x: 0 });
   const tmpQ = useMemo(() => new THREE.Quaternion(), []);
@@ -256,7 +267,7 @@ function Robot({
     }
 
     // --- body yaw: face the way it walks, otherwise toward the counterpart and a little toward the cursor ---
-    const want = walking.current ? dir.current * 1.25 : YAW[role] + sceneState.pointer.x * 0.28;
+    const want = walking.current ? dir.current * 1.25 : yaw + sceneState.pointer.x * 0.28;
     g.rotation.y += (want - g.rotation.y) * (1 - Math.exp(-dt * 6));
 
     // --- head: follows the cursor (applied after the mixer, which rewrites the bone every frame) ---
@@ -274,8 +285,8 @@ function Robot({
   return (
     <group
       ref={group}
-      position={[HOME[role], 0, 0]}
-      rotation={[0, YAW[role], 0]}
+      position={[home, 0, 0]}
+      rotation={[0, yaw, 0]}
       onPointerOver={(e) => {
         e.stopPropagation();
         document.body.style.cursor = "pointer";
@@ -299,16 +310,19 @@ function Robot({
         <circleGeometry args={[1.5, 40]} />
         <meshBasicMaterial map={shadowTex} transparent depthWrite={false} />
       </mesh>
-      <mesh position={[0, 0.02, 0]} rotation-x={-Math.PI / 2}>
-        <circleGeometry args={[1.45, 64]} />
-        <meshStandardMaterial color={th.platform} metalness={0.4} roughness={0.45} emissive={th.platformEmissive} emissiveIntensity={0.7} />
-      </mesh>
-      <mesh position={[0, 0.035, 0]} rotation-x={-Math.PI / 2}>
-        <ringGeometry args={[1.38, 1.45, 64]} />
-        <meshBasicMaterial color={glow} toneMapped={false} opacity={active ? 1 : 0.55} transparent />
-      </mesh>
-
-      {role === "supplier" ? <InvoiceProp accent={tint} /> : <TreasuryProp accent={tint} />}
+      {!bare && (
+        <>
+          <mesh position={[0, 0.02, 0]} rotation-x={-Math.PI / 2}>
+            <circleGeometry args={[1.45, 64]} />
+            <meshStandardMaterial color={th.platform} metalness={0.4} roughness={0.45} emissive={th.platformEmissive} emissiveIntensity={0.7} />
+          </mesh>
+          <mesh position={[0, 0.035, 0]} rotation-x={-Math.PI / 2}>
+            <ringGeometry args={[1.38, 1.45, 64]} />
+            <meshBasicMaterial color={glow} toneMapped={false} opacity={active ? 1 : 0.55} transparent />
+          </mesh>
+          {role === "supplier" ? <InvoiceProp accent={tint} /> : <TreasuryProp accent={tint} />}
+        </>
+      )}
 
       {state.bubble && (
         <Html position={[0, AGENT_HEIGHT + 0.55, 0]} center distanceFactor={7} zIndexRange={[20, 0]} className="stage-bubble-wrap">
@@ -423,7 +437,7 @@ function Channel({ message, pulseKey }: { message: Message | null; pulseKey: num
   );
 }
 
-class StageBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+export class StageBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
   state = { failed: false };
   static getDerivedStateFromError() {
     return { failed: true };
@@ -447,7 +461,7 @@ export interface StageProps {
   visible: boolean;
 }
 
-function Lights() {
+export function Lights() {
   const th = THEMES[useThemeId()].scene;
   const r = th.robot;
   return (

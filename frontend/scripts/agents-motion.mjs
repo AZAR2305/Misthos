@@ -5,7 +5,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 const base = process.argv[2] ?? "http://localhost:3000";
-const theme = process.argv[3] ?? "violet-night";
+const theme = process.argv[3] ?? "mint";
 const out = path.resolve("shots", "motion");
 fs.mkdirSync(out, { recursive: true });
 const browser = await chromium.launch({ channel: "msedge", args: ["--use-angle=d3d11", "--enable-gpu", "--ignore-gpu-blocklist"] });

@@ -8,7 +8,7 @@ import { pathToFileURL } from "node:url";
 const base = process.argv[2] ?? "http://localhost:3000";
 const out = path.resolve("shots", "themes");
 fs.mkdirSync(out, { recursive: true });
-const THEMES = ["emerald", "violet-night", "violet-light", "midnight-coral"];
+const THEMES = ["mint", "mint-dark"];
 const SCREENS = [
   { id: "hero", url: "/", scroll: () => 0, wait: 4500 },
   { id: "ring", url: "/", scroll: () => document.getElementById("steps").offsetTop + 320, wait: 4500 },

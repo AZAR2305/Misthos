@@ -1,9 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { ConnectButton } from "@/components/wallet/ConnectButton";
 import { ThemePicker } from "@/components/ThemePicker";
-import { onTick } from "./scene-store";
 
 export function ArcGlyph({ size = 22 }: { size?: number }) {
   // Placeholder arch mark. Replace with the official Arc vector once it is verified (docs/DECISIONS.md).
@@ -14,72 +13,31 @@ export function ArcGlyph({ size = 22 }: { size?: number }) {
   );
 }
 
-const LINKS = [
-  { href: "#why", label: "Why now" },
-  { href: "#steps", label: "How it works" },
-  { href: "#who", label: "Who it is for" },
-  { href: "#agents", label: "The agents" },
-  { href: "/stats", label: "Live stats" },
-  { href: "/kit", label: "Developer kit" },
-  { href: "#proof", label: "Proof" },
-];
-
+/** Wordmark left, the mark in the middle, the way in on the right. Nothing else. */
 export function Nav() {
-  const [open, setOpen] = useState(false);
-  const header = useRef<HTMLElement>(null);
-
+  const [scrolled, setScrolled] = useState(false);
   useEffect(() => {
-    let last: boolean | null = null;
-    return onTick(({ scrollY }) => {
-      const scrolled = scrollY > 40;
-      if (scrolled !== last && header.current) {
-        last = scrolled;
-        header.current.dataset.scrolled = String(scrolled);
-      }
-    });
+    const on = () => setScrolled(window.scrollY > 24);
+    on();
+    window.addEventListener("scroll", on, { passive: true });
+    return () => window.removeEventListener("scroll", on);
   }, []);
 
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open]);
-
   return (
-    <header ref={header} className="nav" data-scrolled="false">
+    <header className="nav" data-scrolled={scrolled}>
       <a href="#top" className="nav-brand" aria-label="Misthos home">
-        <ArcGlyph />
-        <span>MISTHOS</span>
+        Misthos<sup>®</sup>
       </a>
-      <button
-        type="button"
-        className="nav-burger"
-        aria-label={open ? "Close menu" : "Open menu"}
-        aria-expanded={open}
-        aria-controls="site-menu"
-        onClick={() => setOpen((v) => !v)}
-      >
-        <span />
-        <span />
-      </button>
-      <ThemePicker />
-      <ConnectButton compact />
-      <a href="/app" className="nav-cta">
-        Open app
+      <a href="#top" className="nav-mark" aria-label="Back to top">
+        <ArcGlyph size={26} />
       </a>
-      <nav id="site-menu" className="nav-menu" data-open={open} aria-hidden={!open}>
-        <ul>
-          {LINKS.map((l, i) => (
-            <li key={l.href}>
-              <a href={l.href} tabIndex={open ? 0 : -1} onClick={() => setOpen(false)}>
-                <span className="mono">//{String(i + 1).padStart(2, "0")}</span>
-                {l.label}
-              </a>
-            </li>
-          ))}
-        </ul>
-      </nav>
+      <div className="nav-end">
+        <ThemePicker />
+        <ConnectButton compact />
+        <a href="/app" className="nav-cta">
+          Open app
+        </a>
+      </div>
     </header>
   );
 }

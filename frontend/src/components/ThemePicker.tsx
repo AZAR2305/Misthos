@@ -5,10 +5,8 @@ import { THEMES, THEME_IDS, setTheme, useThemeId, type ThemeId } from "@/lib/the
 
 /** Small swatch of a theme's three key colours. */
 const SWATCH: Record<ThemeId, [string, string, string]> = {
-  emerald: ["#000000", "#2fcf86", "#7cebb0"],
-  "violet-night": ["#06050b", "#8b6bff", "#c8f560"],
-  "violet-light": ["#ffffff", "#6a38f0", "#0d0a1a"],
-  "midnight-coral": ["#050914", "#35cfd8", "#ff6b57"],
+  mint: ["#fafaf9", "#82de91", "#1c1917"],
+  "mint-dark": ["#100f0e", "#82de91", "#fafaf9"],
 };
 
 /** Switches the whole site (page, 3D scene and agents) between colour themes and remembers the choice. */

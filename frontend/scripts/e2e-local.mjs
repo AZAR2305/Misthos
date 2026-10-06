@@ -233,7 +233,7 @@ async function main() {
 
   if (process.env.E2E_THEMES) {
     log("11. the real app pages in every colour theme");
-    const themes = ["violet-night", "violet-light", "midnight-coral", "emerald"];
+    const themes = ["mint", "mint-dark"];
     for (const t of themes) {
       for (const [name, p, who] of [["invoice", `/invoices/${invoiceId}`, buyer], ["buyer", "/buyer", buyer], ["stats", "/stats", buyer], ["new", "/supplier/invoices/new", supplier]]) {
         await page.evaluate((x) => window.__connectAs(x), who);
