@@ -104,6 +104,7 @@ contract InvoiceBookTest is Test {
             // forge-lint: disable-next-line(unsafe-typecast) -- bounded by the test inputs
             invoiceId: id,
             rateBps: rate,
+            // forge-lint: disable-next-line(unsafe-typecast) -- bounded by the test inputs
             expiry: uint64(block.timestamp + expiryIn),
             nonce: nonce
         });
