@@ -1,0 +1,91 @@
+:root {
+  /* Source colors (VERIFY: Brandfetch extraction of arc.network) */
+  --arc-bossanova: #663A73;
+  --arc-cello: #1B3158;
+  --arc-sail: #A7D9FA;
+  /* Cello scale (700 is source; others derived) */
+  --cello-950: #0A1428;
+  --cello-900: #0F1D36;
+  --cello-800: #152745;
+  --cello-700: #1B3158;
+  --cello-600: #2A4474;
+  --cello-500: #3F5C92;
+  /* Sail scale (300 is source; others derived) */
+  --sail-50:  #F2F9FE;
+  --sail-100: #E4F3FD;
+  --sail-200: #CBE8FB;
+  --sail-300: #A7D9FA;
+  --sail-400: #7FC4F2;
+  --sail-500: #4FA8E3;
+  /* Bossanova scale (700 is source; others derived) */
+  --boss-900: #2B1833;
+  --boss-800: #442650;
+  --boss-700: #663A73;
+  --boss-600: #7F4D8D;
+  --boss-500: #9C6AAA;
+  --boss-300: #CDB1D6;
+  --boss-100: #F0E6F3;
+  /* Status (derived, tuned for the dark canvas) */
+  --ok-400:   #55D6A8;
+  --warn-400: #F2C14E;
+  --bad-400:  #F07178;
+  /* Semantic tokens (dark is the default theme) */
+  --color-bg:            var(--cello-900);
+  --color-surface-1:     var(--cello-800);
+  --color-surface-2:     var(--cello-700);
+  --color-border:        var(--cello-600);
+  --color-text:          #FFFFFF;
+  --color-text-muted:    #B8C7DD;
+  --color-money:         var(--sail-300);
+  --color-primary:       var(--sail-300);
+  --color-on-primary:    var(--cello-900);
+  --color-agent-bg:      var(--boss-800);
+  --color-agent-border:  var(--boss-600);
+  --color-agent-text:    #FFFFFF;
+  --color-focus:         var(--sail-300);
+  --color-ok:            var(--ok-400);
+  --color-warn:          var(--warn-400);
+  --color-bad:           var(--bad-400);
+  /* Type */
+  --font-sans: "Circular", "Circularxx", "DM Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --text-display: clamp(2.5rem, 5vw + 1rem, 4.25rem);  /* 40→68px */
+  --text-h1: clamp(2rem, 2.5vw + 1rem, 2.75rem);
+  --text-h2: 1.75rem;
+  --text-h3: 1.25rem;
+  --text-body: 1rem;
+  --text-small: 0.875rem;
+  --text-micro: 0.75rem;
+  /* Space (4px base) */
+  --space-1: 4px;  --space-2: 8px;  --space-3: 12px; --space-4: 16px;
+  --space-6: 24px; --space-8: 32px; --space-12: 48px; --space-18: 72px;
+  /* Radius varies by hierarchy (do not use one radius everywhere) */
+  --radius-xs: 4px;     /* tags, table cells */
+  --radius-sm: 8px;     /* inputs, buttons */
+  --radius-md: 12px;    /* cards, panels */
+  --radius-lg: 20px;    /* hero and curve panel */
+  --radius-pill: 999px; /* status chips only */
+  /* Elevation: borders and surface steps first; one shadow for popovers */
+  --shadow-pop: 0 12px 32px rgb(5 10 25 / 0.45);
+  /* Motion */
+  --dur-fast: 120ms; --dur-base: 200ms; --dur-slow: 320ms;
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+/* Light theme: stretch goal (CUT FIRST) */
+[data-theme="light"] {
+  --color-bg:           #F6FAFD;
+  --color-surface-1:    #FFFFFF;
+  --color-surface-2:    var(--sail-50);
+  --color-border:       #D5E2EE;
+  --color-text:         var(--cello-900);
+  --color-text-muted:   #4A6082;
+  --color-money:        var(--cello-700);
+  --color-primary:      var(--cello-700);
+  --color-on-primary:   #FFFFFF;
+  --color-agent-bg:     var(--boss-100);
+  --color-agent-border: var(--boss-500);
+  --color-agent-text:   var(--boss-900);
+}
+@media (prefers-reduced-motion: reduce) {
+  * { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }
+}
