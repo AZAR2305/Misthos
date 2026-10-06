@@ -35,7 +35,7 @@ const KEYS = {
   meta: "misthos.meta.v1",
   obligations: "misthos.obligations.v1",
   offers: "misthos.offers.v1",
-  role: "misthos.role.v1",
+  role: "misthos.roles.v1",
   connected: "misthos.connected.v1",
 } as const;
 
@@ -89,7 +89,22 @@ const EMPTY_OFFERS: StoredOffers = {};
 export const useInvoiceMeta = () => useStored(KEYS.meta, metaSchema, EMPTY_META);
 export const useObligations = () => useStored(KEYS.obligations, obligationSchema, EMPTY_OBLIGATIONS);
 export const useIssuedOffers = () => useStored(KEYS.offers, offersSchema, EMPTY_OFFERS);
-export const useRole = () => useStored<z.infer<typeof roleSchema> | null>(KEYS.role, roleSchema.nullable(), null);
+export type Role = z.infer<typeof roleSchema>;
+const rolesSchema = z.record(z.string(), roleSchema);
+const EMPTY_ROLES: Record<string, Role> = {};
+
+/** The side a wallet chose (supplier or buyer), remembered per address on this device. Null until they choose. */
+export function useRole(address?: string): [Role | null, (next: Role) => void, boolean] {
+  const [all, setAll, ready] = useStored(KEYS.role, rolesSchema, EMPTY_ROLES);
+  const key = address?.toLowerCase();
+  const set = useCallback(
+    (next: Role) => {
+      if (key) setAll({ ...read(KEYS.role, rolesSchema, EMPTY_ROLES), [key]: next });
+    },
+    [key, setAll],
+  );
+  return [key ? (all[key] ?? null) : null, set, ready];
+}
 
 export const wasConnected = () => read(KEYS.connected, z.boolean(), false);
 export const rememberConnected = (v: boolean) => write(KEYS.connected, v);

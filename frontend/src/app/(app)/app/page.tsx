@@ -7,15 +7,28 @@ import { useWallet } from "@/components/wallet/WalletProvider";
 import { CONFIG } from "@/lib/config";
 import { useAgentHealth, useUsdcBalance } from "@/lib/hooks";
 import { useRole } from "@/lib/storage";
+import { WalletGate } from "@/components/app/Gate";
+import { ROLE_HOME, RoleChoice } from "@/components/app/RoleChoice";
+import { Skeleton } from "@/components/ui/kit";
 
 /** The front door: who you are, what to set up, and what a payment looks like. Every check reads real state. */
 export default function StartHere() {
   const w = useWallet();
+  const [role, setRole, roleReady] = useRole(w.address);
+  if (w.status !== "connected" || !w.address) return w.status === "connecting" ? <Skeleton rows={4} /> : <WalletGate />;
+  if (!roleReady) return <Skeleton rows={4} />;
+  if (!role) return <RoleChoice address={w.address} onChoose={setRole} />;
+  return <Overview role={role} />;
+}
+
+function Overview({ role }: { role: "supplier" | "buyer" }) {
+  const w = useWallet();
+  const [, setRole] = useRole(w.address);
+  const other = role === "supplier" ? "buyer" : "supplier";
   const chain = useChainData();
   const { balance } = useUsdcBalance(w.address);
   const buyerAgent = useAgentHealth(CONFIG.buyerAgentUrl);
   const supplierAgent = useAgentHealth(CONFIG.supplierAgentUrl);
-  const [role, setRole] = useRole();
 
   const checks = [
     { done: w.status === "connected", text: "Connect a wallet", help: "Use the button at the top right. A browser wallet signs invoices and payments.", action: w.status === "connected" ? undefined : <button type="button" className="btn btn-primary btn-sm" onClick={w.openModal}>Connect wallet</button> },
@@ -39,35 +52,22 @@ export default function StartHere() {
         }
       />
 
-      <div className="role-grid">
-        <section className="role-tile">
-          <p className="ptag">{"{supplier}"}</p>
-          <h3>I am owed money</h3>
-          <ul>
-            <li>Create an invoice and sign it once.</li>
-            <li>Offer early payment from 0%, and see the price in dollars first.</li>
-            <li>Get paid in USDC the moment the buyer accepts.</li>
-          </ul>
-          <div className="actions-row">
-            <Link className="btn btn-primary" href="/supplier" onClick={() => setRole("supplier")}>Open supplier dashboard</Link>
-            <Link className="btn btn-ghost" href="/supplier/invoices/new">New invoice</Link>
-          </div>
-        </section>
-        <section className="role-tile">
-          <p className="ptag">{"{buyer}"}</p>
-          <h3>I owe money</h3>
-          <ul>
-            <li>Approve invoices when the work is done.</li>
-            <li>Pay early with spare cash and keep the discount.</li>
-            <li>Set caps so nothing can move more than you allow.</li>
-          </ul>
-          <div className="actions-row">
-            <Link className="btn btn-primary" href="/buyer" onClick={() => setRole("buyer")}>Open buyer dashboard</Link>
-            <Link className="btn btn-ghost" href="/buyer/approvals">Approvals</Link>
-          </div>
-        </section>
-      </div>
-      {role && <p className="muted tiny">You last chose {role}. You can use both sides with the same wallet.</p>}
+      <section className="card welcome" data-role={role}>
+        <div>
+          <p className="ptag">{"{" + role + "}"}</p>
+          <h2>{role === "supplier" ? "You are set up as a supplier" : "You are set up as a buyer"}</h2>
+          <p className="muted">
+            {role === "supplier"
+              ? "Create and sign invoices, then offer early payment from 0%."
+              : "Approve invoices, then pay early with spare cash and keep the discount."}
+          </p>
+        </div>
+        <div className="actions-row">
+          <Link className="btn btn-primary" href={ROLE_HOME[role]}>Open my {role} dashboard</Link>
+          <Link className="btn btn-ghost" href={role === "supplier" ? "/supplier/invoices/new" : "/buyer/approvals"}>{role === "supplier" ? "New invoice" : "Approvals"}</Link>
+          <button type="button" className="btn btn-ghost" onClick={() => { setRole(other); }}>Switch to {other}</button>
+        </div>
+      </section>
 
       <Card title="Your setup" aside={<span className="muted tiny">Live checks</span>}>
         <ul className="checklist">

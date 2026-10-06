@@ -12,6 +12,7 @@ import "../../design/themes.css";
 import "./globals.css";
 import "./landing.css";
 import "./app.css";
+import "./shell.css";
 import { Providers } from "@/components/Providers";
 import { NO_FLASH_SCRIPT } from "@/lib/themes";
 

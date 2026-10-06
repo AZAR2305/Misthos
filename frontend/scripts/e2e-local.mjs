@@ -115,11 +115,20 @@ async function main() {
   await page.goto(`${BASE}/app`, { waitUntil: "networkidle" });
   await page.evaluate((a) => window.__connectAs(a), supplier);
   await shot("01-start-here-disconnected");
-  await page.locator(".topbar button", { hasText: "Connect wallet" }).click();
-  await page.locator(".wallet-option", { hasText: "Test wallet" }).click();
+  check(await page.getByText("Get paid days after approval.").isVisible(), "a visitor with no wallet sees the connect gate");
+  await page.locator(".wallet-card", { hasText: "Test wallet" }).click();
   await page.locator(".wallet-pill").waitFor();
   check((await page.locator(".wallet-pill").innerText()).includes(supplier.slice(2, 6)), "wallet connected as the supplier");
-  await shot("02-start-here-connected");
+  await page.getByText("How will you use Misthos?").waitFor();
+  await sleep(900);
+  await shot("02-choose-your-side");
+  await page.locator(".role-card[data-role=supplier]").click();
+  await page.waitForURL(/\/supplier$/);
+  check(await page.locator(".role-switch button[data-role=supplier][aria-pressed=true]").isVisible(), "the header shows the supplier side after choosing it");
+  await page.goto(`${BASE}/app`, { waitUntil: "networkidle" });
+  await page.getByText("You are set up as a supplier").waitFor({ timeout: 15_000 });
+  check(true, "the choice is remembered for this wallet");
+  await shot("02b-overview-supplier");
 
   log("5. supplier: empty state, then create and sign an invoice");
   await page.goto(`${BASE}/supplier`, { waitUntil: "networkidle" });

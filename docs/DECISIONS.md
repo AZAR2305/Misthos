@@ -182,3 +182,11 @@ unverified Brandfetch extraction anyway (VERIFY against arc.io).
 tracking toward the cursor (only if the clips animate the head bone, so offsets cannot accumulate), walking to meet at the
 middle to hand over an offer, a thumbs up and a jump on accept, a dance on settlement, contact shadows, and per-theme skins
 (eyes glow in the action colour). Still labelled as an illustration with no numbers.
+
+## App shell: header-led, wallet gate, role choice (6 Oct 2026)
+- The left rail is replaced by a sticky glass header: brand, role-aware tabs with a sliding underline, network pill, a Supplier/Buyer switch, theme picker and the wallet control. The header tightens on scroll. Phones get the tabs as a second, scrollable row. Kit and GitHub links moved to a footer.
+- `/app` is now three states: no wallet shows the connect gate (headline, wallet cards for the wallets found in the browser or install links, three steps); a connected wallet with no side chosen shows the Supplier/Buyer choice; after that it is a short overview with the live setup checks. Pages that act for a person show a smaller version of the gate instead of an empty state.
+- The side is remembered per wallet address in localStorage (`misthos.roles.v1`, replacing the single global `misthos.role.v1`). Visiting a /supplier or /buyer page sets the side to match. It is a convenience for what the header shows; it grants nothing, and the contract still decides who may do what.
+- Floating crystals on the gate are CSS shapes, not WebGL, so the app pages stay light. Entrance and hover motion is CSS only and is switched off under prefers-reduced-motion.
+- `--role-supplier` and `--role-buyer` are new theme variables (same hues as the agents on the landing page).
+- VERIFY: Magic Patterns was used for layout ideas only; nothing was copied from its output.
