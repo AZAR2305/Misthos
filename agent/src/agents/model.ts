@@ -49,18 +49,18 @@ export interface AnthropicModelOptions {
 }
 
 export class AnthropicModel implements AgentModel {
-  private readonly client: Anthropic;
-  constructor(private readonly o: AnthropicModelOptions) {
-    if (!o.apiKey) throw new ModelUnavailableError("ANTHROPIC_API_KEY is not set.");
-    this.client = new Anthropic({ apiKey: o.apiKey });
-  }
+  private client?: Anthropic;
+  constructor(private readonly o: AnthropicModelOptions) {}
 
   async propose<T>({ role, task, snapshot, schema }: ProposeArgs<T>): Promise<T> {
+    // Without a key the process still runs and reports it on /health; every decision fails closed.
+    if (!this.o.apiKey) throw new ModelUnavailableError("The model is unavailable: ANTHROPIC_API_KEY is not set.");
+    this.client ??= new Anthropic({ apiKey: this.o.apiKey });
     let lastError = "unknown error";
     // Retry once with backoff (spec 8.5 #6), then fail closed.
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
-        const res = await this.client.messages.create(
+        const res = await this.client!.messages.create(
           {
             model: this.o.model,
             max_tokens: 800,

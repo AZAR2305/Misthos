@@ -149,6 +149,31 @@ export class BuyerAgent {
     return signAccept(this.d.wallet, this.d.domain, { invoiceId: id, rung: msg.rung, offerHash: offerHashOf(this.d.domain, msg.offer), ts: nowSec });
   }
 
+  /**
+   * POST /accept/:invoiceId: accept the current rung now, if it is still eligible. Same checks and the same settlement
+   * call (same idempotency key) as handleOffer, without the replay check, because the offer was already received.
+   */
+  async acceptHeld(invoiceId: string): Promise<{ settled: boolean; reasonCode?: ReasonCode; txHash?: string; transactionId?: string }> {
+    const held = this.offers.get(invoiceId);
+    if (!held) throw new ProtocolError("NOT_FOUND", "No offer is held for that invoice.");
+    const onchain = await this.d.chain.invoice(invoiceId as `0x${string}`);
+    if (!onchain) throw new ProtocolError("NOT_FOUND", "That invoice is not registered on chain.");
+    const candidate: Candidate = {
+      id: invoiceId,
+      face: held.face,
+      dueSec: held.dueSec,
+      status: onchain.status === "approved" ? "approved" : onchain.status === "disputed" ? "disputed" : onchain.status === "registered" ? "registered" : "settled",
+      offerRateBps: held.msg.offer.rateBps,
+      offerExpirySec: BigInt(held.msg.offer.expiry),
+    };
+    const ev = evaluateOffer(this.d.policy, candidate, BigInt(this.now()));
+    if (!ev.ok) return { settled: false, reasonCode: ev.reason };
+    const decision = this.log(invoiceId, { rateBps: held.msg.offer.rateBps }, null, "auto_apply", "Accepted the held offer on request.");
+    const r = await this.settle(held.msg, decision.hash);
+    this.needsApproval.delete(invoiceId);
+    return { settled: true, txHash: r.txHash, transactionId: r.transactionId };
+  }
+
   /** POST /plan: run the allocator over every held offer and the buyer's obligations. */
   async plan(cash: bigint, obligations: readonly Obligation[], spentToday = 0n): Promise<{ allocation: Allocation; flags: RiskProposal["risk_flags"] }> {
     const nowSec = BigInt(this.now());

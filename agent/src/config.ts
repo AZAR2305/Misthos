@@ -34,3 +34,31 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AgentConfig {
   }
   return parsed.data;
 }
+
+// ---- private per-agent configuration ----------------------------------------------------------------------------
+import { DEFAULT_FEE_BPS, DEFAULT_PREFS, toMinor, type BuyerPolicy, type SupplierPrefs } from "./core/index.js";
+
+const bps = (v: string | undefined, fallback: number) => (v === undefined || v === "" ? fallback : z.coerce.number().int().min(0).max(10_000).parse(v));
+const usdc = (v: string | undefined, fallback: bigint) => (v === undefined || v === "" ? fallback : toMinor(v));
+
+/** SUPPLIER_*: the supplier's own private bounds (spec 6 supplier_prefs). */
+export function supplierPrefsFromEnv(env: NodeJS.ProcessEnv = process.env): SupplierPrefs {
+  return {
+    costOfWaitingAprBps: bps(env.SUPPLIER_COST_OF_WAITING_APR_BPS, DEFAULT_PREFS.costOfWaitingAprBps),
+    maxRateBps: bps(env.SUPPLIER_MAX_RATE_BPS, DEFAULT_PREFS.maxRateBps),
+    startRateBps: bps(env.SUPPLIER_START_RATE_BPS, DEFAULT_PREFS.startRateBps),
+    stepBps: bps(env.SUPPLIER_STEP_BPS, DEFAULT_PREFS.stepBps),
+  };
+}
+
+/** BUYER_*: the buyer's private policy (spec 6 policies). The hurdle never leaves the buyer process. */
+export function buyerPolicyFromEnv(env: NodeJS.ProcessEnv = process.env): BuyerPolicy {
+  return {
+    hurdleAprBps: bps(env.BUYER_HURDLE_APR_BPS, 0),
+    liquidityFloor: usdc(env.BUYER_LIQUIDITY_FLOOR, 0n),
+    perInvoiceCap: usdc(env.BUYER_PER_INVOICE_CAP, 0n),
+    dailyCap: usdc(env.BUYER_DAILY_CAP, 0n),
+    humanAbove: usdc(env.BUYER_HUMAN_ABOVE, 0n),
+    feeBps: bps(env.FEE_BPS, DEFAULT_FEE_BPS),
+  };
+}

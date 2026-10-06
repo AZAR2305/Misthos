@@ -84,6 +84,8 @@ export interface SupplierDeps {
   buyerAgent: Address;
   verifier: SignatureVerifier;
   rungSeconds: number;
+  /** POST /pause/:invoiceId: checked before every rung. */
+  shouldStop?: (invoiceId: string) => boolean;
   now?: () => number;
 }
 
@@ -148,6 +150,10 @@ export class SupplierAgent {
     this.log(inv, snapshot, proposal, "auto_apply", `Accelerate now with a ladder of ${ladder.length} rungs from ${ladder[0]} to ${ladder.at(-1)} bps.`);
 
     for (let rung = 0; rung < ladder.length; rung++) {
+      if (this.d.shouldStop?.(inv.id)) {
+        this.log(inv, { rung }, null, "rejected", "Paused by a person before rung " + rung + ".");
+        return { kind: "hold_to_due", reason: "Paused by a person." };
+      }
       const rateBps = ladder[rung]!;
       let result: NegotiationResult | "continue";
       try {
