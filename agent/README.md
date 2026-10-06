@@ -16,7 +16,7 @@ pnpm --filter @misthos/agent test        # 70 tests: Appendix B fixtures, protoc
 pnpm --filter @misthos/agent doctor      # what is missing before the agents can run
 ```
 
-Setup (steps only you can do): accept the Circle CLI terms (`circle wallet status` once, interactively), log in with
+Setup (steps only you can do, with the websites and commands): see docs/SETUP.md. In short: accept the Circle CLI terms (`circle wallet status` once, interactively),
 your email OTP (`circle wallet login you@example.com --testnet`), copy the two agent wallet addresses into `.env`
 (`circle wallet list --chain ARC-TESTNET --type agent`), fund them at https://faucet.circle.com, deploy the contract
 (`contract/README.md`), and set `ANTHROPIC_API_KEY`. Copy `.env.example` to `.env`.

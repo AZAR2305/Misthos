@@ -8,6 +8,8 @@ Status: early. Built: the landing page with a 3D scene and two 3D agents (`front
 buyer agent processes with 70 tests (`agent`); and the Postgres schema (`backend`). Not built yet: the app pages, API
 routes, indexer, managed wallets, MCP server, ERC-8004. Testnet only, unaudited. MIT.
 
+Setup for the agents and the contract (Circle login, faucet, deploy, API key): `docs/SETUP.md`.
+
 ## Run the landing page
 ```bash
 pnpm install
