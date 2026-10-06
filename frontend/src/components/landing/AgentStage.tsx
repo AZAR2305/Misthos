@@ -1,6 +1,6 @@
 "use client";
 
-import { Canvas, useFrame } from "@react-three/fiber";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Environment, Html, Lightformer, PerformanceMonitor, Preload, useAnimations, useGLTF } from "@react-three/drei";
 import { Component, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import * as THREE from "three";
@@ -27,6 +27,8 @@ export interface AgentState {
   poseKey: number;
   face: Face;
   bubble: string | null;
+  /** Typing at a terminal: arms come up to the keyboard, the head tips down, the eyes flicker as it reads. */
+  working?: boolean;
   /** Walk to this x (stage units) when `key` changes. Home is HOME[role]. */
   move?: { x: number; key: number };
 }
@@ -114,8 +116,11 @@ export function Robot({
       const mesh = o as THREE.Mesh;
       if (!mesh.isMesh) return;
       const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
       const next = mats.map((m) => {
-        const mat = (m as THREE.MeshStandardMaterial).clone();
+        const mat: THREE.MeshStandardMaterial =
+          m.name === "Main" ? new THREE.MeshPhysicalMaterial({ name: "Main", clearcoat: 0.7, clearcoatRoughness: 0.26 }) : (m as THREE.MeshStandardMaterial).clone();
         if (mat.name === "Main") {
           mat.color.set(tint);
           mat.metalness = th.metalness;
@@ -140,6 +145,21 @@ export function Robot({
     });
     return c;
   }, [scene, tint, th]);
+
+  // The bones and the eye material the procedural layers drive (typing, breathing, eye flicker).
+  const parts = useMemo(() => {
+    const bone = (n: string) => model.getObjectByName(n) as THREE.Bone | undefined;
+    let eyes: THREE.MeshStandardMaterial | undefined;
+    model.traverse((o) => {
+      const m = (o as THREE.Mesh).material as THREE.Material | undefined;
+      if ((o as THREE.Mesh).isMesh && m && !Array.isArray(m) && m.name === "Black") eyes = m as THREE.MeshStandardMaterial;
+    });
+    return { uaL: bone("UpperArmL"), uaR: bone("UpperArmR"), laL: bone("LowerArmL"), laR: bone("LowerArmR"), head: bone("Head"), eyes };
+  }, [model]);
+  const workW = useRef(0);
+  const desk = useRef<THREE.Group>(null!);
+  const tmpA = useMemo(() => new THREE.Quaternion(), []);
+  const tmpB = useMemo(() => new THREE.Euler(), []);
 
   // Normalise size and stand the model on y = 0.
   const fit = useMemo(() => {
@@ -249,7 +269,7 @@ export function Robot({
 
     // --- idle life: a small gesture of its own every few seconds ---
     const now = clock.elapsedTime;
-    if (!sceneState.reducedMotion && !walking.current && state.pose === "Idle" && cur && !cur.once && cur.action === idle && now > nextAmbient.current) {
+    if (!sceneState.reducedMotion && !state.working && !walking.current && state.pose === "Idle" && cur && !cur.once && cur.action === idle && now > nextAmbient.current) {
       play(pickAmbient(Math.random()), true);
       nextAmbient.current = now + 6 + Math.random() * 6;
     }
@@ -280,6 +300,33 @@ export function Robot({
       tmpQ.setFromEuler(tmpE);
       head.quaternion.multiply(tmpQ);
     }
+
+    // --- breathing: a slow, tiny rise and fall of the whole body ---
+    if (body.current) body.current.scale.y = fit.s * (1 + (sceneState.reducedMotion ? 0 : Math.sin(now * 1.7) * 0.008));
+
+    // --- working: ease in and out of a typing posture, applied after the clips so it never accumulates ---
+    const target = state.working && !walking.current ? 1 : 0;
+    workW.current += (target - workW.current) * (1 - Math.exp(-dt * 4.5));
+    const w = workW.current;
+    if (w > 0.002) {
+      const t = sceneState.reducedMotion ? 0 : now;
+      const stroke = (phase: number) => Math.sin(t * 11 + phase) * (sceneState.reducedMotion ? 0 : 1);
+      const lift = (b: THREE.Bone | undefined, x: number, z: number) => {
+        if (!b) return;
+        tmpA.setFromEuler(tmpB.set(x * w, 0, z * w));
+        b.quaternion.multiply(tmpA);
+      };
+      lift(parts.uaL, 1.0 + 0.05 * stroke(0), 0.12);
+      lift(parts.uaR, 1.0 + 0.05 * stroke(2.1), -0.12);
+      lift(parts.laL, -0.55 + 0.2 * stroke(0.4), 0);
+      lift(parts.laR, -0.55 + 0.2 * stroke(2.6), 0);
+      lift(parts.head, 0.09 + 0.02 * Math.sin(t * 0.9), 0);
+    }
+    if (desk.current) {
+      desk.current.visible = w > 0.01;
+      desk.current.scale.setScalar(Math.max(0.001, w));
+    }
+    if (parts.eyes) parts.eyes.emissiveIntensity = th.eyesIntensity * (1 + w * (0.6 + 0.4 * Math.sin(now * 7)));
   });
 
   return (
@@ -305,6 +352,10 @@ export function Robot({
         <primitive object={model} />
       </group>
 
+      <mesh position={[0, 0.006, 0]} rotation-x={-Math.PI / 2} receiveShadow>
+        <planeGeometry args={[8, 8]} />
+        <shadowMaterial transparent opacity={THEMES[themeId].scene.dark ? 0.35 : 0.2} />
+      </mesh>
       {/* Floor: soft contact shadow, a pad and a glowing ring */}
       <mesh position={[0, 0.012, 0]} rotation-x={-Math.PI / 2}>
         <circleGeometry args={[1.5, 40]} />
@@ -323,6 +374,27 @@ export function Robot({
           {role === "supplier" ? <InvoiceProp accent={tint} /> : <TreasuryProp accent={tint} />}
         </>
       )}
+      {/* A standing desk and keyboard that rise out of the floor when the agent starts typing. */}
+      <group ref={desk} position={[0, 1.12, 0.74]} visible={false}>
+        <mesh castShadow receiveShadow>
+          <boxGeometry args={[1.5, 0.07, 0.78]} />
+          <meshStandardMaterial color={th.joints} metalness={0.3} roughness={0.5} />
+        </mesh>
+        <mesh position={[0, 0.06, 0.04]} castShadow>
+          <boxGeometry args={[1.0, 0.04, 0.34]} />
+          <meshStandardMaterial color={th.platform} metalness={0.2} roughness={0.55} emissive={tint} emissiveIntensity={0.08} />
+        </mesh>
+        {[-0.1, 0, 0.1].map((z) => (
+          <mesh key={z} position={[0, 0.085, z + 0.04]}>
+            <boxGeometry args={[0.88, 0.012, 0.045]} />
+            <meshStandardMaterial color={tint} emissive={tint} emissiveIntensity={0.5} />
+          </mesh>
+        ))}
+        <mesh position={[0, -0.61, 0]} castShadow>
+          <cylinderGeometry args={[0.05, 0.05, 1.18, 12]} />
+          <meshStandardMaterial color={th.joints} metalness={0.5} roughness={0.4} />
+        </mesh>
+      </group>
 
       {state.bubble && (
         <Html position={[0, AGENT_HEIGHT + 0.55, 0]} center distanceFactor={7} zIndexRange={[20, 0]} className="stage-bubble-wrap">
@@ -344,7 +416,7 @@ function InvoiceProp({ accent }: { accent: string }) {
     ref.current.rotation.y = -0.5 + Math.sin(t * 0.6) * 0.12;
   });
   return (
-    <group ref={ref} position={[1.15, 1.55, 0.5]}>
+    <group ref={ref} position={[-1.15, 1.55, 0.5]}>
       <mesh>
         <boxGeometry args={[0.72, 0.95, 0.03]} />
         <meshStandardMaterial color="#f7f7fb" metalness={0.1} roughness={0.5} emissive={accent} emissiveIntensity={0.12} />
@@ -372,7 +444,7 @@ function TreasuryProp({ accent }: { accent: string }) {
     ref.current.rotation.y = t * 0.5;
   });
   return (
-    <group ref={ref} position={[-1.15, 1.35, 0.5]}>
+    <group ref={ref} position={[1.15, 1.35, 0.5]}>
       {[0, 1, 2, 3, 4].map((i) => (
         <mesh key={i} position={[(i % 2) * 0.03, i * 0.1 - 0.2, 0]}>
           <cylinderGeometry args={[0.3, 0.3, 0.085, 28]} />
@@ -459,6 +531,23 @@ export interface StageProps {
   message: Message | null;
   pulseKey: number;
   visible: boolean;
+  /** The arc between the agents. Off when something (the terminal) sits between them. */
+  showChannel?: boolean;
+}
+
+/** Keeps both agents in frame whatever the canvas shape: on a narrow phone canvas the camera simply backs off. */
+function FitCamera() {
+  const { camera, size } = useThree();
+  useEffect(() => {
+    const cam = camera as THREE.PerspectiveCamera;
+    const halfWidth = Math.abs(HOME.supplier) + 1.9;
+    const need = halfWidth / (Math.tan((cam.fov * Math.PI) / 360) * (size.width / size.height));
+    cam.position.z = Math.max(9.4, need);
+    cam.position.y = 3.2 + (cam.position.z - 9.4) * 0.12;
+    cam.lookAt(0, 1.4, 0);
+    cam.updateProjectionMatrix();
+  }, [camera, size.width, size.height]);
+  return null;
 }
 
 export function Lights() {
@@ -467,7 +556,21 @@ export function Lights() {
   return (
     <>
       <ambientLight intensity={th.dark ? 0.55 : 0.9} color={r.ambient} />
-      <directionalLight position={[3, 6, 5]} intensity={th.dark ? 2.4 : 2.6} color={r.keyLight} />
+      <directionalLight
+        position={[3, 6, 5]}
+        intensity={th.dark ? 2.4 : 2.6}
+        color={r.keyLight}
+        castShadow
+        shadow-mapSize={[1024, 1024]}
+        shadow-bias={-0.0006}
+        shadow-radius={5}
+        shadow-camera-left={-6}
+        shadow-camera-right={6}
+        shadow-camera-top={6}
+        shadow-camera-bottom={-3}
+        shadow-camera-near={1}
+        shadow-camera-far={20}
+      />
       <directionalLight position={[-5, 2, 3]} intensity={1.8} color={r.rimLight} />
       <Environment key={`env-${th.bg}`} resolution={128} frames={1}>
         <Lightformer form="rect" intensity={3.5} color={th.env.key} position={[3, 4, 4]} scale={[6, 3, 1]} />
@@ -483,6 +586,7 @@ export default function AgentStage(p: StageProps) {
   return (
     <StageBoundary>
       <Canvas
+        shadows="soft"
         camera={{ fov: 31, position: [0, 3.2, 9.4], near: 0.1, far: 40 }}
         dpr={Math.min(dpr, typeof window !== "undefined" ? window.devicePixelRatio : 1)}
         frameloop={p.visible ? "always" : "never"}
@@ -491,10 +595,11 @@ export default function AgentStage(p: StageProps) {
       >
         <PerformanceMonitor ms={250} iterations={6} bounds={() => [40, 58]} onDecline={() => setDpr((d) => Math.max(0.85, d - 0.3))} onIncline={() => setDpr((d) => Math.min(1.5, d + 0.3))} />
         <Lights />
+        <FitCamera />
         <Suspense fallback={null}>
           <Robot role="supplier" state={p.supplier} active={p.selected === "supplier"} onSelect={() => p.onSelect("supplier")} onHover={(o) => p.onHover("supplier", o)} />
           <Robot role="buyer" state={p.buyer} active={p.selected === "buyer"} onSelect={() => p.onSelect("buyer")} onHover={(o) => p.onHover("buyer", o)} />
-          <Channel message={p.message} pulseKey={p.pulseKey} />
+          {p.showChannel !== false && <Channel message={p.message} pulseKey={p.pulseKey} />}
           <Preload all />
         </Suspense>
       </Canvas>

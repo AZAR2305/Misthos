@@ -11,6 +11,7 @@ export default function HeroCanvas({ role, state, visible, onSelect }: { role: R
   return (
     <StageBoundary>
       <Canvas
+        shadows="soft"
         camera={{ fov: 27, position: [0, 1.75, 10.4], near: 0.1, far: 40 }}
         dpr={Math.min(dpr, typeof window !== "undefined" ? window.devicePixelRatio : 1)}
         frameloop={visible ? "always" : "never"}

@@ -128,49 +128,43 @@
 .steps-list .row { grid-template-columns: 4rem minmax(0, 5fr) minmax(0, 5fr); }
 .steps-list .step-n { color: var(--accent); font-size: var(--text-small); padding-top: 0.9em; }
 
-/* ---------- agents ---------- */
-.agents {
-  min-height: 100svh; padding: 14vh var(--page-gutter);
-  display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: clamp(28px, 4vw, 64px); align-items: center;
-}
-.agents-copy { display: grid; gap: 22px; }
-.role-cards { display: flex; gap: 12px; flex-wrap: wrap; }
-.role-card {
+/* ---------- agents: two robots and a terminal between them ---------- */
+.agents { padding: clamp(72px, 14vh, 150px) var(--page-gutter) 0; display: grid; gap: clamp(22px, 4vh, 40px); }
+.agents-head { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); gap: clamp(24px, 5vw, 80px); align-items: start; }
+.agents-copy { display: grid; gap: 18px; }
+.agent-tabs { display: flex; gap: 12px; flex-wrap: wrap; }
+.agent-tab {
   flex: 1 1 180px; display: grid; gap: 4px; text-align: left; cursor: pointer;
   padding: 14px 16px; border-radius: var(--radius-md);
-  background: color-mix(in srgb, var(--color-surface-1) 70%, transparent);
-  border: 1px solid var(--color-border);
+  background: var(--color-surface-1); border: 1px solid var(--color-border);
   transition: border-color var(--dur-base) var(--ease), background var(--dur-base) var(--ease);
 }
-.role-card[data-hot="true"] { background: var(--color-surface-2); }
-.role-card[aria-selected="true"][data-role="supplier"] { border-color: var(--accent-dim); background: var(--tint); }
-.role-card[aria-selected="true"][data-role="buyer"] { border-color: var(--accent-soft); background: var(--tint-2); }
-.role-dot { width: 10px; height: 10px; border-radius: 50%; }
-.role-card[data-role="supplier"] .role-dot { background: var(--accent-dim); }
-.role-card[data-role="buyer"] .role-dot { background: var(--accent-soft); }
-.role-name { font-weight: 600; }
-.role-tag { font-size: var(--text-small); }
-.role-lines { margin: 0; padding: 0; list-style: none; display: grid; gap: 10px; }
-.role-lines li { padding-left: 16px; position: relative; font-weight: 500; font-size: 0.95rem; max-width: 48ch; }
-.role-lines li::before { content: ""; position: absolute; left: 0; top: 0.7em; width: 6px; height: 1.5px; background: var(--accent); }
+.agent-tab[aria-selected="true"][data-role="supplier"] { border-color: var(--role-supplier); background: var(--tint); }
+.agent-tab[aria-selected="true"][data-role="buyer"] { border-color: var(--agent-soft); background: var(--color-agent-bg); }
+.agent-dot { width: 10px; height: 10px; border-radius: 50%; }
+.agent-tab[data-role="supplier"] .agent-dot { background: var(--role-supplier); }
+.agent-tab[data-role="buyer"] .agent-dot { background: var(--agent-soft); }
+.agent-name { font-weight: 600; }
+.agent-tag { font-size: var(--text-small); }
+.agent-lines { margin: 0; padding: 0; list-style: none; display: grid; gap: 10px; }
+.agent-lines li { padding-left: 16px; position: relative; font-size: 0.95rem; max-width: 52ch; color: var(--color-text-muted); }
+.agent-lines li::before { content: ""; position: absolute; left: 0; top: 0.7em; width: 6px; height: 1.5px; background: var(--accent); }
 
-.stage {
-  border: 1px solid var(--color-border); border-radius: var(--radius-lg); overflow: hidden;
-  background: color-mix(in srgb, var(--landing-bg) 62%, transparent);
+.workbench {
+  position: relative; border: 1px solid var(--color-border); border-radius: var(--radius-lg); overflow: hidden;
+  background: radial-gradient(ellipse 70% 80% at 50% 30%, var(--hero-spot) 0%, var(--hero-top) 100%);
 }
-.stage-canvas { position: relative; height: clamp(360px, 54vh, 580px); }
+.stage-canvas { position: relative; height: clamp(380px, 56vh, 600px); }
 .stage-canvas canvas { display: block; }
-.stage-bar {
-  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px;
-  padding: 12px 16px; border-top: 1px solid var(--color-border);
-}
+.workbench-tty { position: absolute; left: 50%; top: 7%; transform: translateX(-50%); width: min(34%, 440px); z-index: 2; }
 .stage-label { position: absolute; bottom: 14px; margin: 0; font-family: var(--font-mono); font-size: var(--text-micro); color: var(--color-text-muted); pointer-events: none; }
-.stage-label-supplier { left: 17%; }
-.stage-label-buyer { right: 19%; }
+.stage-label-supplier { left: 14%; }
+.stage-label-buyer { right: 15%; }
+.stage-settled { position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%); margin: 0; color: var(--color-ok); z-index: 3; }
+.stage-error { padding: 24px; color: var(--color-warn); }
+.stage-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
 .stage-note { margin: 0; font-size: var(--text-small); }
 .stage-actions { display: flex; gap: 8px; flex-wrap: wrap; }
-.stage-settled { position: absolute; left: 50%; top: 14px; transform: translateX(-50%); margin: 0; color: var(--color-ok); }
-.stage-error { padding: 24px; color: var(--color-warn); }
 .stage-bubble {
   background: var(--color-agent-bg); border: 1px solid var(--color-agent-border); color: var(--color-agent-text);
   border-radius: var(--radius-sm); padding: 6px 10px; white-space: nowrap;
@@ -180,6 +174,41 @@
 .stage-bubble { animation: bubble-in 220ms var(--ease) both; }
 .stage-bubble .tag { color: var(--agent-soft); }
 
+/* the terminal */
+.tty { border-radius: var(--radius-md); overflow: hidden; border: 1px solid var(--color-border-strong); background: var(--color-surface-1); box-shadow: var(--shadow-pop); font-family: var(--font-mono); }
+.tty-bar { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-bottom: 1px solid var(--color-border); background: var(--color-surface-2); }
+.tty-dots { display: inline-flex; gap: 5px; }
+.tty-dots i { width: 9px; height: 9px; border-radius: 50%; background: var(--color-border-strong); }
+.tty-title { font-size: var(--text-micro); color: var(--color-text-muted); flex: 1; }
+.tty-state { font-size: var(--text-micro); color: var(--color-text-muted); }
+.tty-state[data-running="true"] { color: var(--accent-strong); }
+.tty-state[data-running="true"]::before { content: "● "; animation: blink 1s steps(2) infinite; }
+.tty-body { height: clamp(190px, 26vh, 250px); overflow-y: auto; padding: 10px 12px; display: grid; align-content: start; gap: 5px; scroll-behavior: smooth; }
+.tty-hint { margin: 0; font-size: 0.78rem; color: var(--color-text-muted); }
+.tty-line { margin: 0; display: flex; gap: 8px; font-size: 0.78rem; line-height: 1.45; animation: rise 0.25s var(--ease) both; }
+.tty-tag { flex: none; color: var(--color-text-muted); }
+.tty-line[data-tag="supplier"] .tty-tag { color: var(--accent-strong); }
+.tty-line[data-tag="buyer"] .tty-tag { color: var(--agent-soft); }
+.tty-line[data-tag="chain"] .tty-tag { color: var(--color-text); font-weight: 500; }
+.tty-line[data-tone="ok"] .tty-text { color: var(--color-ok); }
+.tty-line[data-tone="bad"] .tty-text { color: var(--color-bad); }
+.tty-line[data-tag="you"] .tty-text { color: var(--color-text); }
+.tty-caret { display: inline-block; width: 0.5em; height: 1em; margin-left: 2px; vertical-align: -0.12em; background: var(--color-text); animation: blink 1s steps(2) infinite; }
+@keyframes blink { to { visibility: hidden; } }
+
+.runit { display: grid; gap: 10px; }
+.runit ul { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.runit li { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface-1); min-width: 0; }
+.runit li > span { flex: none; font-size: var(--text-small); }
+.runit code { flex: 1; min-width: 0; overflow-x: auto; white-space: nowrap; font-family: var(--font-mono); font-size: 0.8rem; color: var(--code-text); background: var(--code-bg); padding: 6px 8px; border-radius: var(--radius-xs); }
+.runit .tiny { margin: 0; }
+
+@media (max-width: 960px) {
+  .agents-head { grid-template-columns: 1fr; }
+  .workbench-tty { position: static; transform: none; width: auto; padding: 0 12px 12px; }
+  .stage-canvas { height: clamp(260px, 60vw, 380px); }
+  .runit ul { grid-template-columns: 1fr; }
+}
 
 /* ---------- evidence ---------- */
 .evidence { padding: clamp(72px, 14vh, 150px) var(--page-gutter) 0; display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); gap: clamp(32px, 6vw, 96px); align-items: start; }

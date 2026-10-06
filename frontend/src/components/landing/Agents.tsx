@@ -2,8 +2,9 @@
 
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { AgentState, Face, Message, Pose, Role } from "./AgentStage";
-import { HOME, MEET } from "./stage-constants";
+import type { AgentState, Face, Pose, Role } from "./AgentStage";
+import { AgentTerminal, type Tag, type TermLine, type Tone } from "./AgentTerminal";
+import { sceneState } from "./scene-store";
 
 const AgentStage = dynamic(() => import("./AgentStage"), { ssr: false });
 
@@ -30,20 +31,75 @@ const ROLES: Record<Role, { name: string; tag: string; lines: string[] }> = {
   },
 };
 
+/** What a scenario step can do: say a line in the terminal, move a robot, or put one to work. */
+interface Api {
+  say(tag: Tag, text: string, tone?: Tone): void;
+  act(who: Role, pose: Pose, face: Face, bubble: string | null): void;
+  work(who: Role, on: boolean): void;
+  settle(on: boolean): void;
+}
+type Step = [at: number, run: (a: Api) => void];
+interface Scenario {
+  id: string;
+  label: string;
+  end: number;
+  steps: Step[];
+}
+
+/** No amounts and no rates anywhere in these: rungs and reason codes only. It is an illustration, not data. */
+const SCENARIOS: Scenario[] = [
+  {
+    id: "climb",
+    label: "Climb a rung",
+    end: 11800,
+    steps: [
+      [200, (a) => (a.say("you", "misthos supplier start --invoice PO-2043"), a.work("supplier", true))],
+      [1300, (a) => a.say("supplier", "invoice approved by the buyer. Ladder ready, starting at rung 0.")],
+      [2600, (a) => (a.say("supplier", "signing offer: rung 0. Sent to the buyer agent."), a.act("supplier", "Wave", "neutral", "offer · rung 0"))],
+      [3500, (a) => (a.work("supplier", false), a.work("buyer", true), a.say("buyer", "checking the offer against the private hurdle..."))],
+      [5000, (a) => (a.work("buyer", false), a.say("buyer", "reject. reason=BELOW_HURDLE", "bad"), a.act("buyer", "No", "angry", "BELOW_HURDLE"), a.act("supplier", "Idle", "sad", null))],
+      [6400, (a) => (a.work("supplier", true), a.say("supplier", "cost of waiting not reached. Climbing to rung 1."))],
+      [7700, (a) => (a.say("supplier", "signing offer: rung 1. Sent to the buyer agent."), a.act("supplier", "Wave", "neutral", "offer · rung 1"))],
+      [8500, (a) => (a.work("supplier", false), a.work("buyer", true), a.say("buyer", "hurdle met, cash available, within caps. Accepting rung 1.", "ok"))],
+      [9600, (a) => (a.work("buyer", false), a.act("buyer", "ThumbsUp", "surprised", "accept"), a.say("buyer", "calling settleEarly() on InvoiceBook."))],
+      [10600, (a) => (a.say("chain", "EarlySettled. Supplier paid in USDC, invoice closed once.", "ok"), a.settle(true), a.act("supplier", "Jump", "surprised", "paid early"), a.act("buyer", "Dance", "surprised", null))],
+    ],
+  },
+  {
+    id: "zero",
+    label: "Accepted at 0%",
+    end: 8600,
+    steps: [
+      [200, (a) => (a.say("you", "misthos supplier start --invoice PO-2044"), a.work("supplier", true))],
+      [1300, (a) => a.say("supplier", "invoice approved. Opening at rung 0: no discount at all.")],
+      [2600, (a) => (a.say("supplier", "signing offer: rung 0. Sent to the buyer agent."), a.act("supplier", "Wave", "neutral", "offer · rung 0"))],
+      [3500, (a) => (a.work("supplier", false), a.work("buyer", true), a.say("buyer", "idle cash above the floor, no discount needed. Accepting rung 0.", "ok"))],
+      [5000, (a) => (a.work("buyer", false), a.act("buyer", "ThumbsUp", "surprised", "accept"), a.say("buyer", "calling settleEarly() on InvoiceBook."))],
+      [6300, (a) => (a.say("chain", "EarlySettled. Paid in USDC at a price of zero.", "ok"), a.settle(true), a.act("supplier", "Jump", "surprised", "paid at 0%"), a.act("buyer", "Dance", "surprised", null))],
+    ],
+  },
+];
+
+const RUN_IT = [
+  { who: "Supplier agent", cmd: "pnpm --filter @misthos/agent supplier" },
+  { who: "Buyer agent", cmd: "pnpm --filter @misthos/agent buyer" },
+];
+
 export function Agents() {
   const section = useRef<HTMLElement>(null);
   const [near, setNear] = useState(false);
   const [visible, setVisible] = useState(false);
   const [selected, setSelected] = useState<Role>("supplier");
-  const [hover, setHover] = useState<Role | null>(null);
   const [supplier, setSupplier] = useState<AgentState>(REST);
   const [buyer, setBuyer] = useState<AgentState>(REST);
-  const [message, setMessage] = useState<Message | null>(null);
-  const [pulseKey, setPulseKey] = useState(0);
+  const [lines, setLines] = useState<TermLine[]>([]);
+  const [running, setRunning] = useState(false);
   const [settled, setSettled] = useState(false);
+  const [which, setWhich] = useState(SCENARIOS[0]!.id);
+  const [copied, setCopied] = useState<string | null>(null);
   const timers = useRef<number[]>([]);
   const counter = useRef(1);
-  const lastWave = useRef(0);
+  const played = useRef(false);
 
   useEffect(() => {
     const el = section.current;
@@ -59,171 +115,101 @@ export function Agents() {
     };
   }, []);
 
-  const later = useCallback((ms: number, fn: () => void) => {
-    timers.current.push(window.setTimeout(fn, ms));
-  }, []);
-
   const clearAll = useCallback(() => {
     timers.current.forEach(clearTimeout);
     timers.current = [];
   }, []);
 
-  const act = useCallback(
-    (who: Role, pose: Pose, face: Face, bubble: string | null) => {
-      const set = who === "supplier" ? setSupplier : setBuyer;
-      set((s) => ({ pose, poseKey: s.poseKey + 1 + counter.current++, face, bubble }));
-    },
-    [],
-  );
-
-  const walk = useCallback((who: Role, x: number) => {
-    const set = who === "supplier" ? setSupplier : setBuyer;
-    set((s) => ({ ...s, move: { x, key: (s.move?.key ?? 0) + 1 } }));
-  }, []);
-
-  const send = (from: Role) => setMessage({ from, key: counter.current++ });
-
-  const home = () => {
-    walk("supplier", HOME.supplier);
-    walk("buyer", HOME.buyer);
+  const api: Api = {
+    say: (tag, text, tone) => setLines((l) => [...l, { id: counter.current++, tag, text, tone }]),
+    act: (who, pose, face, bubble) => (who === "supplier" ? setSupplier : setBuyer)((s) => ({ ...s, pose, poseKey: s.poseKey + 1, face, bubble })),
+    work: (who, on) => (who === "supplier" ? setSupplier : setBuyer)((s) => ({ ...s, working: on })),
+    settle: setSettled,
   };
 
-  // Post offer: the supplier walks over, hands it across, and walks back.
-  const offer = () => {
+  const reset = useCallback(() => {
     clearAll();
+    setSupplier(REST);
+    setBuyer(REST);
+    setLines([]);
     setSettled(false);
-    act("buyer", "Idle", "neutral", null);
-    act("supplier", "Idle", "neutral", null);
-    walk("supplier", MEET.supplier);
-    later(1400, () => {
-      act("supplier", "Wave", "neutral", "//r1 offer signed");
-      send("supplier");
-    });
-    later(3400, () => {
-      setSupplier((s) => ({ ...s, bubble: null }));
-      walk("supplier", HOME.supplier);
-    });
+    setRunning(false);
+  }, [clearAll]);
+
+  const play = (id: string) => {
+    const sc = SCENARIOS.find((s) => s.id === id)!;
+    reset();
+    setWhich(id);
+    setRunning(true);
+    // Reduced motion: show the whole transcript at once and leave the robots still.
+    if (sceneState.reducedMotion) {
+      const flat = { ...api, act: () => {}, work: () => {}, settle: () => {} };
+      for (const [, run] of sc.steps) run(flat);
+      setRunning(false);
+      return;
+    }
+    for (const [at, run] of sc.steps) timers.current.push(window.setTimeout(() => run(api), at));
+    timers.current.push(
+      window.setTimeout(() => {
+        setRunning(false);
+        setSupplier((s) => ({ ...s, pose: "Idle", poseKey: s.poseKey + 1, face: "neutral", bubble: null, working: false }));
+        setBuyer((s) => ({ ...s, pose: "Idle", poseKey: s.poseKey + 1, face: "neutral", bubble: null, working: false }));
+      }, sc.end),
+    );
   };
 
-  // Reject: the buyer shakes its head with a reason code; the supplier takes it on the chin.
-  const reject = () => {
-    clearAll();
-    setSettled(false);
-    act("buyer", "No", "angry", "BELOW_HURDLE");
-    send("buyer");
-    later(900, () => act("supplier", "Idle", "sad", "//r2 next rung"));
-    later(3400, () => {
-      setBuyer((s) => ({ ...s, face: "neutral", bubble: null }));
-      setSupplier((s) => ({ ...s, face: "neutral", bubble: null }));
-    });
-  };
+  // The first time the section scrolls into view, run one negotiation so the page shows what it is about.
+  useEffect(() => {
+    if (!near || !visible || played.current) return;
+    played.current = true;
+    const t = window.setTimeout(() => play(SCENARIOS[0]!.id), 900);
+    return () => clearTimeout(t);
+  }, [near, visible]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Accept: both step up, the buyer gives a thumbs up, the supplier jumps, then they celebrate together.
-  const accept = () => {
-    clearAll();
-    walk("supplier", MEET.supplier);
-    walk("buyer", MEET.buyer);
-    later(1500, () => {
-      act("buyer", "ThumbsUp", "surprised", "Accept");
-      send("buyer");
-    });
-    later(2400, () => {
-      act("supplier", "Jump", "surprised", "Paid early");
-      setPulseKey((k) => k + 1 + counter.current++);
-      setSettled(true);
-    });
-    later(3700, () => {
-      act("supplier", "Dance", "surprised", null);
-      act("buyer", "Dance", "surprised", null);
-    });
-    later(7000, () => {
-      act("supplier", "Idle", "neutral", null);
-      act("buyer", "Idle", "neutral", null);
-      home();
-    });
-  };
-
-  const reset = () => {
-    clearAll();
-    setSettled(false);
-    setSupplier((s) => ({ ...REST, move: s.move }));
-    setBuyer((s) => ({ ...REST, move: s.move }));
-    setMessage(null);
-    home();
-  };
-
-  const onSelect = (r: Role) => {
-    setSelected(r);
-    act(r, "ThumbsUp", "neutral", null);
-  };
-
-  const onHoverRole = (r: Role, over: boolean) => {
-    setHover(over ? r : null);
-    if (over) {
-      const s = r === "supplier" ? supplier : buyer;
-      // Hovering must not retrigger the wave while it plays or right after: it reads as flicker.
-      const now = performance.now();
-      if (s.pose === "Idle" && now - lastWave.current > 3500) {
-        lastWave.current = now;
-        act(r, "Wave", s.face, s.bubble);
-      }
+  const copy = async (cmd: string) => {
+    try {
+      await navigator.clipboard.writeText(cmd);
+      setCopied(cmd);
+      window.setTimeout(() => setCopied(null), 1600);
+    } catch {
+      /* clipboard blocked: the command is still on screen */
     }
   };
 
   return (
     <section id="agents" ref={section} className="agents">
-      <div className="agents-copy">
+      <div className="agents-head">
         <h2 className="display-2">
-          Two agents.
-          <br />
-          Two businesses.
+          Two agents. Two businesses.
           <br />
           One price.
         </h2>
-        <p className="lede">
-          Each business runs its own agent as a separate process with its own wallet. They share no internals, only
-          signed messages and the chain.
-        </p>
-        <div className="role-cards" role="tablist" aria-label="Agent roles">
-          {(Object.keys(ROLES) as Role[]).map((r) => (
-            <button
-              key={r}
-              type="button"
-              role="tab"
-              aria-selected={selected === r}
-              data-role={r}
-              data-hot={hover === r}
-              className="role-card"
-              onClick={() => setSelected(r)}
-              onMouseEnter={() => setHover(r)}
-              onMouseLeave={() => setHover(null)}
-            >
-              <span className="role-dot" />
-              <span className="role-name">{ROLES[r].name}</span>
-              <span className="muted role-tag">{ROLES[r].tag}</span>
-            </button>
-          ))}
+        <div className="agents-copy">
+          <p className="lede">
+            Each business runs its own agent as a separate process with its own wallet. They share no internals, only signed
+            messages and the chain. Press play to watch one invoice get settled.
+          </p>
+          <div className="agent-tabs" role="tablist" aria-label="Agent roles">
+            {(Object.keys(ROLES) as Role[]).map((r) => (
+              <button key={r} type="button" role="tab" aria-selected={selected === r} data-role={r} className="agent-tab" onClick={() => setSelected(r)}>
+                <span className="agent-dot" />
+                <span className="agent-name">{ROLES[r].name}</span>
+                <span className="muted agent-tag">{ROLES[r].tag}</span>
+              </button>
+            ))}
+          </div>
+          <ul className="agent-lines" aria-live="polite">
+            {ROLES[selected].lines.map((l) => (
+              <li key={l}>{l}</li>
+            ))}
+          </ul>
         </div>
-        <ul className="role-lines" aria-live="polite">
-          {ROLES[selected].lines.map((l) => (
-            <li key={l}>{l}</li>
-          ))}
-        </ul>
       </div>
 
-      <div className="stage">
+      <div className="workbench">
         <div className="stage-canvas">
           {near && (
-            <AgentStage
-              supplier={supplier}
-              buyer={buyer}
-              selected={selected}
-              onSelect={onSelect}
-              onHover={onHoverRole}
-              message={message}
-              pulseKey={pulseKey}
-              visible={visible}
-            />
+            <AgentStage supplier={supplier} buyer={buyer} selected={selected} onSelect={setSelected} onHover={() => {}} message={null} pulseKey={0} visible={visible} showChannel={false} />
           )}
           {near && (
             <>
@@ -233,23 +219,39 @@ export function Agents() {
           )}
           {settled && <p className="stage-settled tag">{"{on-chain}"} Settled on Arc in USDC</p>}
         </div>
-        <div className="stage-bar">
-          <p className="muted stage-note">Illustration of the protocol&apos;s roles and reason codes. No live data.</p>
-          <div className="stage-actions">
-            <button type="button" className="btn btn-ghost btn-sm" onClick={offer}>
-              Post offer
-            </button>
-            <button type="button" className="btn btn-ghost btn-sm" onClick={reject}>
-              Reject
-            </button>
-            <button type="button" className="btn btn-primary btn-sm" onClick={accept}>
-              Accept
-            </button>
-            <button type="button" className="btn btn-quiet btn-sm" onClick={reset}>
-              Reset
-            </button>
-          </div>
+        <div className="workbench-tty">
+          <AgentTerminal lines={lines} running={running} instant={sceneState.reducedMotion} />
         </div>
+      </div>
+
+      <div className="stage-bar">
+        <p className="muted stage-note">Illustration of the protocol&apos;s roles, rungs and reason codes. No live data, no amounts.</p>
+        <div className="stage-actions">
+          {SCENARIOS.map((s) => (
+            <button key={s.id} type="button" className={`btn btn-sm ${which === s.id && running ? "btn-primary" : "btn-ghost"}`} onClick={() => play(s.id)} disabled={running && which === s.id}>
+              {running && which === s.id ? "Playing…" : `Play: ${s.label}`}
+            </button>
+          ))}
+          <button type="button" className="btn btn-quiet btn-sm" onClick={reset}>
+            Reset
+          </button>
+        </div>
+      </div>
+
+      <div className="runit">
+        <p className="sec-eyebrow">Run the real agents</p>
+        <ul>
+          {RUN_IT.map((r) => (
+            <li key={r.cmd}>
+              <span className="muted">{r.who}</span>
+              <code>{r.cmd}</code>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => void copy(r.cmd)}>
+                {copied === r.cmd ? "Copied" : "Copy"}
+              </button>
+            </li>
+          ))}
+        </ul>
+        <p className="muted tiny">Each agent needs its own Circle wallet and a model key; the setup steps are in the developer kit.</p>
       </div>
     </section>
   );
