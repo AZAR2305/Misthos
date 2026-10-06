@@ -27,3 +27,5 @@ line_length = 120
 
 [lint]
 exclude_lints = ["block-timestamp"]
+# Test casts are bounded by the test inputs; keep the lint on for src/ and script/.
+ignore = ["test/**"]

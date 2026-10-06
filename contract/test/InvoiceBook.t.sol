@@ -28,7 +28,8 @@ contract InvoiceBookTest is Test {
     bytes32 internal constant INV_TH = keccak256(
         "Invoice(address supplier,address buyer,address token,uint256 amount,uint64 dueDate,bytes32 refHash,uint256 nonce)"
     );
-    bytes32 internal constant OFFER_TH = keccak256("EarlyPayOffer(bytes32 invoiceId,uint16 rateBps,uint64 expiry,uint256 nonce)");
+    bytes32 internal constant OFFER_TH =
+        keccak256("EarlyPayOffer(bytes32 invoiceId,uint16 rateBps,uint64 expiry,uint256 nonce)");
 
     function setUp() public {
         vm.warp(T0);
@@ -47,7 +48,10 @@ contract InvoiceBookTest is Test {
         return keccak256(abi.encodePacked("\x19\x01", book.domainSeparator(), structHash));
     }
 
-    function _invoice(address who, uint256 amount, uint256 daysUntilDue) internal returns (InvoiceBook.Invoice memory inv) {
+    function _invoice(address who, uint256 amount, uint256 daysUntilDue)
+        internal
+        returns (InvoiceBook.Invoice memory inv)
+    {
         inv = InvoiceBook.Invoice({
             supplier: who,
             buyer: buyer,
@@ -65,9 +69,10 @@ contract InvoiceBookTest is Test {
     }
 
     function _invoiceDigest(InvoiceBook.Invoice memory i) internal view returns (bytes32) {
-        return _digest(
-            keccak256(abi.encode(INV_TH, i.supplier, i.buyer, i.token, i.amount, i.dueDate, i.refHash, i.nonce))
-        );
+        return
+            _digest(
+                keccak256(abi.encode(INV_TH, i.supplier, i.buyer, i.token, i.amount, i.dueDate, i.refHash, i.nonce))
+            );
     }
 
     function _sign(uint256 pk, bytes32 digest) internal pure returns (bytes memory) {
@@ -76,7 +81,10 @@ contract InvoiceBookTest is Test {
     }
 
     /// Register as `supplier` (signed by SUPPLIER_PK) and approve as buyer.
-    function _registerApproved(uint256 amount, uint256 daysUntilDue) internal returns (bytes32 id, InvoiceBook.Invoice memory inv) {
+    function _registerApproved(uint256 amount, uint256 daysUntilDue)
+        internal
+        returns (bytes32 id, InvoiceBook.Invoice memory inv)
+    {
         inv = _invoice(supplier, amount, daysUntilDue);
         bytes32 digest = _invoiceDigest(inv);
         bytes memory sig = _sign(SUPPLIER_PK, digest);
@@ -91,7 +99,9 @@ contract InvoiceBookTest is Test {
         view
         returns (InvoiceBook.EarlyPayOffer memory)
     {
-        return InvoiceBook.EarlyPayOffer({invoiceId: id, rateBps: rate, expiry: uint64(block.timestamp + expiryIn), nonce: nonce});
+        return InvoiceBook.EarlyPayOffer({
+            invoiceId: id, rateBps: rate, expiry: uint64(block.timestamp + expiryIn), nonce: nonce
+        });
     }
 
     function _offerDigest(InvoiceBook.EarlyPayOffer memory o) internal view returns (bytes32) {
@@ -112,7 +122,7 @@ contract InvoiceBookTest is Test {
     }
 
     function _status(bytes32 id) internal view returns (InvoiceBook.Status s) {
-        (,,,,, , s) = book.invoices(id);
+        (,,,,,, s) = book.invoices(id);
     }
 
     // --------------------------------------------------------- happy path
@@ -607,14 +617,18 @@ contract InvoiceBookTest is Test {
 
         Fixture memory a = _fixtureInvoice(10, 27, 1000);
         InvoiceBook.Item[] memory tooMany = new InvoiceBook.Item[](21);
-        for (uint256 i = 0; i < 21; i++) tooMany[i] = _item(a, 1000);
+        for (uint256 i = 0; i < 21; i++) {
+            tooMany[i] = _item(a, 1000);
+        }
         vm.expectRevert(InvoiceBook.BatchTooLarge.selector);
         _batch(tooMany);
     }
 
     function test_batch_exactlyTwentyItems() public {
         InvoiceBook.Item[] memory items = new InvoiceBook.Item[](20);
-        for (uint256 i = 0; i < 20; i++) items[i] = _item(_fixtureInvoice(100, 27, 1000), 1000);
+        for (uint256 i = 0; i < 20; i++) {
+            items[i] = _item(_fixtureInvoice(100, 27, 1000), 1000);
+        }
         _batch(items);
         assertEq(usdc.balanceOf(feeRecipient), 20 * ((book.discountFor(100e6, 1000, 27 days) * 1000) / 10_000));
     }

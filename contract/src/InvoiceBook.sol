@@ -179,7 +179,14 @@ contract InvoiceBook is EIP712, Ownable, ReentrancyGuard {
         return _hashTypedDataV4(
             keccak256(
                 abi.encode(
-                    INVOICE_TYPEHASH, inv.supplier, inv.buyer, inv.token, inv.amount, inv.dueDate, inv.refHash, inv.nonce
+                    INVOICE_TYPEHASH,
+                    inv.supplier,
+                    inv.buyer,
+                    inv.token,
+                    inv.amount,
+                    inv.dueDate,
+                    inv.refHash,
+                    inv.nonce
                 )
             )
         );
