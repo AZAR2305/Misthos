@@ -32,9 +32,7 @@ const PUBLIC: Tab[] = [
   { href: "/ledger", label: "Ledger" },
   { href: "/stats", label: "Live stats" },
   { href: "/agents", label: "Agents" },
-  { href: "/judge", label: "Judge tour" },
   { href: "/docs", label: "Docs" },
-  { href: "/kit", label: "Developer kit" },
 ];
 
 /**
@@ -264,7 +262,6 @@ export function AppShell({ children }: { children: ReactNode }) {
           <span className="net-foot" title={chain.rpcOk === false ? "The network RPC is not answering" : chain.rpcOk ? `RPC ok${chain.head ? `, block ${chain.head}` : ""}` : "Checking the RPC"}>
             <span className="dot" data-ok={chain.rpcOk === null ? "unknown" : String(chain.rpcOk)} aria-hidden="true" /> {CONFIG.networkName} · {chain.rpcOk === false ? "unreachable" : chain.rpcOk ? "live" : "connecting"}
           </span>
-          <Link href="/kit">Developer kit</Link>
           <a href={CONFIG.repoUrl} target="_blank" rel="noreferrer">Source on GitHub ↗</a>
         </span>
       </footer>

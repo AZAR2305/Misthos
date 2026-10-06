@@ -14,7 +14,6 @@ const SCREENS = [
   { id: "ring", url: "/", scroll: () => document.getElementById("steps").offsetTop + 320, wait: 4500 },
   { id: "agents", url: "/", scroll: () => document.getElementById("agents").offsetTop + 40, wait: 5200 },
   { id: "app", url: "/app", scroll: () => 0, wait: 1500 },
-  { id: "kit", url: "/kit", scroll: () => 0, wait: 1200 },
 ];
 
 const browser = await chromium.launch({ channel: "msedge", args: ["--use-angle=d3d11", "--enable-gpu", "--ignore-gpu-blocklist"] });

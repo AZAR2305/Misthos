@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Card, PageHeader, Stepper, Notice } from "@/components/ui/kit";
+import { Card, PageHeader, Stepper } from "@/components/ui/kit";
 import { useChainData } from "@/components/app/ChainData";
 import { useWallet } from "@/components/wallet/WalletProvider";
 import { CONFIG } from "@/lib/config";
@@ -104,11 +104,6 @@ function Overview({ role }: { role: "supplier" | "buyer" }) {
         </p>
       </Card>
 
-      {!CONFIG.book && (
-        <Notice kind="info" title="Want to try it before the contract is deployed on Arc?">
-          The developer kit shows how to run everything on a local test chain in a few minutes. <Link href="/kit" className="link">Open the developer kit</Link>.
-        </Notice>
-      )}
     </>
   );
 }

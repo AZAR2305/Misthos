@@ -253,7 +253,7 @@ export function Agents({ compact = false }: { compact?: boolean }) {
             </li>
           ))}
         </ul>
-        <p className="muted tiny">Each agent needs its own Circle wallet and a model key; the setup steps are in the developer kit.</p>
+        <p className="muted tiny">Each agent needs its own Circle wallet and a model key.</p>
       </div>
     </section>
   );
