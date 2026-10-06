@@ -57,3 +57,10 @@ body {
 
 a { color: inherit; text-decoration: none; }
 button { font: inherit; color: inherit; }
+
+/* ---------- 404 and error pages ---------- */
+.fallback { min-height: 70vh; display: grid; align-content: center; justify-items: start; gap: 14px; max-width: 640px; margin: 0 auto; padding: 96px var(--page-gutter); }
+.fallback h1 { margin: 0; font-family: var(--font-display); font-weight: 600; font-size: clamp(2rem, 5vw, 3.2rem); letter-spacing: -0.03em; line-height: 1.05; }
+.fallback p { margin: 0; }
+.fallback .lead { color: var(--color-text-muted); max-width: 46ch; }
+.fallback-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px; }

@@ -5,6 +5,7 @@ import type { Hex, WalletClient } from "viem";
 import { useToast } from "@/components/ui/toast";
 import { useWallet } from "@/components/wallet/WalletProvider";
 import { publicClient } from "./chain/client";
+import { agentBus } from "./agent-bus";
 import { CONFIG } from "./config";
 
 const REASONS: Record<string, string> = {
@@ -74,6 +75,7 @@ export function useTx() {
         return undefined;
       }
       setBusy(labels.pending);
+      agentBus.emit({ kind: "working", text: labels.pending });
       try {
         const hash = await send(wallet.walletClient, wallet.address);
         const receipt = await publicClient().waitForTransactionReceipt({ hash });

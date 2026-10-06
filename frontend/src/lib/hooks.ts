@@ -42,6 +42,7 @@ export function useAgentHealth(url: string): AgentHealth & { recheck(): void } {
   const [h, setH] = useState<AgentHealth>({ state: "checking" });
   const [n, setN] = useState(0);
   useEffect(() => {
+    if (!url) return setH({ state: "offline", reason: "No agent is connected to this site." });
     let live = true;
     const ping = async () => {
       try {
@@ -77,6 +78,7 @@ export interface AgentDecision {
 export function useAgentDecisions(url: string) {
   const [state, setState] = useState<{ status: "checking" | "offline" | "ready"; entries: AgentDecision[] }>({ status: "checking", entries: [] });
   useEffect(() => {
+    if (!url) return setState({ status: "offline", entries: [] });
     let live = true;
     const load = async () => {
       try {

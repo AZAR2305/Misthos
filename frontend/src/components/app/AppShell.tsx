@@ -11,8 +11,11 @@ import { Money, Notice, Skeleton } from "@/components/ui/kit";
 import { CONFIG } from "@/lib/config";
 import { useUsdcBalance } from "@/lib/hooks";
 import { type Role } from "@/lib/storage";
+import { agentBus } from "@/lib/agent-bus";
+import { formatUsd } from "@/lib/core";
 import { useAccount, useSide } from "@/components/account/AccountProvider";
 import { Onboarding } from "./Onboarding";
+import { AgentCompanion } from "./AgentCompanion";
 import { useChainData } from "./ChainData";
 import { ROLE_HOME } from "./RoleChoice";
 
@@ -25,22 +28,69 @@ interface Tab {
 
 const HOME: Tab = { href: "/app", label: "Overview", exact: true };
 const PUBLIC: Tab[] = [
+  { href: "/invoices", label: "All invoices" },
   { href: "/ledger", label: "Ledger" },
   { href: "/stats", label: "Live stats" },
   { href: "/agents", label: "Agents" },
+  { href: "/docs", label: "Docs" },
+  { href: "/kit", label: "Developer kit" },
 ];
 
-/** What a person sees in the header depends on the side they chose; the public pages are always there. */
-function tabsFor(role: Role | null): Tab[] {
-  if (role === "supplier")
-    return [HOME, { href: "/supplier", label: "My invoices", exact: true }, { href: "/supplier/invoices/new", label: "New invoice" }, { href: "/invoices", label: "All invoices" }, ...PUBLIC];
-  if (role === "buyer")
-    return [HOME, { href: "/buyer", label: "Treasury", exact: true }, { href: "/buyer/approvals", label: "Approvals" }, { href: "/buyer/policy", label: "Policy" }, { href: "/invoices", label: "All invoices" }, ...PUBLIC];
-  return [HOME, { href: "/invoices", label: "Invoices" }, ...PUBLIC];
+/**
+ * A few pages for the side the person chose stay in the bar; every public page lives under "More" so the bar never has to
+ * squeeze. Without a side there is nothing private to show, so the main public pages stand on their own.
+ */
+function tabsFor(role: Role | null): { primary: Tab[]; more: Tab[] } {
+  if (role === "supplier") return { primary: [HOME, { href: "/supplier", label: "My invoices", exact: true }, { href: "/supplier/invoices/new", label: "New invoice" }], more: PUBLIC };
+  if (role === "buyer") return { primary: [HOME, { href: "/buyer", label: "Treasury", exact: true }, { href: "/buyer/approvals", label: "Approvals" }, { href: "/buyer/policy", label: "Policy" }], more: PUBLIC };
+  return { primary: [HOME, PUBLIC[0]!, PUBLIC[1]!, PUBLIC[2]!, PUBLIC[3]!], more: PUBLIC.slice(4) };
 }
 
 const isActive = (t: Tab, path: string) => path === t.href || (!t.exact && path.startsWith(`${t.href}/`));
 const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
+
+/** The public pages, in a menu, so the bar has room for the person's own pages and wallet. */
+function MoreMenu({ items, path }: { items: Tab[]; path: string }) {
+  const [open, setOpen] = useState(false);
+  const box = useRef<HTMLDivElement>(null);
+  const active = items.some((t) => isActive(t, path));
+  useEffect(() => setOpen(false), [path]);
+  useEffect(() => {
+    if (!open) return;
+    const on = (e: MouseEvent) => !box.current?.contains(e.target as Node) && setOpen(false);
+    const key = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    window.addEventListener("mousedown", on);
+    window.addEventListener("keydown", key);
+    return () => {
+      window.removeEventListener("mousedown", on);
+      window.removeEventListener("keydown", key);
+    };
+  }, [open]);
+  if (items.length === 0) return null;
+  return (
+    <div className="tab-more" ref={box}>
+      <button type="button" className="tab" aria-haspopup="menu" aria-expanded={open} aria-current={active ? "page" : undefined} onClick={() => setOpen((v) => !v)}>
+        More <span aria-hidden="true">▾</span>
+      </button>
+      {open && (
+        <div className="more-menu" role="menu">
+          {items.map((t) => (
+            <Link key={t.href} role="menuitem" href={t.href} aria-current={isActive(t, path) ? "page" : undefined}>
+              {t.label}
+            </Link>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+const CoinGlyph = () => (
+  <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" fill="none">
+    <circle cx="8" cy="8" r="7" stroke="currentColor" strokeWidth="1.4" />
+    <path d="M8 4.2v7.6M6 6.4c.3-.7 1-1 2-1 1.2 0 2 .5 2 1.3 0 1.8-4 .9-4 2.9 0 .8.8 1.4 2 1.4 1 0 1.8-.3 2.1-1" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+  </svg>
+);
 
 export function AppShell({ children }: { children: ReactNode }) {
   const path = usePathname();
@@ -51,7 +101,14 @@ export function AppShell({ children }: { children: ReactNode }) {
   const acct = useAccount();
   const { side: role, set: setRole } = useSide();
   const [scrolled, setScrolled] = useState(false);
-  const tabs = tabsFor(role);
+  const greeted = useRef<string | null>(null);
+  useEffect(() => {
+    if (!w.address || balance === null || greeted.current === w.address) return;
+    greeted.current = w.address;
+    agentBus.emit({ kind: "hello", text: `You hold ${formatUsd(balance)} USDC on ${CONFIG.networkName}.` });
+  }, [w.address, balance]);
+  const { primary, more } = tabsFor(role);
+  const tabs = primary;
 
   // Being on a supplier or buyer page means acting as that side: keep the chosen side in step.
   useEffect(() => {
@@ -80,7 +137,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     place();
     window.addEventListener("resize", place);
     return () => window.removeEventListener("resize", place);
-  }, [path, role, tabs.length]);
+  }, [path, role, tabs.length, more.length]);
 
   const pathSide: Role | null = path.startsWith("/supplier") ? "supplier" : path.startsWith("/buyer") ? "buyer" : null;
   const ready = acct.mode === "on" ? acct.status === "ready" && acct.me?.step === "ready" : w.status === "connected";
@@ -98,20 +155,25 @@ export function AppShell({ children }: { children: ReactNode }) {
             <ArcGlyph size={22} />
             <span>MISTHOS</span>
           </Link>
-          <nav className="tabs" aria-label="Main" ref={nav}>
-            {tabs.map((t) => (
-              <Link key={t.href} href={t.href} className="tab" aria-current={isActive(t, path) ? "page" : undefined}>
-                {t.label}
-              </Link>
-            ))}
-            <span className="tab-bar" aria-hidden="true" style={bar ? { transform: `translateX(${bar.x}px)`, width: bar.w, opacity: 1 } : { opacity: 0 }} />
-          </nav>
+          <div className="tabs-wrap">
+            <nav className="tabs" aria-label="Main" ref={nav}>
+              {tabs.map((t) => (
+                <Link key={t.href} href={t.href} className="tab" aria-current={isActive(t, path) ? "page" : undefined}>
+                  {t.label}
+                </Link>
+              ))}
+              <span className="tab-bar" aria-hidden="true" style={bar ? { transform: `translateX(${bar.x}px)`, width: bar.w, opacity: 1 } : { opacity: 0 }} />
+            </nav>
+            <MoreMenu items={more} path={path} />
+          </div>
           <div className="appbar-end">
-            <span className="net-badge" title={chain.rpcOk === false ? "The network RPC is not answering" : chain.rpcOk ? `RPC ok${chain.head ? `, block ${chain.head}` : ""}` : "Checking the RPC"}>
-              <span className="dot" data-ok={chain.rpcOk === null ? "unknown" : String(chain.rpcOk)} aria-hidden="true" />
-              {CONFIG.networkName}
-              <span className="net-live">{chain.rpcOk === false ? "unreachable" : chain.rpcOk ? "live" : "connecting"}</span>
-            </span>
+            {w.status === "connected" && w.address && (
+              <span className="bal-chip" title={`USDC held by ${short(w.address)} on ${CONFIG.networkName}`}>
+                <CoinGlyph />
+                {balance === null ? <span className="muted">reading…</span> : <Money minor={balance} count />}
+                <span className="bal-unit">USDC</span>
+              </span>
+            )}
             {ready &&
               (role ? (
                 <div className="role-switch" role="group" aria-label="Your side">
@@ -150,9 +212,9 @@ export function AppShell({ children }: { children: ReactNode }) {
           </Notice>
         )}
         {chain.status === "unconfigured" && (
-          <Notice kind="info" title="The InvoiceBook contract is not deployed on this network yet">
-            You can explore every page, but there is nothing to read or sign until it is. The steps are in{" "}
-            <a href={`${CONFIG.repoUrl}/blob/main/docs/SETUP.md`} target="_blank" rel="noreferrer">docs/SETUP.md</a>.
+          <Notice kind="info" title="The Misthos contract is not live on this network yet">
+            You can explore every page, but there is nothing to read or sign until it is. Deployment steps for the owner are in the{" "}
+            <Link href="/docs/deploy">docs</Link>.
           </Notice>
         )}
         {chain.status === "error" && (
@@ -184,6 +246,8 @@ export function AppShell({ children }: { children: ReactNode }) {
         )}
       </main>
 
+      <AgentCompanion />
+
       <footer className="appfoot">
         <span>
           {w.status === "connected" && w.address ? (
@@ -202,6 +266,9 @@ export function AppShell({ children }: { children: ReactNode }) {
           )}
         </span>
         <span className="appfoot-links">
+          <span className="net-foot" title={chain.rpcOk === false ? "The network RPC is not answering" : chain.rpcOk ? `RPC ok${chain.head ? `, block ${chain.head}` : ""}` : "Checking the RPC"}>
+            <span className="dot" data-ok={chain.rpcOk === null ? "unknown" : String(chain.rpcOk)} aria-hidden="true" /> {CONFIG.networkName} · {chain.rpcOk === false ? "unreachable" : chain.rpcOk ? "live" : "connecting"}
+          </span>
           <Link href="/kit">Developer kit</Link>
           <a href={CONFIG.repoUrl} target="_blank" rel="noreferrer">Source on GitHub ↗</a>
         </span>

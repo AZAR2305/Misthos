@@ -125,6 +125,12 @@ async function main() {
   await page.locator(".role-card[data-role=supplier]").click();
   await page.waitForURL(/\/supplier$/);
   check(await page.locator(".role-switch button[data-role=supplier][aria-pressed=true]").isVisible(), "the header shows the supplier side after choosing it");
+  // The wallet's USDC is shown in the header and matches the chain exactly (the wallet stand-in is an Anvil account funded with 1,000,000 test USDC).
+  await page.locator(".bal-chip").waitFor();
+  const chip = await page.locator(".bal-chip").innerText();
+  check(/\$1,000,000\.00/.test(chip), `the header shows the wallet's USDC balance from the chain: "${chip.replace(/\s+/g, " ")}"`);
+  const chipFeeless = chip.includes("USDC");
+  check(chipFeeless, "the balance is labelled USDC");
   await page.goto(`${BASE}/app`, { waitUntil: "networkidle" });
   await page.getByText("You are set up as a supplier").waitFor({ timeout: 15_000 });
   check(true, "the choice is remembered for this wallet");
@@ -205,7 +211,7 @@ async function main() {
   await shot("11-invoice-paid");
 
   log("10. every page renders with real data, desktop and phone");
-  const pages = ["/", "/app", "/supplier", "/buyer", "/buyer/approvals", "/buyer/policy", "/invoices", `/invoices/${invoiceId}`, "/ledger", "/stats", "/agents", "/kit", "/claim/abc123token"];
+  const pages = ["/", "/app", "/supplier", "/buyer", "/buyer/approvals", "/buyer/policy", "/invoices", `/invoices/${invoiceId}`, "/ledger", "/stats", "/agents", "/kit", "/docs", "/docs/overview", "/docs/deploy", "/claim/abc123token"];
   for (const p of pages) {
     await page.goto(`${BASE}${p}`, { waitUntil: "networkidle" });
     await sleep(900);

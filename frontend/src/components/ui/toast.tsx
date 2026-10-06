@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
+import { agentBus } from "@/lib/agent-bus";
 import { txUrl } from "@/lib/config";
 
 export interface ToastInput {
@@ -27,6 +28,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const [items, setItems] = useState<Toast[]>([]);
   const push = useCallback((t: ToastInput) => {
     const id = Date.now() + Math.random();
+    if (t.kind !== "info") agentBus.emit({ kind: t.kind === "success" ? "done" : "error", text: t.title });
     setItems((cur) => [...cur.slice(-3), { ...t, id }]);
     window.setTimeout(() => setItems((cur) => cur.filter((x) => x.id !== id)), t.kind === "error" ? 12_000 : 7_000);
   }, []);

@@ -2,6 +2,8 @@
 
 import { Card, CodeBlock, Notice, PageHeader, Tag, Term } from "@/components/ui/kit";
 import { AddressChip, Money } from "@/components/ui/kit";
+import Link from "next/link";
+import { Agents as AgentsShowcase } from "@/components/landing/Agents";
 import { CONFIG } from "@/lib/config";
 import { useAgentHealth, useUsdcBalance } from "@/lib/hooks";
 
@@ -28,6 +30,7 @@ export default function Agents() {
           </>
         }
       />
+      <AgentsShowcase compact />
       <div className="grid-2">
         <Agent role="supplier" />
         <Agent role="buyer" />
@@ -82,7 +85,7 @@ function Agent({ role }: { role: "supplier" | "buyer" }) {
         <>
           <p className="muted tiny">Start it on the machine that holds its wallet:</p>
           <CodeBlock>{`pnpm --filter @misthos/agent ${role}`}</CodeBlock>
-          <p className="muted tiny">First check what is missing with <span className="inline-code">pnpm --filter @misthos/agent doctor</span>. Setup steps: <a className="link" href={`${CONFIG.repoUrl}/blob/main/docs/SETUP.md`} target="_blank" rel="noreferrer">docs/SETUP.md</a>.</p>
+          <p className="muted tiny">First check what is missing with <span className="inline-code">pnpm --filter @misthos/agent doctor</span>. Setup steps: <Link className="link" href="/docs/run-the-agents">Run the agents</Link>.</p>
         </>
       ) : null}
     </Card>

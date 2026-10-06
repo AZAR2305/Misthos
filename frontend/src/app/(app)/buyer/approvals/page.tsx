@@ -53,7 +53,7 @@ function Body({ me }: { me: `0x${string}` }) {
           <div style={{ display: "grid", gap: 14 }}>{waiting.map((i) => <ApprovalCard key={i.id} inv={i} />)}</div>
         )
       ) : held.status === "offline" ? (
-        <Notice kind="info" title="Your buyer agent is not running">There is nothing held back to show. Start it with <span className="inline-code">pnpm --filter @misthos/agent buyer</span> to see payments that need you.</Notice>
+        <Notice kind="info" title="Your buyer agent is not running">There is nothing held back to show. Start it (see <Link href="/docs/run-the-agents">Run the agents</Link>) to see payments that need you.</Notice>
       ) : held.items.length === 0 ? (
         <Empty title="Nothing is held back" body="Payments the agent could not or should not make on its own will wait here, with the reason." />
       ) : (

@@ -88,10 +88,9 @@
 @keyframes hero-ping { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 60%, transparent); } 100% { box-shadow: 0 0 0 12px transparent; } }
 .hero-foot {
   position: relative; z-index: 2; margin-top: auto; pointer-events: none;
-  display: grid; grid-template-columns: 1fr auto 1fr; align-items: end; gap: 24px;
+  display: grid; grid-template-columns: 1fr auto; align-items: end; gap: 24px;
 }
-.hero-scroll { grid-column: 2; margin: 0; font-size: var(--text-micro); color: var(--color-text-muted); }
-.hero-net { grid-column: 3; justify-self: end; margin: 0; }
+.hero-net { justify-self: end; margin: 0; }
 .hero-latest {
   grid-column: 1; grid-row: 1; justify-self: start;
   display: flex; align-items: center; gap: 14px;
@@ -246,9 +245,8 @@
   .nav-cta { font-size: 0.9rem; white-space: nowrap; }
   .nav .theme-name { display: none; }
   .hero-foot { grid-template-columns: 1fr; justify-items: start; gap: 12px; }
-  .hero-scroll, .hero-net { grid-column: 1; justify-self: start; }
+  .hero-net { justify-self: start; }
   .hero-latest { grid-row: auto; }
-  .hero-scroll { display: none; }
   .row, .steps-list .row { grid-template-columns: 1fr; }
   .agents, .evidence { grid-template-columns: 1fr; }
   .proof, .who-grid { grid-template-columns: 1fr; }
@@ -258,3 +256,5 @@
   .nav { grid-template-columns: 1fr auto; }
   .nav-mark { display: none; }
 }
+
+.agents-compact { padding: 0; }

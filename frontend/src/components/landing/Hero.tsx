@@ -179,9 +179,8 @@ export function Hero() {
       </div>
       <AgentGuide />
       <div className="hero-foot">
-        <p className="mono hero-scroll">//scroll</p>
         <LatestPanel />
-        <p className="tag hero-net">{"{testnet}"} Arc · chain 5042002</p>
+        <p className="tag hero-net">Live on Arc testnet</p>
       </div>
     </section>
   );

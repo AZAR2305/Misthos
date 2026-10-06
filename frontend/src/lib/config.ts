@@ -19,8 +19,9 @@ export const CONFIG = {
   book: addr(process.env.NEXT_PUBLIC_INVOICE_BOOK_ADDRESS),
   /** Block the contract was deployed in, so event scans do not start at genesis. */
   deployBlock: BigInt(process.env.NEXT_PUBLIC_DEPLOY_BLOCK ?? 0),
-  supplierAgentUrl: process.env.NEXT_PUBLIC_SUPPLIER_AGENT_URL ?? "http://localhost:4101",
-  buyerAgentUrl: process.env.NEXT_PUBLIC_BUYER_AGENT_URL ?? "http://localhost:4102",
+  /** Where a person's own agent listens. Local ports in development; empty in production unless set, so a visitor's browser never probes localhost. */
+  supplierAgentUrl: process.env.NEXT_PUBLIC_SUPPLIER_AGENT_URL ?? (process.env.NODE_ENV === "production" ? "" : "http://localhost:4101"),
+  buyerAgentUrl: process.env.NEXT_PUBLIC_BUYER_AGENT_URL ?? (process.env.NODE_ENV === "production" ? "" : "http://localhost:4102"),
   supplierAgentAddress: addr(process.env.NEXT_PUBLIC_SUPPLIER_AGENT_ADDRESS),
   buyerAgentAddress: addr(process.env.NEXT_PUBLIC_BUYER_AGENT_ADDRESS),
   /** The Misthos backend (backend/README.md). Unset means no accounts: the app works with just a wallet, as before. */

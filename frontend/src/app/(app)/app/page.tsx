@@ -8,6 +8,7 @@ import { CONFIG } from "@/lib/config";
 import { useAgentHealth, useUsdcBalance } from "@/lib/hooks";
 import { useAccount, useSide } from "@/components/account/AccountProvider";
 import { Onboarding } from "@/components/app/Onboarding";
+import { WalletCard } from "@/components/app/WalletCard";
 import { WalletGate } from "@/components/app/Gate";
 import { ROLE_HOME, RoleChoice } from "@/components/app/RoleChoice";
 import { Skeleton } from "@/components/ui/kit";
@@ -76,6 +77,8 @@ function Overview({ role }: { role: "supplier" | "buyer" }) {
           <button type="button" className="btn btn-ghost" onClick={() => { setRole(other); }}>Switch to {other}</button>
         </div>
       </section>
+
+      <WalletCard />
 
       <Card title="Your setup" aside={<span className="muted tiny">Live checks</span>}>
         <ul className="checklist">

@@ -14,14 +14,24 @@ import "./shell.css";
 import { Providers } from "@/components/Providers";
 import { NO_FLASH_SCRIPT } from "@/lib/themes";
 
+const SITE = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
+const DESCRIPTION =
+  "Two businesses' agents agree the price of waiting on an approved invoice, often 0%. A contract on Arc enforces the signed terms and settles in USDC in under a second.";
+
 export const metadata: Metadata = {
-  title: "Misthos: get paid days after approval, not weeks",
-  description:
-    "Two businesses' agents agree the price of waiting on an approved invoice, often 0%. A contract on Arc enforces the signed terms and settles in under a second.",
+  metadataBase: new URL(SITE),
+  title: { default: "Misthos: get paid days after approval, not weeks", template: "%s · Misthos" },
+  description: DESCRIPTION,
+  applicationName: "Misthos",
+  openGraph: { type: "website", siteName: "Misthos", title: "Misthos: get paid days after approval, not weeks", description: DESCRIPTION },
+  twitter: { card: "summary_large_image", title: "Misthos: get paid days after approval, not weeks", description: DESCRIPTION },
 };
 
 export const viewport: Viewport = {
-  themeColor: "#fafaf9",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#fafaf9" },
+    { media: "(prefers-color-scheme: dark)", color: "#100f0e" },
+  ],
   width: "device-width",
   initialScale: 1,
 };

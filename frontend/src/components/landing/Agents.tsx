@@ -85,7 +85,7 @@ const RUN_IT = [
   { who: "Buyer agent", cmd: "pnpm --filter @misthos/agent buyer" },
 ];
 
-export function Agents() {
+export function Agents({ compact = false }: { compact?: boolean }) {
   const section = useRef<HTMLElement>(null);
   const [near, setNear] = useState(false);
   const [visible, setVisible] = useState(false);
@@ -177,7 +177,8 @@ export function Agents() {
   };
 
   return (
-    <section id="agents" ref={section} className="agents">
+    <section id={compact ? undefined : "agents"} ref={section} className={compact ? "agents agents-compact" : "agents"}>
+      {!compact && (
       <div className="agents-head">
         <h2 className="display-2">
           Two agents. Two businesses.
@@ -205,6 +206,7 @@ export function Agents() {
           </ul>
         </div>
       </div>
+      )}
 
       <div className="workbench">
         <div className="stage-canvas">

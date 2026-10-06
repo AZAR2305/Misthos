@@ -224,3 +224,21 @@ middle to hand over an offer, a thumbs up and a jump on accept, a dance on settl
   relayer is a throwaway key, not a Circle managed wallet; no rate limiting on /api/auth/*; ERC-1271 wallet signatures are
   coded but untested on Arc; obligations, policy and supplier preferences exist as API endpoints but the UI still keeps them
   on the device.
+
+## Agents as real 3D characters, in-app docs, production pass (7 Oct 2026)
+- **Model.** The agents are the CC0 "RobotExpressive" GLB (Tomas Laulhe / Quaternius, three.js examples), a Blender-made rigged
+  model with 14 clips and face morphs. No geometry is generated in code except small props (invoice, coin stack, desk).
+  Michelle, Xbot and Soldier were evaluated and rejected: they are Mixamo characters, and redistributing them in a public repo is
+  a licence grey area (VERIFY). Swapping the model is one constant (`MODEL_URL` in AgentStage.tsx) plus bone names.
+  Blender 4.2 (portable) was downloaded to `~/tools` and not needed in the end: poses were authored and checked in three.js.
+- **Motion layers** added on top of the clips: typing posture (arms to a standing desk that rises from the floor, head tips down,
+  eyes flicker), breathing, soft shadow maps, clearcoat plastic. Head and body follow the cursor; one-shot clips cross-fade.
+- **Where agents appear.** Landing hero (guided tour), the Agents showcase (two agents and a terminal that plays a negotiation:
+  "climb a rung" or "accepted at 0%", rungs and reason codes only, no amounts, labelled as an illustration), the /agents page, and
+  a docked companion on every desktop app page that reacts to transactions through `lib/agent-bus.ts`.
+- **Header.** Primary pages for the chosen side plus a More menu for every public page; the wallet's USDC balance is a chip in the
+  header and a card on Overview. The network badge moved to the footer.
+- **Docs.** `frontend/content/docs/*.md` are rendered in the app at /docs. UI text no longer points at repository files.
+- **Production.** Metadata and share image, sitemap, robots, manifest, 404 and error pages, security headers, model caching.
+  Agent URLs default to empty in production so a visitor's browser never probes localhost. VERIFY before launch: set
+  `NEXT_PUBLIC_SITE_URL`, and no CSP is set yet (wallet, Google sign-in and three.js need a tuned policy).

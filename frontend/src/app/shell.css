@@ -130,16 +130,16 @@
 .welcome[data-role="buyer"] { border-color: color-mix(in srgb, var(--role-buyer) 40%, var(--color-border)); background: linear-gradient(120deg, color-mix(in srgb, var(--role-buyer) 10%, var(--color-surface-1)), var(--color-surface-1)); }
 .welcome h2 { font-family: var(--font-display); font-weight: 600; font-size: 1.5rem; margin: 4px 0; }
 
-@media (max-width: 1380px) { .net-badge, .appbar-end .wallet-net { display: none; } }
+@media (max-width: 1380px) { .appbar-end .wallet-net { display: none; } }
 @media (max-width: 1100px) {
   .appbar-row { flex-wrap: wrap; row-gap: 8px; }
-  .tabs { order: 3; flex-basis: 100%; }
+  .tabs-wrap { order: 3; flex-basis: 100%; }
   .appbar-end { margin-left: auto; }
 }
 @media (max-width: 960px) {
   .role-cards, .welcome { grid-template-columns: 1fr; }
   .appbar-row { flex-wrap: wrap; row-gap: 8px; }
-  .tabs { order: 3; flex-basis: 100%; }
+  .tabs-wrap { order: 3; flex-basis: 100%; }
   .appbar-end { margin-left: auto; }
 }
 @media (max-width: 520px) { .role-switch button { padding: 5px 9px; } .appbar-end { gap: 6px; } }
@@ -162,3 +162,75 @@
 .onb-action { display: grid; gap: 14px; justify-items: start; margin: 8px 0 18px; }
 .google-slot { display: grid; gap: 8px; min-height: 44px; }
 .linklike { background: none; border: 0; padding: 0; font: inherit; color: var(--accent-strong); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+
+/* ---------- the agent companion: a 3D character docked above the footer ---------- */
+.companion-dock { position: sticky; bottom: 0; height: 0; z-index: 30; pointer-events: none; }
+.companion { position: absolute; right: clamp(12px, 2vw, 28px); bottom: 12px; width: 165px; height: 220px; pointer-events: none; }
+.companion-canvas { position: absolute; inset: 0; pointer-events: auto; cursor: pointer; }
+.companion-canvas canvas { display: block; }
+.companion-bubble {
+  position: absolute; right: 128px; bottom: 135px; width: max-content; max-width: 250px; pointer-events: none;
+  background: var(--color-agent-bg); border: 1px solid var(--color-agent-border); color: var(--color-agent-text);
+  border-radius: var(--radius-md) var(--radius-md) 4px var(--radius-md); padding: 9px 12px; font-size: 0.85rem; line-height: 1.4;
+  box-shadow: var(--shadow-pop); animation: bubble-in 220ms var(--ease) both;
+}
+.companion-bubble .tag { color: var(--agent-soft); }
+.companion-x { position: absolute; right: 0; top: 0; width: 24px; height: 24px; border-radius: 50%; border: 1px solid var(--color-border-strong); background: var(--color-surface-1); color: var(--color-text-muted); cursor: pointer; pointer-events: auto; opacity: 0; transition: opacity var(--dur-base) var(--ease); line-height: 1; }
+.companion:hover .companion-x, .companion-x:focus-visible { opacity: 1; }
+.companion-reopen { position: absolute; right: clamp(12px, 2vw, 28px); bottom: 14px; pointer-events: auto; border: 1px solid var(--color-border-strong); background: var(--color-surface-1); color: var(--color-text-muted); border-radius: 999px; padding: 6px 12px; font-size: 0.82rem; cursor: pointer; }
+.companion-reopen:hover { color: var(--color-text); border-color: var(--accent); }
+@media (max-width: 959px) { .companion-dock { display: none; } }
+
+/* ---------- header: primary tabs, a More menu, the wallet's USDC ---------- */
+.tabs-wrap { display: flex; align-items: center; gap: 2px; flex: 1; min-width: 0; }
+.tabs { flex: 0 1 auto; }
+.tab-more { position: relative; flex: none; padding-bottom: 4px; }
+.tab-more > .tab { border: 0; background: none; font: inherit; font-size: 0.92rem; font-weight: 500; cursor: pointer; }
+.tab-more > .tab[aria-current="page"], .tab-more > .tab[aria-expanded="true"] { color: var(--color-text); }
+.tab-more > .tab[aria-current="page"]::after { content: ""; position: absolute; left: 14px; right: 14px; bottom: -4px; height: 2px; border-radius: 2px; background: linear-gradient(90deg, var(--accent), var(--role-supplier)); }
+.more-menu { position: absolute; left: 0; top: calc(100% + 6px); z-index: 60; min-width: 190px; display: grid; padding: 6px; background: var(--color-surface-1); border: 1px solid var(--color-border-strong); border-radius: var(--radius-md); box-shadow: var(--shadow-pop); animation: bubble-in 160ms var(--ease) both; }
+.more-menu a { padding: 9px 12px; border-radius: var(--radius-sm); font-size: 0.92rem; color: var(--color-text-muted); }
+.more-menu a:hover { background: var(--color-surface-2); color: var(--color-text); }
+.more-menu a[aria-current="page"] { color: var(--color-text); font-weight: 600; background: var(--tint); }
+.bal-chip { display: inline-flex; align-items: center; gap: 7px; padding: 6px 12px; border: 1px solid var(--color-border-strong); border-radius: var(--radius-pill); background: var(--color-surface-1); font-size: 0.88rem; font-weight: 600; white-space: nowrap; color: var(--color-text); }
+.bal-chip svg { color: var(--accent); }
+.bal-unit { font-size: 0.72rem; font-weight: 500; color: var(--color-text-muted); }
+.net-foot { display: inline-flex; align-items: center; gap: 7px; }
+@media (max-width: 1180px) { .bal-unit { display: none; } .role-switch button { padding: 5px 9px; } }
+@media (max-width: 1020px) { .bal-chip { display: none; } }
+
+@media (max-width: 1100px) { .tabs-wrap { order: 3; flex-basis: 100%; } }
+
+/* ---------- docs: a sidebar and a readable column ---------- */
+.docs { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: clamp(24px, 4vw, 56px); align-items: start; }
+.docs-nav { position: sticky; top: 96px; display: grid; gap: 10px; }
+.docs-nav ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.docs-nav a { display: block; padding: 7px 12px; border-radius: var(--radius-sm); font-size: 0.92rem; color: var(--color-text-muted); }
+.docs-nav a:hover { background: var(--color-surface-2); color: var(--color-text); }
+.docs-main { min-width: 0; display: grid; gap: 22px; }
+.docs-cards { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; }
+.docs-card { display: grid; gap: 6px; padding: 18px; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface-1); transition: border-color var(--dur-base) var(--ease), transform var(--dur-base) var(--ease); height: 100%; }
+.docs-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+.prose { max-width: 72ch; display: grid; gap: 14px; }
+.prose h1 { margin: 0 0 4px; font-family: var(--font-display); font-weight: 600; font-size: clamp(1.8rem, 3vw, 2.4rem); letter-spacing: -0.02em; line-height: 1.1; }
+.prose h2 { margin: 18px 0 0; font-family: var(--font-display); font-weight: 600; font-size: 1.3rem; letter-spacing: -0.01em; }
+.prose p, .prose li { margin: 0; color: var(--color-text-muted); line-height: 1.65; }
+.prose strong, .prose b { color: var(--color-text); font-weight: 600; }
+.prose ul, .prose ol { margin: 0; padding-left: 1.3em; display: grid; gap: 8px; }
+.prose a { color: var(--accent-strong); text-decoration: underline; text-underline-offset: 3px; }
+.prose table { width: 100%; border-collapse: collapse; font-size: 0.92rem; }
+.prose th, .prose td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--color-border); vertical-align: top; color: var(--color-text-muted); }
+.prose th { color: var(--color-text); font-weight: 600; background: var(--color-surface-2); }
+.prose .table-wrap { overflow-x: auto; border: 1px solid var(--color-border); border-radius: var(--radius-md); }
+.doc-pager { display: flex; justify-content: space-between; gap: 12px; margin-top: 22px; padding-top: 16px; border-top: 1px solid var(--color-border); }
+@media (max-width: 860px) { .docs { grid-template-columns: 1fr; } .docs-nav { position: static; } .docs-nav ul { grid-auto-flow: column; overflow-x: auto; } .docs-nav a { white-space: nowrap; } }
+
+/* ---------- the wallet card: address and the USDC it holds ---------- */
+.wallet-card-hero { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 24px; align-items: center; }
+.wch-id { display: grid; gap: 6px; min-width: 0; }
+.wch-id p { margin: 0; }
+.wch-balance { display: grid; gap: 4px; justify-items: end; text-align: right; }
+.wch-balance p { margin: 0; }
+.wch-amount { font-family: var(--font-display); font-weight: 600; font-size: clamp(2rem, 4vw, 3rem); letter-spacing: -0.03em; line-height: 1.05; color: var(--color-money); display: flex; align-items: baseline; gap: 8px; }
+.wch-unit { font-size: 0.9rem; font-weight: 500; letter-spacing: 0; color: var(--color-text-muted); font-family: var(--font-sans); }
+@media (max-width: 640px) { .wallet-card-hero { grid-template-columns: 1fr; } .wch-balance { justify-items: start; text-align: left; } }

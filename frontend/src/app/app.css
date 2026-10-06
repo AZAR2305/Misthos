@@ -163,7 +163,7 @@
 .modal-body { padding: 18px 20px; display: grid; gap: 14px; }
 .modal-body p { margin: 0; }
 .modal-foot { padding: 14px 20px; border-top: 1px solid var(--color-border); display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap; }
-.toasts { position: fixed; z-index: 90; right: 16px; bottom: 16px; display: grid; gap: 10px; width: min(380px, calc(100vw - 32px)); }
+.toasts { position: fixed; z-index: 90; right: 16px; top: 84px; display: grid; gap: 10px; width: min(380px, calc(100vw - 32px)); }
 .toast { position: relative; padding: 12px 36px 12px 14px; border-radius: var(--radius-md); background: var(--color-surface-2); border: 1px solid var(--color-border-strong); box-shadow: var(--shadow-pop); }
 .toast[data-kind="success"] { border-color: var(--accent-dim); }
 .toast[data-kind="error"] { border-color: var(--color-bad); }

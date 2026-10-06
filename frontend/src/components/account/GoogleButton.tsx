@@ -58,7 +58,7 @@ export function GoogleButton({ onCredential }: { onCredential(credential: string
   }, []);
 
   if (!CONFIG.googleClientId) {
-    return <p className="field-error">Unavailable: Google sign-in is not set up for this site (NEXT_PUBLIC_GOOGLE_CLIENT_ID is empty).</p>;
+    return <p className="field-error">Unavailable: Google sign-in is not turned on for this site yet.</p>;
   }
   return (
     <div className="google-slot">

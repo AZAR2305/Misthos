@@ -1,6 +1,7 @@
 "use client";
 
 import { Card, CodeBlock, Notice, PageHeader, AddressChip } from "@/components/ui/kit";
+import Link from "next/link";
 import { CONFIG } from "@/lib/config";
 
 const ROOT = CONFIG.repoUrl;
@@ -50,7 +51,7 @@ forge script script/DeployLocal.s.sol --rpc-url http://127.0.0.1:8545 --broadcas
 
       <Card title="3. Run it on Arc testnet">
         <p className="muted">You need two Circle Agent Wallets (supplier and buyer), test USDC, a deployed contract and a model key. The full walk-through, with every website and command:</p>
-        <a className="btn btn-primary" href={`${ROOT}/blob/main/docs/SETUP.md`} target="_blank" rel="noreferrer">Open docs/SETUP.md</a>
+        <Link className="btn btn-primary" href="/docs/run-the-agents">Read the full guide</Link>
         <CodeBlock>{`# connect an agent wallet (email code). Use a separate folder per agent.
 CIRCLE_CLI_HOME=~/.misthos/circle-supplier pnpm --filter @misthos/agent exec circle wallet login you@example.com --testnet
 pnpm --filter @misthos/agent exec circle wallet list --chain ARC-TESTNET --type agent
