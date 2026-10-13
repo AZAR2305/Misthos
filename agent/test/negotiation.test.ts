@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { keccak256, toHex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
-import { domain, findPrivateKey, offerTypedData, type BuyerPolicy, type Obligation, type Domain, type SupplierPrefs } from "../src/core/index.js";
+import { DEFAULT_EXPOSURE_POLICY, domain, findPrivateKey, offerTypedData, type BuyerPolicy, type ExposurePolicy, type InvoiceEvent, type Obligation, type Domain, type SupplierPrefs } from "../src/core/index.js";
 import {
   BuyerAgent,
   DecisionStore,
@@ -11,6 +11,7 @@ import {
   SupplierAgent,
   type AgentModel,
   type ChainReader,
+  type ExposureSource,
   type OnChainInvoice,
   type ProposeArgs,
 } from "../src/agents/index.js";
@@ -62,7 +63,7 @@ const down = () => new ScriptedModel(() => {
   throw new ModelUnavailableError("The model is unavailable: test");
 });
 
-function setup(opts: { hurdle?: number; humanAbove?: bigint; model?: AgentModel; prefs?: Partial<SupplierPrefs>; buyerExecuteFails?: WalletError; status?: OnChainInvoice["status"]; treasury?: () => Promise<{ cash: bigint; obligations: Obligation[] }> } = {}) {
+function setup(opts: { hurdle?: number; humanAbove?: bigint; model?: AgentModel; prefs?: Partial<SupplierPrefs>; buyerExecuteFails?: WalletError; status?: OnChainInvoice["status"]; treasury?: () => Promise<{ cash: bigint; obligations: Obligation[] }>; exposure?: ExposureSource } = {}) {
   const supplier = keyWallet("supplier");
   const buyer = keyWallet("buyer", opts.buyerExecuteFails);
   const onchain: OnChainInvoice = {
@@ -82,7 +83,7 @@ function setup(opts: { hurdle?: number; humanAbove?: bigint; model?: AgentModel;
   const policy: BuyerPolicy = { hurdleAprBps: opts.hurdle ?? 1000, liquidityFloor: 5_000n * USD, perInvoiceCap: 0n, dailyCap: 0n, humanAbove: opts.humanAbove ?? 0n, feeBps: 1000 };
   const buyerStore = new DecisionStore();
   const supplierStore = new DecisionStore();
-  const buyerAgent = new BuyerAgent({ wallet: buyer.wallet, domain: D, model: new ScriptedModel({ risk_flags: [], summary: "none" }), policy, store: buyerStore, chain, invoiceBook: BOOK, verifier: eoaVerifier, treasury: opts.treasury ?? rich, now: () => NOW });
+  const buyerAgent = new BuyerAgent({ wallet: buyer.wallet, domain: D, model: new ScriptedModel({ risk_flags: [], summary: "none" }), policy, store: buyerStore, chain, invoiceBook: BOOK, verifier: eoaVerifier, treasury: opts.treasury ?? rich, exposure: opts.exposure, now: () => NOW });
   const prefs: SupplierPrefs = { costOfWaitingAprBps: 2200, maxRateBps: 1000, startRateBps: 600, stepBps: 200, ...opts.prefs };
   const sent: unknown[] = [];
   const supplierAgent = new SupplierAgent({
@@ -405,5 +406,81 @@ describe("constraint-based decisions (SRS 6.3 and acceptance 3 and 4)", () => {
     expect(r.kind).toBe("hold_to_due");
     expect(t.supplierAgent.transcript.at(-1)?.outcome).toBe("DISPUTED");
     expect(t.supplierStore.all().some((e) => e.reasonCode === "NO_OVERLAP")).toBe(false);
+  });
+});
+
+describe("credit and exposure (SRS FR-05 and acceptance 5)", () => {
+  const policy = (o: Partial<ExposurePolicy> = {}): ExposurePolicy => ({ ...DEFAULT_EXPOSURE_POLICY, version: "exposure-3", newCounterpartyLimit: 1_990n * USD, maxLimit: 5_000n * USD, ...o });
+  const source = (p: ExposurePolicy | null, events: InvoiceEvent[] | Error = []): ExposureSource => ({
+    policy: async () => p,
+    events: async () => {
+      if (events instanceof Error) throw events;
+      return events;
+    },
+  });
+  const settledBefore: InvoiceEvent = { invoiceId: "0xaa", state: "settled_on_due", face: 10_000n * USD, dueSec: BigInt(NOW) - 10n * 86_400n, settledAtSec: BigInt(NOW) - 10n * 86_400n, txHash: "0x" + "ee".repeat(32), logIndex: 3 };
+
+  it("a payment over the limit is rejected with EXPOSURE_LIMIT although the wallet holds far more; a higher rung that fits is accepted", async () => {
+    // Room 1,990 USDC. Rung 600 costs 1,992.01, rung 800 costs 1,989.35 (hand-computed from the contract formula).
+    const t = setup({ hurdle: 0, exposure: source(policy()) });
+    const result = await t.supplierAgent.start(t.inv);
+    expect(t.supplierAgent.transcript[0]).toEqual({ rung: 0, rateBps: 600, outcome: "EXPOSURE_LIMIT" });
+    expect(result).toMatchObject({ kind: "accepted", rateBps: 800 });
+    expect(t.buyer.calls).toHaveLength(1);
+  });
+
+  it("when no rung fits the limit the agents end with NO_OVERLAP and nothing settles", async () => {
+    const t = setup({ hurdle: 0, exposure: source(policy({ newCounterpartyLimit: 1_900n * USD, maxLimit: 1_900n * USD })) });
+    const result = await t.supplierAgent.start(t.inv);
+    expect(result.kind).toBe("hold_to_due");
+    expect(t.supplierAgent.transcript.every((x) => x.outcome === "EXPOSURE_LIMIT")).toBe(true);
+    expect(t.buyer.calls).toHaveLength(0);
+    expect(t.supplierStore.all().at(-1)).toMatchObject({ reasonCode: "NO_OVERLAP" });
+    expect(t.buyerStore.all().some((e) => e.reasonCode === "EXPOSURE_LIMIT")).toBe(true);
+  });
+
+  it("verified settlement history raises the limit, so the very same offer now clears at the first rung", async () => {
+    const t = setup({ hurdle: 0, prefs: { startRateBps: 0 }, exposure: source(policy(), [settledBefore]) }); // 1,990 + 20% of 10,000 = 3,990
+    expect(await t.supplierAgent.start(t.inv)).toMatchObject({ kind: "accepted", rateBps: 0 });
+  });
+
+  it("history without a transaction behind it does not raise the limit", async () => {
+    const unproven = { ...settledBefore, txHash: undefined, logIndex: undefined };
+    const t = setup({ hurdle: 0, prefs: { startRateBps: 0 }, exposure: source(policy({ newCounterpartyLimit: 1_900n * USD, maxLimit: 5_000n * USD }), [unproven]) });
+    expect((await t.supplierAgent.start(t.inv)).kind).toBe("hold_to_due");
+    expect(t.buyer.calls).toHaveLength(0);
+  });
+
+  it("an early payment already outstanding to this supplier uses up the limit", async () => {
+    const prepaid: InvoiceEvent = { invoiceId: "0xbb", state: "settled_early", face: 4_000n * USD, outflow: 1_000n * USD, dueSec: BigInt(NOW) + 20n * 86_400n, settledAtSec: BigInt(NOW) - 86_400n, txHash: "0x" + "dd".repeat(32), logIndex: 1 };
+    const t = setup({ hurdle: 0, prefs: { startRateBps: 0 }, exposure: source(policy({ newCounterpartyLimit: 2_500n * USD, maxLimit: 2_500n * USD }), [prepaid]) });
+    // room = 2,500 - 1,000 = 1,500 USDC, below any price of this 2,000 USDC invoice up to the ceiling
+    expect((await t.supplierAgent.start(t.inv)).kind).toBe("hold_to_due");
+    expect(t.buyer.calls).toHaveLength(0);
+  });
+
+  it("history that cannot be read fails closed: nothing is accepted, a person is asked, and the offer is not burnt", async () => {
+    const t = setup({ hurdle: 0, prefs: { startRateBps: 0 }, exposure: source(policy(), new Error("indexer down")) });
+    const result = await t.supplierAgent.start(t.inv);
+    expect(t.buyer.calls).toHaveLength(0);
+    expect(t.buyerStore.all().some((e) => e.reasonCode === "EVIDENCE_UNAVAILABLE" && e.outcome === "needs_approval")).toBe(true);
+    expect(t.buyerAgent.needsApproval.get(INVOICE)?.reasonCode).toBe("EVIDENCE_UNAVAILABLE");
+    expect(result.kind).toBe("hold_to_due"); // the supplier stops on NEEDS_HUMAN_APPROVAL
+  });
+
+  it("no policy set means no check is made and none is claimed in the log", async () => {
+    const t = setup({ hurdle: 0, prefs: { startRateBps: 0 }, exposure: source(null) });
+    expect(await t.supplierAgent.start(t.inv)).toMatchObject({ kind: "accepted", rateBps: 0 });
+    expect(JSON.stringify(t.buyerStore.all().map((e) => e.snapshot))).not.toContain("exposure");
+  });
+
+  it("the accepting entry is the settlement's decision hash and carries the policy version and on-chain evidence, with no limits", async () => {
+    const t = setup({ hurdle: 0, prefs: { startRateBps: 0 }, exposure: source(policy(), [settledBefore]) });
+    await t.supplierAgent.start(t.inv);
+    const decisionHash = (t.buyer.calls[0]!.args as unknown[])[3] as string;
+    const entry = t.buyerStore.all().find((e) => e.hash === decisionHash)!;
+    expect(entry.snapshot).toMatchObject({ exposure: { policyVersion: "exposure-3", result: "ok", evidence: [{ ref: "0xaa", kind: "settlement", txHash: settledBefore.txHash, logIndex: 3 }] } });
+    expect(findPrivateKey(entry.snapshot)).toBeUndefined();
+    expect(JSON.stringify(entry.snapshot)).not.toMatch(/1990|3990|5000000000|1990000000/);
   });
 });

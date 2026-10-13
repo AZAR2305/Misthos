@@ -5,7 +5,7 @@ import { BuyerAgent } from "../agents/buyer.js";
 import { AnthropicModel } from "../agents/model.js";
 import { viemChainReader } from "../agents/chain.js";
 import { openDecisionStore } from "../agents/log.js";
-import { fetchObligations, signedReader } from "../agents/backend.js";
+import { fetchExposureEvents, fetchExposurePolicy, fetchObligations, signedReader } from "../agents/backend.js";
 import { offerMsgSchema } from "../protocol/index.js";
 import { buyerPolicyFromEnv, loadConfig, loadEnvFile } from "../config.js";
 import { CircleCliAdapter } from "../wallets/circleCli.js";
@@ -59,6 +59,15 @@ const buyer = new BuyerAgent({
   verifier,
   // The real USDC balance and the payment calendar the owner declared. A calendar that cannot be read is never assumed empty:
   // the read throws, the buyer fails closed (TREASURY_UNAVAILABLE) and accepts nothing until it can.
+  // The credit limit the owner set on the API and the settlement history it rests on. Without BACKEND_URL no limit can be read, so
+  // none is applied (and none is claimed). With it, an unreadable limit or history stops acceptance (fail closed).
+  exposure:
+    reader && cfg.BACKEND_URL
+      ? {
+          policy: () => fetchExposurePolicy(reader),
+          events: (supplier) => fetchExposureEvents({ backendUrl: cfg.BACKEND_URL!, side: "buyer", owner: cfg.BUYER_AGENT_WALLET_ADDRESS!, counterparty: supplier }),
+        }
+      : undefined,
   treasury: async () => ({ cash: await wallet.balance("USDC"), obligations: await obligations() }),
 });
 

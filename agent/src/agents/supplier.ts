@@ -177,7 +177,7 @@ export class SupplierAgent {
     }
     // Every rung up to the supplier's own ceiling was turned down for price or cash reasons: the two ranges do not overlap, so
     // no deal is made up and the invoice stays on its normal terms (SRS 6.3).
-    const priceOnly = this.transcript.slice(firstRung).every((t) => t.outcome === "BELOW_HURDLE" || t.outcome === "LIQUIDITY_FLOOR");
+    const priceOnly = this.transcript.slice(firstRung).every((t) => t.outcome === "BELOW_HURDLE" || t.outcome === "LIQUIDITY_FLOOR" || t.outcome === "EXPOSURE_LIMIT");
     if (priceOnly) {
       this.log(inv, { rungs: ladder.length }, null, "rejected", "Every rung was rejected: the supplier's price range and the buyer's do not overlap. Hold to the due date.", "NO_OVERLAP");
       return { kind: "hold_to_due", reason: "No deal: the two sides' price ranges do not overlap, so the invoice stays on its normal terms." };

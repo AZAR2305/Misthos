@@ -131,7 +131,9 @@ export function evaluateExposure(i: ExposureInput): ExposureDecision {
     if (e.state === "settled_early" || e.state === "settled_on_due") {
       const proven = e.txHash !== undefined && e.logIndex !== undefined && e.settledAtSec !== undefined;
       if (!proven) {
+        // Not provable yet (for example not indexed): it cannot grow the limit, but money already paid ahead still counts as outstanding.
         evidence.push({ ref, kind: "unverified", amount: e.face });
+        if (i.side === "buyer" && e.state === "settled_early" && e.dueSec > i.nowSec) outstanding += e.outflow ?? e.face;
         continue;
       }
       if (e.settledAtSec! >= windowStart) {

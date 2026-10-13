@@ -75,6 +75,16 @@ describe("only verified, recent, distinct settlements grow the limit", () => {
     expect(d.evidence).toEqual([{ ref: "c3", kind: "unverified", amount: 10_000n * USD }]);
     expect(decide([settledOnDue("c4", 10_000n * USD, 1n * DAY, { logIndex: undefined })], 0n).settledVolume).toBe(0n);
   });
+  it("an early payment not yet proven (not indexed) still counts as outstanding but never grows the limit", () => {
+    const d = decide([settledEarly("n1", 4_000n * USD, 3_900n * USD, 20n * DAY, { txHash: undefined, logIndex: undefined, settledAtSec: undefined })], 0n);
+    expect(d).toMatchObject({ outstanding: 3_900n * USD, settledVolume: 0n, allowed: 5_000n * USD });
+    expect(d.evidence).toEqual([{ ref: "n1", kind: "unverified", amount: 4_000n * USD }]);
+  });
+  it("a local record of a payment and the same payment once indexed count once, the proven one winning", () => {
+    const local = settledEarly("b2", 4_000n * USD, 3_900n * USD, 20n * DAY, { txHash: undefined, logIndex: undefined, settledAtSec: undefined });
+    const d = decide([history[0]!, history[1]!, local], 0n);
+    expect(d).toMatchObject({ outstanding: 3_900n * USD, settledVolume: 14_000n * USD });
+  });
   it("settlements older than the look-back window do not count", () => {
     expect(decide([settledOnDue("old", 10_000n * USD, 181n * DAY)], 0n).settledVolume).toBe(0n);
     expect(decide([settledOnDue("edge", 10_000n * USD, 179n * DAY)], 0n).settledVolume).toBe(10_000n * USD);

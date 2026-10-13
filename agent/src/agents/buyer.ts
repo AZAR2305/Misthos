@@ -1,6 +1,7 @@
 import { z } from "zod";
 import {
   allocate,
+  evaluateExposure,
   evaluateOffer,
   fitsCashPath,
   priceOffer,
@@ -8,6 +9,8 @@ import {
   type BuyerPolicy,
   type Candidate,
   type Domain,
+  type ExposurePolicy,
+  type InvoiceEvent,
   type Obligation,
   type ReasonCode,
 } from "../core/index.js";
@@ -64,6 +67,24 @@ export interface Treasury {
   obligations: readonly Obligation[];
 }
 
+/**
+ * Where the buyer gets its credit limit and the history behind it (SRS FR-05). Both reads may throw; a throw is "unavailable"
+ * and the buyer accepts nothing until it can read them. `policy()` returns null when the owner has not set a limit: then no
+ * exposure check is made and none is claimed.
+ */
+export interface ExposureSource {
+  policy(): Promise<ExposurePolicy | null>;
+  /** The invoices between this buyer and one supplier, from indexed chain events. */
+  events(supplier: Address): Promise<readonly InvoiceEvent[]>;
+}
+
+/** What a log entry says about an exposure check: the policy version and the on-chain evidence it rested on. No limits, no private amounts. */
+export interface ExposureInfo {
+  policyVersion: string;
+  result: "ok" | "limit";
+  evidence: Array<{ ref: string; kind: string; txHash?: string; logIndex?: number }>;
+}
+
 export interface BuyerDeps {
   wallet: WalletAdapter;
   domain: Domain;
@@ -78,6 +99,8 @@ export interface BuyerDeps {
    * hurdle but would breach the floor is rejected. If it cannot be read, nothing is accepted (fail closed).
    */
   treasury: () => Promise<Treasury>;
+  /** The credit limit and history. Without it no exposure check is made. */
+  exposure?: ExposureSource;
   /** Private ledger lookups used to confirm model flags. */
   facts?: (invoiceId: string) => InvoiceFacts;
   now?: () => number;
@@ -98,6 +121,8 @@ export class BuyerAgent {
   private readonly seenNonces = new Set<string>();
   /** Answers already given, so a retried offer (a timeout, a restart of the sender) gets the same answer and settles once. */
   private readonly replies = new Map<string, NegotiateReply>();
+  /** Early payments this process has made, so two offers in a row cannot pass the limit while the indexer catches up. */
+  private readonly paidEarly: Array<{ supplier: string; event: InvoiceEvent }> = [];
   /** Net + fee paid early so far on the current UTC day, against the daily cap. */
   private spent = { day: -1, amount: 0n };
   /** Items waiting for a person, with the reason code. Shown on /buyer/approvals. */
@@ -153,6 +178,19 @@ export class BuyerAgent {
       return this.remember(replyKey, await this.reject(msg, ev.reason, nowSec));
     }
 
+    // Credit: the payment must stay inside the limit set for this supplier (SRS FR-05). Unreadable history fails closed.
+    const ex = await this.checkExposure(candidate, nowSec, onchain.supplier);
+    if (ex.kind === "unavailable") {
+      this.seenNonces.delete(nonceKey); // nothing was decided, so the same offer may be sent again
+      this.log(id, { rung: msg.rung }, null, "needs_approval", ex.reason, "EVIDENCE_UNAVAILABLE");
+      this.needsApproval.set(id, { reasonCode: "EVIDENCE_UNAVAILABLE", reason: ex.reason });
+      return this.reject(msg, "NEEDS_HUMAN_APPROVAL", nowSec);
+    }
+    if (ex.kind === "limit") {
+      this.log(id, { rung: msg.rung, rateBps: msg.offer.rateBps, exposure: ex.info }, null, "rejected", "The payment would take the exposure to this supplier past its allowed limit.", "EXPOSURE_LIMIT");
+      return this.remember(replyKey, await this.reject(msg, "EXPOSURE_LIMIT", nowSec));
+    }
+
     // Liquidity: the offer must fit the cash path above the floor, with obligations and the daily cap (spec 3.2 step 5).
     const fit = await this.fitsCash(candidate, nowSec);
     if (fit.kind === "unavailable") {
@@ -166,7 +204,7 @@ export class BuyerAgent {
       return this.remember(replyKey, await this.reject(msg, "LIQUIDITY_FLOOR", nowSec));
     }
 
-    const decision = this.log(id, { rung: msg.rung, rateBps: msg.offer.rateBps }, null, "auto_apply", `Accepted rung ${msg.rung} at ${msg.offer.rateBps} bps: eligible and at or above the hurdle.`);
+    const decision = this.log(id, { rung: msg.rung, rateBps: msg.offer.rateBps, ...(ex.kind === "ok" ? { exposure: ex.info } : {}) }, null, "auto_apply", `Accepted rung ${msg.rung} at ${msg.offer.rateBps} bps: eligible and at or above the hurdle.`);
     try {
       await this.settle(msg, decision.hash);
     } catch (e) {
@@ -181,7 +219,43 @@ export class BuyerAgent {
     }
     this.needsApproval.delete(id);
     this.addSpent(candidate, nowSec);
+    this.recordPaid(candidate, onchain.supplier, nowSec);
     return this.remember(replyKey, await signAccept(this.d.wallet, this.d.domain, { invoiceId: id, rung: msg.rung, offerHash: offerHashOf(this.d.domain, msg.offer), ts: nowSec }));
+  }
+
+  /** Remember a payment this process just made, until the indexer shows it. */
+  private recordPaid(c: Candidate, supplier: Address, nowSec: number) {
+    const p = priceOffer(c.face, c.offerRateBps, c.dueSec - BigInt(nowSec), this.d.policy.feeBps);
+    this.paidEarly.push({ supplier: supplier.toLowerCase(), event: { invoiceId: c.id, state: "settled_early", face: c.face, outflow: p.outflow, dueSec: c.dueSec } });
+  }
+
+  /**
+   * Is this payment inside the limit set for this supplier? `off`: no limit is set (nothing is claimed). `unavailable`: the policy or
+   * the history could not be read, so nothing is accepted. The result carries the policy version and on-chain evidence for the log.
+   */
+  private async checkExposure(c: Candidate, nowSec: number, supplier: Address): Promise<{ kind: "off" } | { kind: "ok"; info: ExposureInfo } | { kind: "limit"; info: ExposureInfo } | { kind: "unavailable"; reason: string }> {
+    const src = this.d.exposure;
+    if (!src) return { kind: "off" };
+    let policy: ExposurePolicy | null;
+    let events: readonly InvoiceEvent[];
+    try {
+      policy = await src.policy();
+      if (!policy) return { kind: "off" };
+      events = await src.events(supplier);
+    } catch (e) {
+      return { kind: "unavailable", reason: `The credit limit or its history could not be read, so nothing is accepted: ${(e as Error).message}` };
+    }
+    const local = this.paidEarly.filter((p) => p.supplier === supplier.toLowerCase()).map((p) => p.event);
+    const outflow = priceOffer(c.face, c.offerRateBps, c.dueSec - BigInt(nowSec), this.d.policy.feeBps).outflow;
+    // Indexed events come first, so a payment that has been indexed wins over this process's own record of it.
+    const d = evaluateExposure({ side: "buyer", nowSec: BigInt(nowSec), newExposure: outflow, events: [...events, ...local], policy });
+    if (d.kind === "unavailable") return { kind: "unavailable", reason: "The history needed for the credit limit is unavailable, so nothing is accepted." };
+    const info: ExposureInfo = {
+      policyVersion: policy.version,
+      result: d.ok ? "ok" : "limit",
+      evidence: d.evidence.map((e) => ({ ref: e.ref, kind: e.kind, ...(e.txHash ? { txHash: e.txHash } : {}), ...(e.logIndex !== undefined ? { logIndex: e.logIndex } : {}) })),
+    };
+    return d.ok ? { kind: "ok", info } : { kind: "limit", info };
   }
 
   private remember(key: string, reply: NegotiateReply): NegotiateReply {
@@ -232,14 +306,24 @@ export class BuyerAgent {
     };
     const ev = evaluateOffer(this.d.policy, candidate, BigInt(this.now()));
     if (!ev.ok) return { settled: false, reasonCode: ev.reason };
+    const ex = await this.checkExposure(candidate, this.now(), held.supplier);
+    if (ex.kind === "unavailable") {
+      this.log(invoiceId, { rateBps: held.msg.offer.rateBps }, null, "needs_approval", ex.reason, "EVIDENCE_UNAVAILABLE");
+      return { settled: false, reasonCode: "NEEDS_HUMAN_APPROVAL" };
+    }
+    if (ex.kind === "limit") {
+      this.log(invoiceId, { rateBps: held.msg.offer.rateBps, exposure: ex.info }, null, "rejected", "The payment would take the exposure to this supplier past its allowed limit.", "EXPOSURE_LIMIT");
+      return { settled: false, reasonCode: "EXPOSURE_LIMIT" };
+    }
     const fit = await this.fitsCash(candidate, this.now());
     if (fit.kind !== "ok") {
       this.log(invoiceId, { rateBps: held.msg.offer.rateBps }, null, fit.kind === "no" ? "rejected" : "needs_approval", fit.reason, fit.kind === "no" ? "LIQUIDITY_FLOOR" : "TREASURY_UNAVAILABLE");
       return { settled: false, reasonCode: fit.kind === "no" ? "LIQUIDITY_FLOOR" : "NEEDS_HUMAN_APPROVAL" };
     }
-    const decision = this.log(invoiceId, { rateBps: held.msg.offer.rateBps }, null, "auto_apply", "Accepted the held offer on request.");
+    const decision = this.log(invoiceId, { rateBps: held.msg.offer.rateBps, ...(ex.kind === "ok" ? { exposure: ex.info } : {}) }, null, "auto_apply", "Accepted the held offer on request.");
     const r = await this.settle(held.msg, decision.hash);
     this.addSpent(candidate, this.now());
+    this.recordPaid(candidate, held.supplier, this.now());
     this.needsApproval.delete(invoiceId);
     return { settled: true, txHash: r.txHash, transactionId: r.transactionId };
   }
@@ -286,10 +370,19 @@ export class BuyerAgent {
     for (const item of allocation.items) {
       const held = this.offers.get(item.id);
       if (!held) continue;
-      const decision = this.log(item.id, { rateBps: item.rateBps, discount: item.discount }, null, "auto_apply", allocation.explanation);
+      const candidate: Candidate = { id: item.id, face: held.face, dueSec: held.dueSec, status: "approved", offerRateBps: held.msg.offer.rateBps, offerExpirySec: BigInt(held.msg.offer.expiry) };
+      const ex = await this.checkExposure(candidate, this.now(), held.supplier);
+      if (ex.kind === "limit" || ex.kind === "unavailable") {
+        // The allocator knows cash, not credit limits: a payment the limit forbids is skipped here, with the reason in the log.
+        const limit = ex.kind === "limit";
+        this.log(item.id, { rateBps: item.rateBps, ...(limit ? { exposure: ex.info } : {}) }, null, limit ? "rejected" : "needs_approval", limit ? "The payment would take the exposure to this supplier past its allowed limit." : ex.reason, limit ? "EXPOSURE_LIMIT" : "EVIDENCE_UNAVAILABLE");
+        continue;
+      }
+      const decision = this.log(item.id, { rateBps: item.rateBps, discount: item.discount, ...(ex.kind === "ok" ? { exposure: ex.info } : {}) }, null, "auto_apply", allocation.explanation);
       const r = await this.settle(held.msg, decision.hash);
       this.spentToday(this.now());
       this.spent.amount += item.outflow;
+      this.recordPaid(candidate, held.supplier, this.now());
       out.push({ id: item.id, txHash: r.txHash, transactionId: r.transactionId });
     }
     return out;

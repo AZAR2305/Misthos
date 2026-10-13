@@ -103,6 +103,11 @@ export interface BuyerCeilingInput {
   obligations: readonly BuyerObligation[] | null;
   /** Net + fee already paid early today, against the daily cap. */
   spentToday: bigint;
+  /**
+   * What the credit policy still allows to be paid to this supplier (allowed limit minus what is already outstanding).
+   * null or absent: no credit policy is set, so nothing is limited here (and nothing claims it was checked).
+   */
+  exposureRoom?: bigint | null;
 }
 
 export type BuyerCeiling =
@@ -120,9 +125,9 @@ export type BuyerCeiling =
       /** r_buy: the lowest rate the buyer accepts, or null when no rate it is allowed to take fits. */
       minRateBps: number | null;
       /** Which term sets r_buy: the hurdle, the cash it can spare, or a cap. */
-      binding: "hurdle" | "liquidity" | "cap" | null;
+      binding: "hurdle" | "liquidity" | "cap" | "exposure" | null;
       /** Every input and where it came from. Declared inputs can only reduce the ceiling. */
-      inputs: Array<{ ref: "balance" | "reserve" | "obligations" | "caps"; provenance: Provenance }>;
+      inputs: Array<{ ref: "balance" | "reserve" | "obligations" | "caps" | "exposure"; provenance: Provenance }>;
     };
 
 /**
@@ -146,20 +151,29 @@ export function buyerCeiling(i: BuyerCeilingInput): BuyerCeiling {
     caps.push(left > 0n ? left : 0n);
   }
   const capRoom = caps.length ? caps.reduce((a, b) => (a < b ? a : b)) : null;
+  const exposureRoom = i.exposureRoom ?? null;
 
   const top = highestPayableRate(i.face, i.secondsEarly);
   const hurdle = i.policy.hurdleAprBps;
   const econMax = top < 0 ? 0n : outflowAt(i.face, Math.min(hurdle, top), i.secondsEarly, i.feeBps)!;
 
-  const budget = capRoom !== null && capRoom < available ? capRoom : available;
-  const maxPay = [available, econMax, ...(capRoom !== null ? [capRoom] : [])].reduce((a, b) => (a < b ? a : b));
+  const limits = [available, ...(capRoom !== null ? [capRoom] : []), ...(exposureRoom !== null ? [exposureRoom] : [])];
+  const budget = limits.reduce((a, b) => (a < b ? a : b));
+  const maxPay = [budget, econMax].reduce((a, b) => (a < b ? a : b));
 
   const spendable = minRateWithin(i.face, i.secondsEarly, i.feeBps, budget);
   let minRateBps: number | null = null;
-  let binding: "hurdle" | "liquidity" | "cap" | null = null;
+  let binding: "hurdle" | "liquidity" | "cap" | "exposure" | null = null;
   if (spendable !== null && hurdle <= top) {
     minRateBps = Math.max(hurdle, spendable);
-    binding = hurdle >= spendable ? "hurdle" : capRoom !== null && capRoom < available ? "cap" : "liquidity";
+    binding =
+      hurdle >= spendable
+        ? "hurdle"
+        : exposureRoom !== null && exposureRoom <= budget
+          ? "exposure"
+          : capRoom !== null && capRoom <= budget
+            ? "cap"
+            : "liquidity";
   }
 
   const owedProvenance: Provenance = i.obligations.length === 0 ? "policy" : i.obligations.some((o) => o.provenance === "declared") ? "declared" : i.obligations.every((o) => o.provenance === "onchain") ? "onchain" : "policy";
@@ -176,6 +190,7 @@ export function buyerCeiling(i: BuyerCeilingInput): BuyerCeiling {
       { ref: "reserve", provenance: "policy" },
       { ref: "obligations", provenance: owedProvenance },
       { ref: "caps", provenance: "policy" },
+      ...(exposureRoom !== null ? [{ ref: "exposure" as const, provenance: "onchain" as const }] : []),
     ],
   };
 }

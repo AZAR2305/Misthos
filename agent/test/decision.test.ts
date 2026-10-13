@@ -118,6 +118,26 @@ describe("independent inputs change the outcome in the expected direction (SRS a
   });
 });
 
+describe("the credit limit is part of the range", () => {
+  const s = supplierFloor({ face: F, secondsEarly: T, prefs, feeBps: 1000 });
+  it("room under the limit raises r_buy exactly like cash would: 9,900 USDC of room gives 1352 even with huge cash", () => {
+    const b = ceiling({ cash: 1_000_000n * USD, exposureRoom: 9_900n * USD });
+    expect(b).toMatchObject({ kind: "ok", minRateBps: 1352, binding: "exposure" });
+    expect(dealRange(s, b)).toEqual({ kind: "overlap", minRateBps: 1352, maxRateBps: 2000 });
+  });
+  it("too little room ends the deal even though cash is ample (SRS 6.4: enough USDC but rejected for exposure)", () => {
+    const b = ceiling({ cash: 1_000_000n * USD, exposureRoom: 9_000n * USD });
+    expect(b).toMatchObject({ kind: "ok", minRateBps: null });
+    expect(dealRange(s, b)).toEqual({ kind: "none", reason: "BUYER_CANNOT_PAY" });
+    expect(dealRange(s, ceiling({ cash: 1_000_000n * USD, exposureRoom: 9_850n * USD }))).toEqual({ kind: "none", reason: "NO_OVERLAP" });
+  });
+  it("no policy means no limit and no claim that one was checked", () => {
+    const b = ceiling({ cash: 1_000_000n * USD });
+    expect(b.kind === "ok" && b.inputs.some((x) => x.ref === "exposure")).toBe(false);
+    expect(b).toMatchObject({ minRateBps: 600, binding: "hurdle" });
+  });
+});
+
 describe("unavailable data fails closed and is never defaulted", () => {
   it("no balance, or no calendar, is unavailable and gives TREASURY_UNAVAILABLE", () => {
     const s = supplierFloor({ face: F, secondsEarly: T, prefs, feeBps: 1000 });
