@@ -62,3 +62,10 @@ and the README, as the SRS itself requires.
 See the list given in chat on 14 Oct and the account steps in `docs/SETUP.md`. In short: the deployer key and faucet funds, two
 Circle logins, an Anthropic key, a Postgres URL, a Google client id, one real counterparty with an invoice, and the Arc RPC URL
 confirmed from an authoritative source. None of these may be committed (`.env` files stay local).
+
+## 5. Detailed spec
+
+The four work items (supplier floor and buyer ceiling, credit and exposure function, policy version and evidence in the log,
+negotiation-trace and credit-basis UI), the tests and the open decisions are in **`docs/SRS_IMPLEMENTATION_SPEC.md`**. It also records one
+finding from this review (F-0): the public `/api/log` returns each decision's snapshot, and the supplier agent's snapshot contains its
+private cost of waiting and maximum rate. That is fixed first.
