@@ -114,6 +114,8 @@ export class SupplierAgent {
       history: { pastAcceptedBps: inv.pastAcceptedBps },
       allowedRefs: EVIDENCE_REFS,
     };
+    // What the public log gets: the invoice and counts, never the supplier's private settings (finding F-0).
+    const logged = { invoice: { face: inv.face, secondsEarly }, pastAcceptedCount: inv.pastAcceptedBps.length };
 
     let proposal: SupplierProposal;
     try {
@@ -128,17 +130,19 @@ export class SupplierAgent {
       }
     } catch (e) {
       const code = e instanceof ModelUnavailableError || e instanceof ProposalInvalidError ? e.code : "MODEL_ERROR";
-      this.log(inv, snapshot, null, "needs_approval", (e as Error).message, code);
+      this.log(inv, logged, null, "needs_approval", (e as Error).message, code);
       return { kind: "needs_approval", reasonCode: code, reason: (e as Error).message };
     }
 
+    // The model's rates and free-text reason stay out of the public log: they can echo the supplier's private bounds.
+    const publicProposal = { action: proposal.action, evidence_refs: proposal.evidence_refs };
     if (proposal.action === "wait") {
-      this.log(inv, snapshot, proposal, "rejected", `Waiting: ${proposal.reason}`);
+      this.log(inv, logged, publicProposal, "rejected", "The agent decided to wait for the due date.", "HOLD_TO_DUE");
       return { kind: "hold_to_due", reason: "The agent decided to wait for the due date." };
     }
     if (proposal.action === "partial") {
       // Partial acceleration is Tier 3 (spec 8.2). Do not guess: hand it to a person.
-      this.log(inv, snapshot, proposal, "needs_approval", "Partial acceleration is not built yet.", "PARTIAL_UNSUPPORTED");
+      this.log(inv, logged, publicProposal, "needs_approval", "Partial acceleration is not built yet.", "PARTIAL_UNSUPPORTED");
       return { kind: "needs_approval", reasonCode: "PARTIAL_UNSUPPORTED", reason: "Partial acceleration is not built yet." };
     }
 
@@ -147,7 +151,8 @@ export class SupplierAgent {
     const start = Math.min(Math.max(proposal.start_rate_bps ?? this.d.prefs.startRateBps, 0), ceiling);
     const max = Math.min(Math.max(proposal.max_rate_bps ?? ceiling, start), ceiling);
     const ladder = buildLadder({ ...this.d.prefs, startRateBps: start, maxRateBps: max }, inv.pastAcceptedBps);
-    this.log(inv, snapshot, proposal, "auto_apply", `Accelerate now with a ladder of ${ladder.length} rungs from ${ladder[0]} to ${ladder.at(-1)} bps.`);
+    // The top rung is the supplier's private ceiling, so the log says where the ask starts and how many rungs, not where it ends.
+    this.log(inv, logged, publicProposal, "auto_apply", `Accelerate now: ${ladder.length} rungs, starting at ${ladder[0]} bps.`);
 
     for (let rung = 0; rung < ladder.length; rung++) {
       if (this.d.shouldStop?.(inv.id)) {

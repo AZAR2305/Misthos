@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { keccak256, toHex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
-import { domain, offerTypedData, type BuyerPolicy, type Domain, type SupplierPrefs } from "../src/core/index.js";
+import { domain, findPrivateKey, offerTypedData, type BuyerPolicy, type Domain, type SupplierPrefs } from "../src/core/index.js";
 import {
   BuyerAgent,
   DecisionStore,
@@ -317,5 +317,40 @@ describe("buyer plan", () => {
     });
     await failing.handleOffer(messageSchema.parse(JSON.parse(JSON.stringify(t.sent[0]))) as OfferMsg);
     await expect(failing.plan(12_000n * USD, [])).rejects.toBeInstanceOf(ModelUnavailableError);
+  });
+});
+
+describe("the public log never carries private policy (finding F-0)", () => {
+  const dump = (v: unknown) => JSON.stringify(v, (_k, x) => (typeof x === "bigint" ? x.toString() : x));
+
+  it("the supplier's log holds neither its prefs nor its ceiling, even when the model proposes them", async () => {
+    // Distinctive values: 1234 is the ceiling and 2347 the cost of waiting. Neither is a rung, so they can only appear by leaking.
+    const t = setup({
+      hurdle: 5000,
+      prefs: { costOfWaitingAprBps: 2347, maxRateBps: 1234, startRateBps: 600, stepBps: 200 },
+      model: new ScriptedModel(accelerate({ start_rate_bps: 600, max_rate_bps: 1234, reason: "my cost of waiting is 2347 bps" })),
+    });
+    await t.supplierAgent.start(t.inv);
+    const entries = t.supplierStore.all();
+    expect(entries.length).toBeGreaterThan(0);
+    for (const e of entries) expect(findPrivateKey({ snapshot: e.snapshot, proposal: e.proposal })).toBeUndefined();
+    const text = dump(entries);
+    expect(text).not.toContain("1234");
+    expect(text).not.toContain("2347");
+  });
+
+  it("the buyer's log holds no hurdle, floor or cap", async () => {
+    const t = setup({ hurdle: 1000 });
+    await t.supplierAgent.start(t.inv);
+    for (const e of t.buyerStore.all()) expect(findPrivateKey({ snapshot: e.snapshot, proposal: e.proposal })).toBeUndefined();
+  });
+
+  it("the store refuses to log a private key, anywhere in a snapshot", () => {
+    const store = new DecisionStore();
+    expect(() =>
+      store.append({ actor: "buyer_agent", invoiceId: "x", snapshot: { nested: [{ hurdleAprBps: 700 }] }, proposal: null, outcome: "rejected", reason: "r" }, NOW),
+    ).toThrow(/private policy value/);
+    expect(() => store.append({ actor: "buyer_agent", invoiceId: "x", snapshot: {}, proposal: { liquidityFloor: 1n }, outcome: "rejected", reason: "r" }, NOW)).toThrow(/private/);
+    expect(store.all()).toHaveLength(0);
   });
 });

@@ -11,6 +11,42 @@ export function canonicalJson(value: unknown): string {
   });
 }
 
+/**
+ * Names of private policy values. The decision log is public (GET /api/log returns every snapshot), so none of these may
+ * appear as a key anywhere inside a logged snapshot or proposal. Private values are committed by a salted hash instead.
+ */
+export const PRIVATE_KEYS = [
+  "costOfWaitingAprBps",
+  "maxRateBps",
+  "hurdleAprBps",
+  "hurdle",
+  "liquidityFloor",
+  "perInvoiceCap",
+  "dailyCap",
+  "humanAbove",
+  "newCounterpartyLimit",
+  "maxLimit",
+  "growthBps",
+  "salt",
+] as const;
+
+/** The first private key name found anywhere inside a value, or undefined. */
+export function findPrivateKey(value: unknown): string | undefined {
+  if (Array.isArray(value)) {
+    for (const v of value) {
+      const f = findPrivateKey(v);
+      if (f) return f;
+    }
+  } else if (value && typeof value === "object") {
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      if ((PRIVATE_KEYS as readonly string[]).includes(k)) return k;
+      const f = findPrivateKey(v);
+      if (f) return f;
+    }
+  }
+  return undefined;
+}
+
 export const GENESIS_HASH = ("0x" + "00".repeat(32)) as `0x${string}`;
 
 export interface DecisionEntry {

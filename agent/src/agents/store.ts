@@ -1,6 +1,6 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname } from "node:path";
-import { GENESIS_HASH, canonicalJson, hashDecision, verifyChain, type DecisionEntry, type StoredDecision } from "../core/index.js";
+import { GENESIS_HASH, canonicalJson, findPrivateKey, hashDecision, verifyChain, type DecisionEntry, type StoredDecision } from "../core/index.js";
 
 /**
  * Append-only, hash-chained decision log (spec 8.4). `hash` is what goes on chain as `decisionHash` in settleEarly.
@@ -98,6 +98,9 @@ export class DecisionStore {
   }
 
   append(input: DecisionInput, nowSec: number): LoggedDecision {
+    // The log is public. A private policy value in a snapshot or proposal is a bug, so refuse it rather than publish it.
+    const leaked = findPrivateKey(input.snapshot) ?? findPrivateKey(input.proposal);
+    if (leaked) throw new Error(`The decision log is public: "${leaked}" is a private policy value and cannot be logged.`);
     const prevHash = this.entries.at(-1)?.hash ?? GENESIS_HASH;
     const entry: DecisionEntry = {
       prevHash,
