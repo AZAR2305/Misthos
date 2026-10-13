@@ -25,6 +25,7 @@ import type { Config } from "./config";
 import type { Db } from "./db";
 import { blockTimes, getCursor, loadInvoices, type IndexerStatus } from "./indexer";
 import { enqueue, getJob } from "./jobs";
+import { exposureEvents } from "./exposure";
 import type { Relayer, RegisterPayload } from "./relayer";
 import { rateLimit } from "./ratelimit";
 import { fromNumeric, ser, toNumeric } from "./serialize";
@@ -190,6 +191,17 @@ export function createApp(d: AppDeps) {
   // ------------------------------------------------------------------------------------------------ public reads from the index
 
   const indexed = async (): Promise<InvoiceRecord[]> => loadInvoices(db);
+
+  /**
+   * The history the exposure limit is computed from: the invoices between two businesses, from indexed chain events only, each
+   * settlement with its transaction hash and log index. Public chain data, so no sign-in. The agents compute the decision
+   * themselves from these rows, so this API is never the authority on a limit.
+   */
+  app.get("/api/exposure", async (c) => {
+    const q = z.object({ side: z.enum(["supplier", "buyer"]), owner: address, counterparty: address }).parse(c.req.query());
+    const records = await indexed();
+    return ok(c, { events: exposureEvents(records, q, await blockTimes(db)), indexedThroughBlock: (await getCursor(db))?.toString() ?? null });
+  });
 
   app.get("/api/invoices", async (c) => {
     const q = z
@@ -520,6 +532,60 @@ export function createApp(d: AppDeps) {
     if (who instanceof Response) return who;
     const r = await db.query<{ id: string; amount: string; due_date: Date; kind: string }>("select id, amount::text as amount, due_date, kind::text as kind from obligations where buyer_org = $1 order by due_date", [who.orgId]);
     return ok(c, r.map((x) => ({ id: x.id, amount: fromNumeric(x.amount), dueSec: Math.floor(new Date(x.due_date).getTime() / 1000), kind: x.kind, provenance: "declared" })));
+  });
+
+  // ------------------------------------------------------------------------------------------------ credit and exposure policy (SRS FR-05)
+
+  const exposureBody = z
+    .object({ newCounterpartyLimit: minor, maxLimit: minor, growthBps: z.number().int().min(0).max(10_000), lookbackDays: z.number().int().min(1).max(730), graceSeconds: z.number().int().min(0).max(2_592_000) })
+    .refine((p) => BigInt(p.maxLimit) >= BigInt(p.newCounterpartyLimit), { message: "The maximum limit cannot be lower than the limit for a new counterparty.", path: ["maxLimit"] });
+  type ExposureRow = { version: number; new_counterparty_limit: string; max_limit: string; growth_bps: number; lookback_days: number; grace_seconds: number };
+  const exposurePolicyOf = async (orgId: string) => {
+    const r = await db.query<ExposureRow>(
+      "select version, new_counterparty_limit::text as new_counterparty_limit, max_limit::text as max_limit, growth_bps, lookback_days, grace_seconds from exposure_policies where org_id = $1",
+      [orgId],
+    );
+    const p = r[0];
+    // No row means the owner has not set one. That is reported as not configured; it is never filled with a favourable default.
+    if (!p) return { configured: false as const };
+    return { configured: true as const, version: `exposure-${p.version}`, newCounterpartyLimit: fromNumeric(p.new_counterparty_limit), maxLimit: fromNumeric(p.max_limit), growthBps: p.growth_bps, lookbackDays: p.lookback_days, graceSeconds: p.grace_seconds };
+  };
+
+  app.get("/api/exposure-policy", async (c) => {
+    const a = need(c);
+    if (!a.side || !a.orgId) return fail(c, "SIDE_REQUIRED", "Choose supplier or buyer first.", 409);
+    return ok(c, { side: a.side, ...(await exposurePolicyOf(a.orgId)) });
+  });
+
+  /** Saving a changed policy makes a new version and keeps the old one. Saving the same numbers again changes nothing. */
+  app.put("/api/exposure-policy", async (c) => {
+    const a = need(c);
+    if (!a.side || !a.orgId) return fail(c, "SIDE_REQUIRED", "Choose supplier or buyer first.", 409);
+    const p = await body(c, exposureBody);
+    const args = [a.orgId, toNumeric(BigInt(p.newCounterpartyLimit)), toNumeric(BigInt(p.maxLimit)), p.growthBps, p.lookbackDays, p.graceSeconds];
+    await db.tx(async (t) => {
+      const cur = await t.query<ExposureRow>(
+        "select version, new_counterparty_limit::text as new_counterparty_limit, max_limit::text as max_limit, growth_bps, lookback_days, grace_seconds from exposure_policies where org_id = $1 for update",
+        [a.orgId],
+      );
+      const same = cur[0] && fromNumeric(cur[0].new_counterparty_limit) === BigInt(p.newCounterpartyLimit) && fromNumeric(cur[0].max_limit) === BigInt(p.maxLimit) && cur[0].growth_bps === p.growthBps && cur[0].lookback_days === p.lookbackDays && cur[0].grace_seconds === p.graceSeconds;
+      if (same) return;
+      const version = cur[0] ? cur[0].version + 1 : 1;
+      await t.query(
+        `insert into exposure_policies (org_id, version, new_counterparty_limit, max_limit, growth_bps, lookback_days, grace_seconds) values ($1, ${version}, $2, $3, $4, $5, $6)
+         on conflict (org_id) do update set version = excluded.version, new_counterparty_limit = excluded.new_counterparty_limit, max_limit = excluded.max_limit, growth_bps = excluded.growth_bps, lookback_days = excluded.lookback_days, grace_seconds = excluded.grace_seconds, updated_at = now()`,
+        args,
+      );
+      await t.query("insert into exposure_policy_versions (org_id, version, new_counterparty_limit, max_limit, growth_bps, lookback_days, grace_seconds) values ($1, $2, $3, $4, $5, $6, $7)", [a.orgId, version, ...args.slice(1)]);
+    });
+    return ok(c, { side: a.side, ...(await exposurePolicyOf(a.orgId)) });
+  });
+
+  /** The agent reads the policy its owner set, proved by its wallet. */
+  app.get("/api/agent/exposure-policy", async (c) => {
+    const who = await agentCaller(c, "/api/agent/exposure-policy");
+    if (who instanceof Response) return who;
+    return ok(c, await exposurePolicyOf(who.orgId));
   });
 
   const prefsBody = z.object({ costOfWaitingAprBps: bps.max(5000), maxRateBps: bps, startRateBps: bps, stepBps: z.number().int().min(1).max(5000) });

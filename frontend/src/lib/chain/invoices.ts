@@ -22,6 +22,8 @@ export interface InvoiceRecord {
     kind: "early" | "due";
     tx: Hex;
     block: bigint;
+    /** Position of the settlement event in its block; with `tx` it proves one settlement exactly once. */
+    logIndex: number;
     net: bigint;
     discount: bigint;
     rateBps: number;
@@ -74,6 +76,7 @@ export function buildInvoices(logs: readonly RawLog[]): InvoiceRecord[] {
         kind: "early",
         tx: l.transactionHash,
         block: l.blockNumber,
+        logIndex: l.logIndex,
         net: a.net as bigint,
         discount: a.discount as bigint,
         rateBps: Number(a.rateBps),
@@ -82,7 +85,7 @@ export function buildInvoices(logs: readonly RawLog[]): InvoiceRecord[] {
       };
     } else if (l.eventName === "SettledOnDue") {
       rec.status = "settled_due";
-      rec.settled = { kind: "due", tx: l.transactionHash, block: l.blockNumber, net: a.amount as bigint, discount: 0n, rateBps: 0, fee: 0n };
+      rec.settled = { kind: "due", tx: l.transactionHash, block: l.blockNumber, logIndex: l.logIndex, net: a.amount as bigint, discount: 0n, rateBps: 0, fee: 0n };
     }
   }
   return [...byId.values()];

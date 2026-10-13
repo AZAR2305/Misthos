@@ -11,6 +11,7 @@ export const REASON_CODES = [
   "REPUTATION_FLAG",
   "NO_OVERLAP",
   "EXPOSURE_LIMIT",
+  "EVIDENCE_UNAVAILABLE",
   "TREASURY_UNAVAILABLE",
   "BUYER_CANNOT_PAY",
 ] as const;
@@ -30,6 +31,7 @@ export const REASON_TEXT: Readonly<Record<string, string>> = {
   REPUTATION_FLAG: "A risk flag confirmed by the agent's own records blocks early payment.",
   NO_OVERLAP: "The supplier's lowest price and the buyer's highest price do not meet, so there is no deal.",
   EXPOSURE_LIMIT: "The payment would take the exposure to this business past its allowed limit.",
+  EVIDENCE_UNAVAILABLE: "The history needed for the credit limit could not be read, so nothing is accepted.",
   TREASURY_UNAVAILABLE: "The buyer's balance or payment calendar could not be read, so nothing is accepted.",
   BUYER_CANNOT_PAY: "The buyer cannot pay this invoice early at any rate the rules allow.",
   HOLD_TO_DUE: "The agent chose to wait for the due date.",
