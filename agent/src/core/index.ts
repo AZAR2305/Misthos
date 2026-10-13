@@ -5,3 +5,4 @@ export * from "./policy";
 export * from "./allocator";
 export * from "./hash";
 export * from "./eip712";
+export * from "./decision";

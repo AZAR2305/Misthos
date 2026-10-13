@@ -28,7 +28,7 @@ import { enqueue, getJob } from "./jobs";
 import type { Relayer, RegisterPayload } from "./relayer";
 import { rateLimit } from "./ratelimit";
 import { fromNumeric, ser, toNumeric } from "./serialize";
-import { GENESIS_HASH, decisionTypedData, hashDecision, INVOICE_BOOK_ABI, balanced, domain, invoiceId, invoiceTypedData, offerTypedData, journalFrom, settlementRows, summarise, toBeancount, toCsv, verifyChain, type InvoiceRecord, type StoredDecision } from "./shared";
+import { GENESIS_HASH, agentReadTypedData, decisionTypedData, hashDecision, INVOICE_BOOK_ABI, balanced, domain, invoiceId, invoiceTypedData, offerTypedData, journalFrom, settlementRows, summarise, toBeancount, toCsv, verifyChain, type InvoiceRecord, type StoredDecision } from "./shared";
 
 export interface AppDeps {
   config: Config;
@@ -486,6 +486,40 @@ export function createApp(d: AppDeps) {
     const a = need(c, "buyer");
     const r = await db.query("delete from obligations where id::text = $1 and buyer_org = $2 returning id", [c.req.param("id"), a.orgId]);
     return r.length ? ok(c, { deleted: true }) : fail(c, "NOT_FOUND", "No such obligation.", 404);
+  });
+
+  /**
+   * A signed read for an agent process. The agent proves it controls its wallet (EIP-712 AgentRead over the path and a time),
+   * and the API answers with that wallet's own business data only. This is how the buyer agent gets its payment calendar
+   * without a browser session. Every value here is declared by the owner, so it is labelled declared.
+   */
+  const READ_WINDOW_SEC = 120;
+  const agentCaller = async (c: Context, resource: string): Promise<{ orgId: string; wallet: Address } | Response> => {
+    if (config.AGENTS.length === 0 || !config.INVOICE_BOOK) return unavailable(c, "agent reads are not switched on", "Set AGENT_WALLETS and INVOICE_BOOK_ADDRESS.");
+    const wallet = (c.req.header("x-agent-wallet") ?? "").toLowerCase() as Address;
+    const ts = Number(c.req.header("x-agent-ts"));
+    const signature = (c.req.header("x-agent-sig") ?? "") as Hex;
+    if (!config.AGENTS.includes(wallet)) return fail(c, "UNKNOWN_AGENT", "That wallet is not one of this deployment's agents.", 403);
+    if (!Number.isInteger(ts) || Math.abs(Math.floor(Date.now() / 1000) - ts) > READ_WINDOW_SEC) return fail(c, "STALE_REQUEST", "The signed request is too old or too new.", 401);
+    const td = agentReadTypedData(domain(config.ARC_CHAIN_ID, config.INVOICE_BOOK), { resource, ts });
+    let signedByAgent = false;
+    try {
+      signedByAgent = (await recoverTypedDataAddress({ ...td, signature })).toLowerCase() === wallet;
+    } catch {
+      /* may be a contract wallet */
+    }
+    if (!signedByAgent && d.client) signedByAgent = await d.client.verifyTypedData({ address: wallet, ...td, signature }).catch(() => false);
+    if (!signedByAgent) return fail(c, "BAD_SIGNATURE", "The request is not signed by that agent.", 401);
+    const org = await db.query<{ org_id: string }>("select org_id::text as org_id from wallets where address = $1 and purpose = 'agent'", [wallet]);
+    if (!org.length) return fail(c, "NOT_LINKED", "That agent wallet is not linked to a business.", 403);
+    return { orgId: org[0].org_id, wallet };
+  };
+  app.use("/api/agent/*", limited(120));
+  app.get("/api/agent/obligations", async (c) => {
+    const who = await agentCaller(c, "/api/agent/obligations");
+    if (who instanceof Response) return who;
+    const r = await db.query<{ id: string; amount: string; due_date: Date; kind: string }>("select id, amount::text as amount, due_date, kind::text as kind from obligations where buyer_org = $1 order by due_date", [who.orgId]);
+    return ok(c, r.map((x) => ({ id: x.id, amount: fromNumeric(x.amount), dueSec: Math.floor(new Date(x.due_date).getTime() / 1000), kind: x.kind, provenance: "declared" })));
   });
 
   const prefsBody = z.object({ costOfWaitingAprBps: bps.max(5000), maxRateBps: bps, startRateBps: bps, stepBps: z.number().int().min(1).max(5000) });

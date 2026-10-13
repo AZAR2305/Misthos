@@ -36,7 +36,7 @@ describe("job outbox", () => {
       if (++n < 3) throw new JobError("rpc timeout", "SEND_FAILED", true);
       return "ok";
     };
-    let t = new Date("2026-10-07T10:00:00Z");
+    let t = new Date(); // the job is stamped with the database clock, so the fake clock starts from the real one
     const o = { backoffMs: () => 5_000, now: () => t };
     expect((await runNextJob(db, { k: handler }, o))?.status).toBe("pending");
     expect(await runNextJob(db, { k: handler }, o)).toBeNull(); // not yet: backing off

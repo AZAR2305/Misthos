@@ -154,6 +154,7 @@ export class SupplierAgent {
     // The top rung is the supplier's private ceiling, so the log says where the ask starts and how many rungs, not where it ends.
     this.log(inv, logged, publicProposal, "auto_apply", `Accelerate now: ${ladder.length} rungs, starting at ${ladder[0]} bps.`);
 
+    const firstRung = this.transcript.length; // the transcript spans invoices; judge only this negotiation
     for (let rung = 0; rung < ladder.length; rung++) {
       if (this.d.shouldStop?.(inv.id)) {
         this.log(inv, { rung }, null, "rejected", "Paused by a person before rung " + rung + ".");
@@ -173,6 +174,13 @@ export class SupplierAgent {
         return { kind: "needs_approval", reasonCode: "BUYER_UNREACHABLE", reason: (e as Error).message };
       }
       if (result !== "continue") return result;
+    }
+    // Every rung up to the supplier's own ceiling was turned down for price or cash reasons: the two ranges do not overlap, so
+    // no deal is made up and the invoice stays on its normal terms (SRS 6.3).
+    const priceOnly = this.transcript.slice(firstRung).every((t) => t.outcome === "BELOW_HURDLE" || t.outcome === "LIQUIDITY_FLOOR");
+    if (priceOnly) {
+      this.log(inv, { rungs: ladder.length }, null, "rejected", "Every rung was rejected: the supplier's price range and the buyer's do not overlap. Hold to the due date.", "NO_OVERLAP");
+      return { kind: "hold_to_due", reason: "No deal: the two sides' price ranges do not overlap, so the invoice stays on its normal terms." };
     }
     this.log(inv, { rungs: ladder.length }, null, "rejected", "Every rung was rejected: hold to the due date.");
     return { kind: "hold_to_due", reason: "No rung was accepted, so the invoice stays on its normal terms." };

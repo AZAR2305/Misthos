@@ -116,3 +116,18 @@ export function decisionTypedData(d: Domain, m: { hash: Hex; prevHash: Hex; acto
     message: { hash: m.hash, prevHash: m.prevHash, actor: m.actor, seq: BigInt(m.seq) },
   };
 }
+
+/**
+ * A signed read: an agent proves it is the wallet it claims to be when it asks the API for its own private data (the buyer's
+ * payment calendar). The signature names the path and a timestamp, so it cannot be replayed for another route or later.
+ */
+export const AGENT_READ_TYPES = {
+  AgentRead: [
+    { name: "resource", type: "string" },
+    { name: "ts", type: "uint64" },
+  ],
+} as const;
+
+export function agentReadTypedData(d: Domain, m: { resource: string; ts: number }) {
+  return { domain: d, types: AGENT_READ_TYPES, primaryType: "AgentRead" as const, message: { resource: m.resource, ts: BigInt(m.ts) } };
+}

@@ -57,5 +57,11 @@ export function buildLadder(prefs: SupplierPrefs, pastAcceptedBps: readonly numb
   if (naive > MAX_RUNGS) step = Math.ceil((ceiling - start) / (MAX_RUNGS - 1));
   const rungs: number[] = [];
   for (let r = start; r <= ceiling && rungs.length < MAX_RUNGS; r += step) rungs.push(r);
+  // The last rung is always the ceiling. A widened step can stop short of it, and a deal that exists anywhere up to the
+  // supplier's ceiling must be reachable; the supplier never signs above it.
+  if (rungs[rungs.length - 1]! < ceiling) {
+    if (rungs.length < MAX_RUNGS) rungs.push(ceiling);
+    else rungs[rungs.length - 1] = ceiling;
+  }
   return rungs;
 }

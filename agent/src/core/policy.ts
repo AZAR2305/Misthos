@@ -9,8 +9,35 @@ export const REASON_CODES = [
   "EXPIRED",
   "DISPUTED",
   "REPUTATION_FLAG",
+  "NO_OVERLAP",
+  "EXPOSURE_LIMIT",
+  "TREASURY_UNAVAILABLE",
+  "BUYER_CANNOT_PAY",
 ] as const;
 export type ReasonCode = (typeof REASON_CODES)[number];
+
+/**
+ * One fixed sentence per code, for the UI and the audit trail. The UI never builds text from a number, and none of these
+ * names a hurdle, a floor or a limit. Codes that only appear in the agents' own log are included so every code is explained.
+ */
+export const REASON_TEXT: Readonly<Record<string, string>> = {
+  BELOW_HURDLE: "The offered rate is below what the buyer needs to pay early.",
+  LIQUIDITY_FLOOR: "Paying early would take the buyer's cash under its own reserve.",
+  NOT_ELIGIBLE: "This invoice cannot be paid early under the rules.",
+  NEEDS_HUMAN_APPROVAL: "The amount is above what the agent may sign without a person.",
+  EXPIRED: "The offer had expired.",
+  DISPUTED: "The invoice is disputed, so nothing is paid until it is resolved.",
+  REPUTATION_FLAG: "A risk flag confirmed by the agent's own records blocks early payment.",
+  NO_OVERLAP: "The supplier's lowest price and the buyer's highest price do not meet, so there is no deal.",
+  EXPOSURE_LIMIT: "The payment would take the exposure to this business past its allowed limit.",
+  TREASURY_UNAVAILABLE: "The buyer's balance or payment calendar could not be read, so nothing is accepted.",
+  BUYER_CANNOT_PAY: "The buyer cannot pay this invoice early at any rate the rules allow.",
+  HOLD_TO_DUE: "The agent chose to wait for the due date.",
+  MODEL_UNAVAILABLE: "The strategy model was unavailable, so the agent took no action.",
+  PROPOSAL_INVALID: "The strategy model's proposal did not match the required format and was ignored.",
+  PARTIAL_UNSUPPORTED: "Partial early payment is not built yet.",
+  BUYER_UNREACHABLE: "The other agent could not be reached.",
+};
 
 export interface BuyerPolicy {
   /** Private. Never sent to the supplier or shown before settlement. */

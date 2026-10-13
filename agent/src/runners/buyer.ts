@@ -5,6 +5,7 @@ import { BuyerAgent } from "../agents/buyer.js";
 import { AnthropicModel } from "../agents/model.js";
 import { viemChainReader } from "../agents/chain.js";
 import { openDecisionStore } from "../agents/log.js";
+import { fetchObligations, signedReader } from "../agents/backend.js";
 import { offerMsgSchema } from "../protocol/index.js";
 import { buyerPolicyFromEnv, loadConfig, loadEnvFile } from "../config.js";
 import { CircleCliAdapter } from "../wallets/circleCli.js";
@@ -38,6 +39,14 @@ const wallet = new CircleCliAdapter({
   usdc: cfg.USDC_ADDRESS as Address,
   verifier,
 });
+const reader = cfg.BACKEND_URL ? signedReader({ backendUrl: cfg.BACKEND_URL, wallet, domain: domain(cfg.ARC_CHAIN_ID, book) }) : undefined;
+/** Only an explicit declaration that there are no obligations allows an empty calendar without the API. */
+const declaredNone = process.env.BUYER_OBLIGATIONS_DECLARED_NONE === "true";
+const obligations = async () => {
+  if (reader) return fetchObligations(reader);
+  if (declaredNone) return [];
+  throw new Error("The payment calendar is unavailable: set BACKEND_URL, or set BUYER_OBLIGATIONS_DECLARED_NONE=true if you have no obligations.");
+};
 const store = openDecisionStore({ name: "buyer", dataDir: cfg.AGENT_DATA_DIR, wallet, domain: domain(cfg.ARC_CHAIN_ID, book), backendUrl: cfg.BACKEND_URL });
 const buyer = new BuyerAgent({
   wallet,
@@ -48,8 +57,9 @@ const buyer = new BuyerAgent({
   chain: viemChainReader(cfg.ARC_RPC_URL, book),
   invoiceBook: book,
   verifier,
-  // The real USDC balance. The buyer's own payment calendar comes from the /plan request; with none given, only the floor applies.
-  treasury: async () => ({ cash: await wallet.balance("USDC"), obligations: [] }),
+  // The real USDC balance and the payment calendar the owner declared. A calendar that cannot be read is never assumed empty:
+  // the read throws, the buyer fails closed (TREASURY_UNAVAILABLE) and accepts nothing until it can.
+  treasury: async () => ({ cash: await wallet.balance("USDC"), obligations: await obligations() }),
 });
 
 const obligationSchema = z.strictObject({
@@ -60,15 +70,16 @@ const obligationSchema = z.strictObject({
 const planSchema = z.strictObject({
   /** Override for the treasury balance in minor units; default is the wallet's real USDC balance. */
   cash: z.string().regex(/^\d+$/).optional(),
-  obligations: z.array(obligationSchema).max(100).default([]),
+  /** Omit to use the calendar the owner declared on the API. */
+  obligations: z.array(obligationSchema).max(100).optional(),
   spentToday: z.string().regex(/^\d+$/).optional(),
 });
 
 const runPlan = async (body: unknown) => {
   const p = planSchema.parse(body ?? {});
   const cash = p.cash !== undefined ? BigInt(p.cash) : await wallet.balance("USDC");
-  const obligations = p.obligations.map((o) => ({ id: o.id, dueSec: BigInt(o.dueSec), amount: BigInt(o.amount) }));
-  return buyer.plan(cash, obligations, p.spentToday ? BigInt(p.spentToday) : 0n);
+  const calendar = p.obligations ? p.obligations.map((o) => ({ id: o.id, dueSec: BigInt(o.dueSec), amount: BigInt(o.amount) })) : await obligations();
+  return buyer.plan(cash, calendar, p.spentToday ? BigInt(p.spentToday) : 0n);
 };
 
 serve(

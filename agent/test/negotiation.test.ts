@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { keccak256, toHex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
-import { domain, findPrivateKey, offerTypedData, type BuyerPolicy, type Domain, type SupplierPrefs } from "../src/core/index.js";
+import { domain, findPrivateKey, offerTypedData, type BuyerPolicy, type Obligation, type Domain, type SupplierPrefs } from "../src/core/index.js";
 import {
   BuyerAgent,
   DecisionStore,
@@ -62,7 +62,7 @@ const down = () => new ScriptedModel(() => {
   throw new ModelUnavailableError("The model is unavailable: test");
 });
 
-function setup(opts: { hurdle?: number; humanAbove?: bigint; model?: AgentModel; prefs?: Partial<SupplierPrefs>; buyerExecuteFails?: WalletError; status?: OnChainInvoice["status"]; treasury?: () => Promise<{ cash: bigint; obligations: [] }> } = {}) {
+function setup(opts: { hurdle?: number; humanAbove?: bigint; model?: AgentModel; prefs?: Partial<SupplierPrefs>; buyerExecuteFails?: WalletError; status?: OnChainInvoice["status"]; treasury?: () => Promise<{ cash: bigint; obligations: Obligation[] }> } = {}) {
   const supplier = keyWallet("supplier");
   const buyer = keyWallet("buyer", opts.buyerExecuteFails);
   const onchain: OnChainInvoice = {
@@ -324,9 +324,10 @@ describe("the public log never carries private policy (finding F-0)", () => {
   const dump = (v: unknown) => JSON.stringify(v, (_k, x) => (typeof x === "bigint" ? x.toString() : x));
 
   it("the supplier's log holds neither its prefs nor its ceiling, even when the model proposes them", async () => {
-    // Distinctive values: 1234 is the ceiling and 2347 the cost of waiting. Neither is a rung, so they can only appear by leaking.
+    // Distinctive values: 1234 is the ceiling and 2347 the cost of waiting. The buyer accepts the first rung (600), so neither
+    // is ever offered, and they can only appear in the log by leaking.
     const t = setup({
-      hurdle: 5000,
+      hurdle: 0,
       prefs: { costOfWaitingAprBps: 2347, maxRateBps: 1234, startRateBps: 600, stepBps: 200 },
       model: new ScriptedModel(accelerate({ start_rate_bps: 600, max_rate_bps: 1234, reason: "my cost of waiting is 2347 bps" })),
     });
@@ -352,5 +353,57 @@ describe("the public log never carries private policy (finding F-0)", () => {
     ).toThrow(/private policy value/);
     expect(() => store.append({ actor: "buyer_agent", invoiceId: "x", snapshot: {}, proposal: { liquidityFloor: 1n }, outcome: "rejected", reason: "r" }, NOW)).toThrow(/private/);
     expect(store.all()).toHaveLength(0);
+  });
+});
+
+describe("constraint-based decisions (SRS 6.3 and acceptance 3 and 4)", () => {
+  const lastLog = (store: DecisionStore) => store.all().at(-1)!;
+
+  it("ranges that do not overlap end with NO_OVERLAP, no settlement and no made-up deal", async () => {
+    // Supplier signs nothing above 1000 bps; the buyer will take nothing below 2000 bps.
+    const t = setup({ hurdle: 2000 });
+    const result = await t.supplierAgent.start(t.inv);
+    expect(result).toMatchObject({ kind: "hold_to_due" });
+    expect((result as { reason: string }).reason).toMatch(/do not overlap/);
+    expect(t.buyer.calls).toHaveLength(0);
+    expect(lastLog(t.supplierStore)).toMatchObject({ reasonCode: "NO_OVERLAP", outcome: "rejected" });
+  });
+
+  it("the same invoice and the same supplier settle or not depending only on the buyer's real cash (reserve 5,000)", async () => {
+    const rich = setup({ hurdle: 0, prefs: { startRateBps: 0 } });
+    expect(await rich.supplierAgent.start(rich.inv)).toMatchObject({ kind: "accepted", rateBps: 0 });
+
+    const poor = setup({ hurdle: 0, prefs: { startRateBps: 0 }, treasury: async () => ({ cash: 5_100n * USD, obligations: [] }) });
+    const r = await poor.supplierAgent.start(poor.inv);
+    expect(r.kind).toBe("hold_to_due");
+    expect(poor.buyer.calls).toHaveLength(0);
+    expect(poor.supplierAgent.transcript.every((x) => x.outcome === "LIQUIDITY_FLOOR")).toBe(true);
+    expect(lastLog(poor.supplierStore)).toMatchObject({ reasonCode: "NO_OVERLAP" });
+  });
+
+  it("a declared obligation shrinks what the buyer can pay and ends a deal that cash alone would allow", async () => {
+    const enough = async () => ({ cash: 8_000n * USD, obligations: [] as Obligation[] });
+    const withBill = async () => ({ cash: 8_000n * USD, obligations: [{ id: "payroll", dueSec: BigInt(NOW + 5 * DAY), amount: 3_000n * USD }] });
+    const a = setup({ hurdle: 0, prefs: { startRateBps: 0 }, treasury: enough });
+    expect(await a.supplierAgent.start(a.inv)).toMatchObject({ kind: "accepted" });
+    const b = setup({ hurdle: 0, prefs: { startRateBps: 0 }, treasury: withBill });
+    expect((await b.supplierAgent.start(b.inv)).kind).toBe("hold_to_due");
+    expect(b.buyer.calls).toHaveLength(0);
+  });
+
+  it("a deal that exists only at the supplier's ceiling is found: the ladder always ends at the ceiling", async () => {
+    // Ceiling 1234, step widened to 247, hurdle 1234: before the fix the ladder stopped at 988 and the deal was never offered.
+    const t = setup({ hurdle: 1234, prefs: { costOfWaitingAprBps: 2200, maxRateBps: 1234, startRateBps: 0, stepBps: 10 } });
+    const result = await t.supplierAgent.start(t.inv);
+    expect(result).toMatchObject({ kind: "accepted", rateBps: 1234 });
+    expect(t.buyer.calls).toHaveLength(1);
+  });
+
+  it("a rejection for another reason is not reported as no overlap", async () => {
+    const t = setup({ hurdle: 0, prefs: { startRateBps: 0 }, status: "disputed" });
+    const r = await t.supplierAgent.start(t.inv);
+    expect(r.kind).toBe("hold_to_due");
+    expect(t.supplierAgent.transcript.at(-1)?.outcome).toBe("DISPUTED");
+    expect(t.supplierStore.all().some((e) => e.reasonCode === "NO_OVERLAP")).toBe(false);
   });
 });
