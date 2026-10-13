@@ -248,13 +248,13 @@ Integer arithmetic only. If `historyAvailable` is false the function returns `TR
 ### B.5 Worked example
 
 Buyer policy: `newCounterpartyLimit = 5_000 USDC`, `growthBps = 2000`, `maxLimit = 20_000 USDC`, `lookbackDays = 180`.
-History with supplier S: two settled invoices, 10_000 USDC and 4_000 USDC, plus one early payment of 3_000 USDC outflow still ahead of
-its due date.
+History with supplier S: two settled invoices. Invoice 1: face 10_000 USDC, settled on its due date. Invoice 2: face 4_000 USDC, paid
+early, outflow 3_900 USDC, its due date still in the future.
 
-- `verifiedSettledVolume = 14_000 USDC` (3_000 outflow row is also a settled-early row; counted by `invoiceId`, once, at its face).
-  `C_allowed = min(20_000, 5_000 + 14_000 * 2000/10_000) = 7_800 USDC`.
-- `E_outstanding = 3_000 USDC`. A new early payment of 4_500 USDC: `3_000 + 4_500 = 7_500 <= 7_800`, **ok**, headroom 300.
-  A new payment of 5_000 USDC: `8_000 > 7_800`, **`EXPOSURE_LIMIT`**, although the wallet may hold plenty of USDC.
+- `verifiedSettledVolume = 14_000 USDC` (faces, each invoice once). `C_allowed = min(20_000, 5_000 + 14_000 * 2000/10_000) = 7_800 USDC`.
+- `E_outstanding = 3_900 USDC` (only invoice 2: paid ahead of terms and not yet due). A new early payment of 3_800 USDC:
+  `3_900 + 3_800 = 7_700 <= 7_800`, **ok**, headroom 100. A new payment of 4_000 USDC: `7_900 > 7_800`, **`EXPOSURE_LIMIT`**, although
+  the wallet may hold plenty of USDC.
 - New supplier with no history: `C_allowed = 5_000 USDC` (owner's `newCounterpartyLimit`); with `newCounterpartyLimit = 0` it is `0` and
   every new payment is rejected until the owner sets a limit. Unknown is never rounded up.
 - Indexer unreachable: `TREASURY_UNAVAILABLE`, nothing signed.
