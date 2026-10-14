@@ -43,7 +43,7 @@ Agents that hold, allocate and disburse a business's money, running **on Arc wit
 - [ ] Demo video under 3:00 with a real on-chain settlement, the 0% case and `circle wallet list --type agent --chain ARC-TESTNET`
 - [ ] Traction answers: businesses onboarded, invoices, value moved, days gained, share cleared at 0%
 - [ ] `docs/TRACTION.md` and a post-event plan
-- [ ] Re-login both Circle CLI sessions before recording (sessions last 7 days)
+- [ ] Re-login both Circle CLI sessions before recording (spec said 7 days; observed about 28 on CLI 1.1.4, VERIFY; run the doctor first)
 - [x] No secrets in the current tree (one throwaway Next.js build key was committed once and reverted; it is not a credential)
 
 ## Dates

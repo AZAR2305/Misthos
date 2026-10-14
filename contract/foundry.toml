@@ -22,6 +22,11 @@ arc_testnet = "${ARC_RPC_URL}"
 [fuzz]
 runs = 512
 
+[invariant]
+runs = 64
+depth = 60
+fail_on_revert = false
+
 [fmt]
 line_length = 120
 

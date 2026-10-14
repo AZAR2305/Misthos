@@ -63,7 +63,7 @@ What to fix or decide before the public link goes out:
 - [ ] **By Fri 9 Oct.** Find **one real business** (even a friendly supplier with a real approved invoice and a buyer who will pay
       it in test USDC). Send them a claim link. Their usage is the traction score; synthetic data does not count.
 - [ ] **By Sat 10 Oct.** Submit the **checkpoint**: public repo, live link, a first demo video, and the traction answers so far.
-- [ ] **Before recording.** Re-login both Circle CLI sessions (they last 7 days); the video must show
+- [ ] **Before recording.** Re-login both Circle CLI sessions (spec said 7 days; observed about 28 days on CLI 1.1.4 on 14 Oct, VERIFY it can change: run the doctor command first); the video must show
       `circle wallet list --type agent --chain ARC-TESTNET`, a real settlement on the explorer and the 0% case.
 
 ### Me (once the contract address and wallets exist)

@@ -349,7 +349,7 @@ These closed spec Appendix A items and fixed three bugs that no scripted-CLI tes
   deployed on-chain yet"; any first transaction (a 0.01 USDC transfer) deploys it. After that its 65-byte signature verifies on chain through
   `SignatureChecker`, so `registerInvoice` and settlement accept it.
 - **The CLI and service cannot encode a struct argument** (`can't pack ABI parameter`, for object, array and parenthesised forms). Flat arguments work. The contract
-  therefore gained `settleEarlyFlat(id, rateBps, expiry, nonce, sig, decisionHash)` (same checks; 52 tests incl. a parity suite) and the buyer agent calls it. The first
+  therefore gained `settleEarlyFlat(id, rateBps, expiry, nonce, sig, decisionHash)` (same checks; 59 tests incl. a parity suite, fuzz and invariants) and the buyer agent calls it. The first
   deployment (`0xd62B…35ED`) is superseded by `0x108DA05Fec74a1c0620CF7D66D07AeB586A5288C`.
 - **`--idempotency-key` must be a UUID.** The adapter sent a plain string and every keyed `execute` failed with "400 Invalid request body". It now derives a
   stable UUID from the key text, so a retry still cannot send twice.

@@ -86,7 +86,7 @@ pnpm exec circle wallet list --chain ARC-TESTNET --type agent
 
 Paste into `BUYER_AGENT_WALLET_ADDRESS=0x...`.
 
-Sessions last 7 days. When one expires the agent stops and reports `SESSION_EXPIRED`; log in again with the same
+Sessions were reported as 7 days in the spec; on Circle CLI 1.1.4 `circle wallet status -o json` showed about 28 days on 14 Oct 2026 (VERIFY: this can change with the CLI version, so check `expiresIn` yourself and run `pnpm --filter @misthos/agent doctor` before every recording). When one expires the agent stops and reports `SESSION_EXPIRED`; log in again with the same
 command. Re-login right before you record the demo video.
 
 If you prefer two steps (for scripts): `circle wallet login EMAIL --type agent --init` prints a request id, then
