@@ -318,3 +318,12 @@ middle to hand over an offer, a thumbs up and a jump on accept, a dance on settl
 - **Supplier credit is enforced at registration, not at acceleration.** An early payment reduces what a buyer owes, so refusing to accelerate "on credit" would make exposure worse. Credit is extended when the invoice is registered, so that is where the server applies the supplier's own limit (409 `EXPOSURE_LIMIT`, with the policy version). The supplier agent still reads its own position and records it in the log with on-chain evidence (`within` or `over`), without a limit in it. A supplier can still register from their own wallet; the limit is their own guard.
 - **Adaptive start.** `rateBps` now travels on indexed early-payment events, `pastAcceptedRates` keeps only proven (hash and log index), recent, distinct deals, and the existing 25th-percentile rule (at least three deals) sets the start. Caller-supplied rates win.
 - **Verified obligations.** Approved, unpaid invoices the buyer owes are on-chain facts; `GET /api/payables` serves them, the buyer agent subtracts them as `onchain` obligations (id `invoice:<id>`), and the invoice being decided is excluded so it is never charged against itself. A read that fails fails closed. Obligations the owner types cannot be verified by any chain and stay `declared`; a mixed set is labelled by its weakest part.
+
+## Arc network facts confirmed from docs.arc.io (14 Oct 2026)
+- Testnet RPC `https://rpc.testnet.arc.io` (Circle, no key); fallbacks Blockdaemon, dRPC, QuickNode. Canteen also runs a keyed node
+  (`rpc.testnet.arc-node.thecanteenapp.com/v1/<key>`, key from `arc-canteen login`) and lists `testnet.arcscan.app`. Explorer used: `explorer.testnet.arc.io`.
+- `eth_getLogs` is capped at 10,000 blocks (error -32012). Ours is safe: the indexer reads 2,000 blocks per call, the frontend halves a rejected range.
+- `maxFeePerGas` below 20 Gwei is dropped silently by the mempool. Viem takes fees from the network so the relayer is fine; when sending by hand use at least 20 Gwei.
+- Native USDC has 18 decimals, the ERC-20 interface 6. We store 6-decimal minor units everywhere and only use 18 for the chain definition's gas currency. Never mix the two.
+- The public endpoint is load-balanced; error -32014 near the head is retryable. VERIFY: confirm the indexer retries it rather than stopping.
+- Arc Foundry (`arc-forge`, `arc-cast`, `arc-anvil --network arc`) exists for Arc-specific behaviour. VERIFY: run `arc-forge test --network arc` on the contract before deploying.
