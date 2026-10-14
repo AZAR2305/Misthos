@@ -256,7 +256,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           {acct.me && (
             <>
               {" · "}
-              <span title="Signed in with Google">{acct.me.email}</span>{" "}
+              <span title="Signed in with this wallet" className="mono">{acct.me.address ? `${acct.me.address.slice(0, 6)}…${acct.me.address.slice(-4)}` : "wallet"}</span>{" "}
               <button type="button" className="linklike" onClick={() => void acct.signOut()}>Sign out</button>
             </>
           )}

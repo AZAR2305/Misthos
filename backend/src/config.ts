@@ -20,10 +20,6 @@ const schema = z.object({
   /** How many blocks behind the head to index. Arc has deterministic finality, so 0 is fine there. */
   CONFIRMATIONS: z.coerce.bigint().default(0n),
   INDEXER_POLL_MS: z.coerce.number().int().default(2000),
-  /** Google sign-in. Without a client id, /api/auth/google answers "unavailable". */
-  GOOGLE_CLIENT_ID: optional(z.string()),
-  GOOGLE_ISSUERS: z.string().default("https://accounts.google.com,accounts.google.com"),
-  GOOGLE_JWKS_URL: z.string().url().default("https://www.googleapis.com/oauth2/v3/certs"),
   /** Browser origins allowed to call the API with cookies, comma separated. */
   FRONTEND_ORIGINS: z.string().default(""),
   /** The agent wallets whose signed decision logs this API accepts (comma separated 0x addresses). Empty: the log is off. */
@@ -51,7 +47,6 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
   const c = p.data;
   return {
     ...c,
-    ISSUERS: c.GOOGLE_ISSUERS.split(",").map((s) => s.trim()).filter(Boolean),
     ORIGINS: c.FRONTEND_ORIGINS.split(",").map((s) => s.trim().replace(/\/$/, "")).filter(Boolean),
     AGENTS: c.AGENT_WALLETS.split(",").map((s) => s.trim().toLowerCase()).filter((s) => /^0x[0-9a-f]{40}$/.test(s)) as `0x${string}`[],
     INVOICE_BOOK: c.INVOICE_BOOK_ADDRESS?.toLowerCase() as `0x${string}` | undefined,

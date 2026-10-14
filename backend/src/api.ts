@@ -8,18 +8,14 @@ import {
   AuthError,
   COOKIE,
   accountFromToken,
-  bindWallet,
+  signInWithWallet,
   chooseSide,
   createChallenge,
-  consumeGoogleNonce,
   createSession,
   destroySession,
-  issueGoogleNonce,
   stepOf,
-  upsertGoogleAccount,
   verifyWalletMessage,
   type Account,
-  type GoogleVerifier,
 } from "./auth";
 import type { Config } from "./config";
 import type { Db } from "./db";
@@ -36,7 +32,6 @@ export interface AppDeps {
   db: Db;
   /** Chain reads. Without it the API says "chain unavailable" rather than guessing. */
   client?: PublicClient;
-  google?: GoogleVerifier;
   relayer?: Relayer;
   indexer?: { status: IndexerStatus };
   now?: () => Date;
@@ -106,7 +101,7 @@ export function createApp(d: AppDeps) {
     }
     return a;
   };
-  const me = (a: Account) => ({ id: a.id, email: a.email, name: a.name, side: a.side, address: a.address, addressBoundAt: a.addressBoundAt, step: stepOf(a) });
+  const me = (a: Account) => ({ id: a.id, name: a.name, side: a.side, address: a.address, addressBoundAt: a.addressBoundAt, step: stepOf(a) });
 
   // ------------------------------------------------------------------------------------------------ health
 
@@ -131,30 +126,12 @@ export function createApp(d: AppDeps) {
       rpc,
       contract: { configured: !!config.INVOICE_BOOK, address: config.INVOICE_BOOK ?? null, chainId: config.ARC_CHAIN_ID },
       indexer: { cursor, lag: rpc.head !== undefined && cursor !== null ? rpc.head - cursor : null, lastError: d.indexer?.status.lastError ?? null, running: !!d.indexer },
-      google: { configured: !!d.google },
       relayer: { configured: !!d.relayer },
       dataSource: config.DATA_SOURCE,
     });
   });
 
   // ------------------------------------------------------------------------------------------------ sign-in and account
-
-  /** The page asks for a one-time nonce, hands it to Google, and the signed token comes back carrying it. */
-  app.get("/api/auth/nonce", async (c) => {
-    if (!d.google) return unavailable(c, "Google sign-in is not configured", "Set GOOGLE_CLIENT_ID on the server.");
-    return ok(c, await issueGoogleNonce(db, now()));
-  });
-
-  app.post("/api/auth/google", async (c) => {
-    if (!d.google) return unavailable(c, "Google sign-in is not configured", "Set GOOGLE_CLIENT_ID on the server.");
-    const { credential } = await body(c, z.object({ credential: z.string().min(20) }));
-    const profile = await d.google(credential);
-    await consumeGoogleNonce(db, profile.nonce, now());
-    const account = await upsertGoogleAccount(db, profile);
-    const s = await createSession(db, account.id, config.SESSION_TTL_DAYS, now());
-    setCookie(c, COOKIE, s.token, { httpOnly: true, sameSite: "Lax", secure: config.COOKIE_SECURE === "true", path: "/", expires: s.expiresAt });
-    return ok(c, me(account));
-  });
 
   app.post("/api/auth/logout", async (c) => {
     await destroySession(db, getCookie(c, COOKIE));
@@ -167,19 +144,21 @@ export function createApp(d: AppDeps) {
     return ok(c, a ? me(a) : null);
   });
 
+  /** Step one of signing in: a one-time message for this wallet and this site. No session is needed; none exists yet. */
   app.post("/api/auth/wallet/challenge", async (c) => {
-    const a = need(c);
     const { address: addr } = await body(c, z.object({ address }));
     // The site the message names is the page that asked, so a signature collected on a look-alike site is worthless here.
     const site = c.req.header("origin") && config.ORIGINS.includes(c.req.header("origin")!) ? c.req.header("origin")! : (config.ORIGINS[0] ?? "unknown");
-    return ok(c, await createChallenge(db, a, addr, config.ARC_CHAIN_ID, site, now()));
+    return ok(c, await createChallenge(db, addr, config.ARC_CHAIN_ID, site, now()));
   });
 
-  app.post("/api/auth/wallet/bind", async (c) => {
-    const a = need(c);
+  /** Step two: the signed message. Finds or creates the account for that address and starts the session. */
+  app.post("/api/auth/wallet/signin", async (c) => {
     const b = await body(c, z.object({ address, nonce: z.string().min(8), signature: hex() }));
-    const updated = await bindWallet(db, a, b, (message, signature, addr) => verifyWalletMessage({ client: d.client, address: addr, message, signature }), now());
-    return ok(c, me(updated));
+    const account = await signInWithWallet(db, b, (message, signature, addr) => verifyWalletMessage({ client: d.client, address: addr, message, signature }), now());
+    const s = await createSession(db, account.id, config.SESSION_TTL_DAYS, now());
+    setCookie(c, COOKIE, s.token, { httpOnly: true, sameSite: "Lax", secure: config.COOKIE_SECURE === "true", path: "/", expires: s.expiresAt });
+    return ok(c, me(account));
   });
 
   app.put("/api/me/side", async (c) => {

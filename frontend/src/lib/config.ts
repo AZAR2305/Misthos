@@ -26,8 +26,6 @@ export const CONFIG = {
   buyerAgentAddress: addr(process.env.NEXT_PUBLIC_BUYER_AGENT_ADDRESS),
   /** The Misthos backend (backend/README.md). Unset means no accounts: the app works with just a wallet, as before. */
   apiUrl: (process.env.NEXT_PUBLIC_API_URL ?? "").replace(/\/$/, "") || undefined,
-  /** OAuth web client id for "Sign in with Google" (public by design). Unset shows "unavailable". */
-  googleClientId: process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || undefined,
   repoUrl: "https://github.com/AZAR2305/Misthos",
   faucetUrl: "https://faucet.circle.com",
 } as const;

@@ -1,7 +1,7 @@
 # backend
 
 The Misthos API, chain indexer and durable job outbox (spec 5.3, 6 and 9.2), one Node process. It reads InvoiceBook's events
-into Postgres, serves the public pages' data, signs people in with Google and links one wallet to one account, and submits
+into Postgres, serves the public pages' data, signs people in with a wallet signature (one wallet is one account), and submits
 `registerInvoice` for suppliers through a relayer. Every part that lacks its configuration stays off and says so in
 `/api/health`; nothing is faked.
 
@@ -16,25 +16,23 @@ With no `DATABASE_URL` it uses an embedded Postgres (PGlite) in `./.data`, so yo
 
 ## How a person is identified
 
-1. **Google**: the browser's "Sign in with Google" button returns an ID token; the server verifies it (signature against
-   Google's keys, issuer, audience = your client id, expiry, verified email). The session is an opaque random token in an
-   HttpOnly cookie; only its SHA-256 is stored.
-2. **Wallet**: the server issues a one-time message; the wallet signs it (no transaction, no gas); the server checks the
-   signature (ECDSA, or ERC-1271 for contract wallets) and links the address. One Google identity ↔ one address, both unique.
-3. **Side**: supplier or buyer, stored on the account. Switching needs `confirm: true`.
+1. **Wallet**: the server issues a one-time message naming the wallet, the site and the network; the wallet signs it (no
+   transaction, no gas); the server checks the signature (ECDSA, or ERC-1271 for contract wallets), spends the message once, and
+   finds or creates the account for that address. The address is the whole identity: no email, no password, no third party.
+   The session is an opaque random token in an HttpOnly cookie; only its SHA-256 is stored.
+2. **Side**: supplier or buyer, stored on the account. Switching needs `confirm: true`.
 
-Google proves who someone is; it does not replace the wallet. The contract still enforces everything by signature, so a stolen
-Google session alone cannot move money, sign an invoice or pay anyone.
+There is no account recovery: losing the wallet means losing the account. The contract still enforces everything by signature,
+so a stolen session alone cannot move money, sign an invoice or pay anyone.
 
 ## API (envelope `{ ok, data, error }`; money fields are USDC minor-unit strings, 6 decimals)
 
 | Route | Who | What |
 |---|---|---|
-| `GET /api/health` | anyone | db, rpc, contract, indexer lag, Google, relayer |
-| `POST /api/auth/google` `{credential}` | anyone | verify the token, set the session cookie |
-| `POST /api/auth/logout`, `GET /api/me` | session | sign out; who am I and which step is next |
-| `POST /api/auth/wallet/challenge` `{address}` → `POST /api/auth/wallet/bind` `{address,nonce,signature}` | session | link a wallet |
-| `PUT /api/me/side` `{side, confirm?}` | session + wallet | choose supplier or buyer |
+| `GET /api/health` | anyone | db, rpc, contract, indexer lag, relayer |
+| `POST /api/auth/wallet/challenge` `{address}` → `POST /api/auth/wallet/signin` `{address,nonce,signature}` | anyone | sign in: get the one-time message, then send the signature; sets the session cookie |
+| `POST /api/auth/logout`, `GET /api/me` | session | sign out; who am I (address, side) and which step is next |
+| `PUT /api/me/side` `{side, confirm?}` | session | choose supplier or buyer |
 | `GET /api/invoices`, `GET /api/invoices/:id` | anyone | indexed invoices with filters; one invoice and its events |
 | `GET /api/stats` | anyone | settlements and the summary, computed from chain events |
 | `GET /api/ledger`, `.csv`, `.beancount` | anyone (`?address=&side=`) or session | double-entry journal and exports |

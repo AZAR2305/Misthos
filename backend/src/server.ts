@@ -1,7 +1,6 @@
 import { serve } from "@hono/node-server";
 import { createPublicClient, defineChain, http } from "viem";
 import { createApp } from "./api";
-import { createGoogleVerifier } from "./auth";
 import { loadConfig } from "./config";
 import { migrate, openDb } from "./db";
 import { startIndexer } from "./indexer";
@@ -41,12 +40,8 @@ async function main() {
   if (client && config.INVOICE_BOOK) worker = startWorker(db, relayer ? chainHandlers({ relayer, publicClient: client, book: config.INVOICE_BOOK }) : {});
   if (!relayer) console.warn("relayer off: set RELAYER_PRIVATE_KEY to submit registerInvoice for suppliers");
 
-  const google = config.GOOGLE_CLIENT_ID
-    ? createGoogleVerifier({ clientId: config.GOOGLE_CLIENT_ID, issuers: config.ISSUERS, jwksUrl: config.GOOGLE_JWKS_URL })
-    : undefined;
-  if (!google) console.warn("Google sign-in off: set GOOGLE_CLIENT_ID");
 
-  const app = createApp({ config, db, client, google, relayer, indexer });
+  const app = createApp({ config, db, client, relayer, indexer });
   const server = serve({ fetch: app.fetch, port: config.PORT }, (i) => console.log(`Misthos API listening on port ${i.port}  (health: /api/health)`));
 
   const stop = async () => {

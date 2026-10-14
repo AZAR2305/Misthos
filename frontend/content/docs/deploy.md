@@ -22,13 +22,12 @@ Import the repository, set the **Root Directory** to `frontend`, add the variabl
 | `NEXT_PUBLIC_DEPLOY_BLOCK` | The block it was deployed in, so scans start there. |
 | `NEXT_PUBLIC_SITE_URL` | The public address of the site (for link previews and the sitemap). |
 | `NEXT_PUBLIC_API_URL` | The backend, if you run one. Leave empty to run on a wallet alone. |
-| `NEXT_PUBLIC_GOOGLE_CLIENT_ID` | A Google OAuth web client id, if you use sign-in. |
 
 All of these are public values. Never put a private key or an API secret in a `NEXT_PUBLIC_` variable.
 
 ## 3. The backend (optional)
 
-Run it on any Node host with a Postgres database. It needs the contract address, an Arc RPC URL, your Google client id, the site's address in `FRONTEND_ORIGINS` and `COOKIE_SECURE=true`. It can also pay gas to register invoices for suppliers using a throwaway relayer key.
+Run it on any Node host with a Postgres database. It needs the contract address, an Arc RPC URL, the site's address in `FRONTEND_ORIGINS` and `COOKIE_SECURE=true`. It can also pay gas to register invoices for suppliers using a throwaway relayer key.
 
 ## After deploying
 

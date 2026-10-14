@@ -22,6 +22,6 @@ On the test network the USDC is free: get some from the [Circle faucet](https://
 
 If your wallet is on a different network, the header shows a warning with a **Switch** button. Signing and paying only work on the network the site uses.
 
-## Signing in with Google
+## Signing in with your wallet
 
-When the site has accounts turned on, you sign in with Google and then link **one** wallet to your account by signing a short message. That message sends no transaction and costs nothing. Google proves who you are; the wallet is what signs money.
+When the site has accounts turned on, you sign in by signing a short message with your wallet. That message sends no transaction and costs nothing. Your wallet address is your account: there is no email, no password and no outside login service, and the site stores your address and nothing else. The flip side is that there is no recovery. If you lose the wallet, you lose the account, so keep a seed backup or use a hardware wallet.

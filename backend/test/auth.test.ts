@@ -1,62 +1,37 @@
 import { describe, expect, it } from "vitest";
-import { createGoogleVerifier } from "../src/auth";
-import { CLIENT_ID, ORIGIN, browser, fakeGoogle, login, makeApp, onboard, wallet } from "./helpers";
+import { ORIGIN, browser, makeApp, onboard, signIn, wallet } from "./helpers";
 
-describe("Google ID token verification", () => {
-  it("accepts a good token and rejects every bad one", async () => {
-    const g = await fakeGoogle();
-    const verify = createGoogleVerifier({ clientId: CLIENT_ID, issuers: ["https://accounts.google.com"], jwksUrl: "https://example.invalid/certs", keys: g.keys });
-    const profile = await verify(await g.sign({ sub: "1", email: "Ada@Example.com", name: "Ada" }));
-    expect(profile).toEqual({ sub: "1", email: "ada@example.com", name: "Ada", nonce: null });
-
-    await expect(verify(await g.forged({ sub: "1", email: "a@b.co" }))).rejects.toMatchObject({ code: "BAD_GOOGLE_TOKEN" });
-    await expect(verify(await g.sign({ sub: "1", email: "a@b.co" }, { aud: "someone-elses-client" }))).rejects.toMatchObject({ code: "BAD_GOOGLE_TOKEN" });
-    await expect(verify(await g.sign({ sub: "1", email: "a@b.co" }, { iss: "https://evil.example" }))).rejects.toMatchObject({ code: "BAD_GOOGLE_TOKEN" });
-    await expect(verify(await g.sign({ sub: "1", email: "a@b.co" }, { exp: "-1h" }))).rejects.toMatchObject({ code: "BAD_GOOGLE_TOKEN" });
-    await expect(verify(await g.sign({ sub: "1", email: "a@b.co", email_verified: false }))).rejects.toMatchObject({ code: "EMAIL_NOT_VERIFIED" });
-    await expect(verify("not-a-jwt")).rejects.toMatchObject({ code: "BAD_GOOGLE_TOKEN" });
-  });
-});
-
-describe("account onboarding: Google, then a wallet, then a side", () => {
+describe("account onboarding: sign in with a wallet, then choose a side", () => {
   it("runs the whole flow with a real wallet signature and keeps the session in an HttpOnly cookie", async () => {
-    const { app, google } = await makeApp();
+    const { app } = await makeApp();
     const b = browser(app);
-
     expect((await b.get("/api/me")).json.data).toBeNull();
 
-    const signIn = await login(b, google, { sub: "g-1", email: "ada@example.com", name: "Ada" });
-    expect(signIn.status).toBe(200);
-    expect(signIn.json.data).toMatchObject({ email: "ada@example.com", side: null, address: null, step: "wallet" });
-    const cookie = signIn.headers.get("set-cookie")!;
-    expect(cookie).toMatch(/HttpOnly/i);
-    expect(cookie).toMatch(/SameSite=Lax/i);
-
-    // Choosing a side before linking a wallet is refused.
-    expect((await b.put("/api/me/side", { side: "supplier" })).json.error.code).toBe("WALLET_REQUIRED");
-
     const w = wallet(1);
+    // No session is needed to ask for the message: nobody has an account yet.
     const ch = await b.post("/api/auth/wallet/challenge", { address: w.address });
     expect(ch.status).toBe(200);
     expect(ch.json.data.message).toContain(w.address.toLowerCase());
-    expect(ch.json.data.message).toContain("ada@example.com");
+    expect(ch.json.data.message).not.toMatch(/@/);
 
     // A signature from a different key is refused, and the challenge stays usable.
     const wrong = await wallet(5).signMessage({ message: ch.json.data.message });
-    const bad = await b.post("/api/auth/wallet/bind", { address: w.address, nonce: ch.json.data.nonce, signature: wrong });
+    const bad = await b.post("/api/auth/wallet/signin", { address: w.address, nonce: ch.json.data.nonce, signature: wrong });
     expect(bad.status).toBe(400);
     expect(bad.json.error.code).toBe("BAD_SIGNATURE");
+    expect((await b.get("/api/me")).json.data).toBeNull();
 
-    const ok = await b.post("/api/auth/wallet/bind", {
-      address: w.address,
-      nonce: ch.json.data.nonce,
-      signature: await w.signMessage({ message: ch.json.data.message }),
-    });
+    const sig = await w.signMessage({ message: ch.json.data.message });
+    const ok = await b.post("/api/auth/wallet/signin", { address: w.address, nonce: ch.json.data.nonce, signature: sig });
     expect(ok.status).toBe(200);
-    expect(ok.json.data).toMatchObject({ address: w.address.toLowerCase(), step: "side" });
+    expect(ok.json.data).toMatchObject({ address: w.address.toLowerCase(), side: null, step: "side" });
+    expect(ok.json.data.email).toBeUndefined();
+    const cookie = ok.headers.get("set-cookie")!;
+    expect(cookie).toMatch(/HttpOnly/i);
+    expect(cookie).toMatch(/SameSite=Lax/i);
 
     // A challenge is single use.
-    const again = await b.post("/api/auth/wallet/bind", { address: w.address, nonce: ch.json.data.nonce, signature: await w.signMessage({ message: ch.json.data.message }) });
+    const again = await browser(app).post("/api/auth/wallet/signin", { address: w.address, nonce: ch.json.data.nonce, signature: sig });
     expect(again.json.error.code).toBe("BAD_CHALLENGE");
 
     const side = await b.put("/api/me/side", { side: "supplier" });
@@ -71,69 +46,67 @@ describe("account onboarding: Google, then a wallet, then a side", () => {
     expect((await b.get("/api/me")).json.data).toBeNull();
   });
 
-  it("links one wallet to one account only, and one Google identity to one account only", async () => {
-    const { app, google } = await makeApp();
+  it("one wallet is one account: signing in again returns the same account, a new wallet makes a new one", async () => {
+    const { app } = await makeApp();
     const a = browser(app);
-    const c = browser(app);
-    await onboard(a, google, { sub: "g-a", email: "a@example.com", walletIndex: 1, side: "supplier" });
+    const first = await onboard(a, null, { walletIndex: 1, side: "supplier" });
 
-    // A second Google account cannot claim the same wallet.
-    await login(c, google, { sub: "g-c", email: "c@example.com" });
-    const w = wallet(1);
-    const ch = await c.post("/api/auth/wallet/challenge", { address: w.address });
-    const taken = await c.post("/api/auth/wallet/bind", { address: w.address, nonce: ch.json.data.nonce, signature: await w.signMessage({ message: ch.json.data.message }) });
-    expect(taken.status).toBe(409);
-    expect(taken.json.error.code).toBe("ADDRESS_TAKEN");
+    const back = await signIn(browser(app), 1);
+    expect(back.json.data).toMatchObject({ id: first.id, side: "supplier", step: "ready" });
 
-    // The same Google identity signing in again is the same account, not a new one.
-    const again = browser(app);
-    const back = await login(again, google, { sub: "g-a", email: "a@example.com" });
-    expect(back.json.data).toMatchObject({ side: "supplier", address: w.address.toLowerCase(), step: "ready" });
+    const other = await signIn(browser(app), 2);
+    expect(other.json.data.id).not.toBe(first.id);
+    expect(other.json.data).toMatchObject({ side: null, step: "side" });
   });
 
-  it("refuses writes without a session, from a foreign origin, and without a Google client id", async () => {
-    const { app, google } = await makeApp();
+  it("refuses writes without a session and from a foreign origin", async () => {
+    const { app } = await makeApp();
     const anon = browser(app);
-    expect((await anon.post("/api/auth/wallet/challenge", { address: wallet(1).address })).status).toBe(401);
     expect((await anon.put("/api/me/side", { side: "buyer" })).status).toBe(401);
     expect((await anon.get("/api/policy")).status).toBe(401);
 
-    const n = await anon.get("/api/auth/nonce");
-    const cred = await google.sign({ sub: "x", email: "x@example.com", nonce: n.json.data.nonce });
-    const evil = await anon.post("/api/auth/google", { credential: cred }, { origin: "https://evil.example" });
+    const evil = await anon.post("/api/auth/wallet/challenge", { address: wallet(1).address }, { origin: "https://evil.example" });
     expect(evil.status).toBe(403);
     expect(evil.json.error.code).toBe("BAD_ORIGIN");
-
-    const closed = await makeApp({ env: { GOOGLE_CLIENT_ID: "" } });
-    // Built without a verifier on purpose: the route must say "unavailable", not pretend.
-    const noGoogle = (await import("../src/api")).createApp({ config: closed.config, db: closed.db });
-    const r = await browser(noGoogle).post("/api/auth/google", { credential: "x".repeat(30) });
-    expect(r.status).toBe(503);
-    expect(r.json.error.message).toMatch(/^Unavailable: Google sign-in is not configured/);
   });
 
   it("expires sessions and challenges", async () => {
     let t = new Date("2026-10-07T10:00:00Z");
-    const { app, google } = await makeApp({ now: () => t });
+    const { app } = await makeApp({ now: () => t });
     const b = browser(app);
-    await login(b, google, { sub: "s", email: "s@example.com" });
     const w = wallet(2);
     const ch = await b.post("/api/auth/wallet/challenge", { address: w.address });
     const sig = await w.signMessage({ message: ch.json.data.message });
 
     t = new Date(t.getTime() + 11 * 60_000); // past the 10 minute challenge
-    expect((await b.post("/api/auth/wallet/bind", { address: w.address, nonce: ch.json.data.nonce, signature: sig })).json.error.code).toBe("BAD_CHALLENGE");
+    expect((await b.post("/api/auth/wallet/signin", { address: w.address, nonce: ch.json.data.nonce, signature: sig })).json.error.code).toBe("BAD_CHALLENGE");
 
+    await signIn(b, 2); // a fresh challenge at the new time works
     t = new Date(t.getTime() + 15 * 86_400_000); // past the 14 day session
     expect((await b.get("/api/me")).json.data).toBeNull();
   });
 
+  it("a signature for one address cannot sign in as another", async () => {
+    const { app } = await makeApp();
+    const b = browser(app);
+    const ch = await b.post("/api/auth/wallet/challenge", { address: wallet(1).address });
+    const sig = await wallet(1).signMessage({ message: ch.json.data.message });
+    const r = await b.post("/api/auth/wallet/signin", { address: wallet(2).address, nonce: ch.json.data.nonce, signature: sig });
+    expect(r.json.error.code).toBe("BAD_CHALLENGE");
+  });
+
+  it("names the site in the message, so a signature made on another site is not valid here", async () => {
+    const { app } = await makeApp();
+    const ch = await browser(app).post("/api/auth/wallet/challenge", { address: wallet(1).address });
+    expect(ch.json.data.message).toContain(`Site: ${ORIGIN}`);
+  });
+
   it("scopes private settings to the account's side and organisation", async () => {
-    const { app, google } = await makeApp();
+    const { app } = await makeApp();
     const buyer = browser(app);
     const supplier = browser(app);
-    await onboard(buyer, google, { sub: "b", email: "buyer@example.com", walletIndex: 2, side: "buyer" });
-    await onboard(supplier, google, { sub: "s", email: "supplier@example.com", walletIndex: 1, side: "supplier" });
+    await onboard(buyer, null, { sub: "b", email: "buyer@example.com", walletIndex: 2, side: "buyer" });
+    await onboard(supplier, null, { sub: "s", email: "supplier@example.com", walletIndex: 1, side: "supplier" });
 
     expect((await supplier.get("/api/policy")).json.error.code).toBe("WRONG_SIDE");
     expect((await buyer.get("/api/prefs")).json.error.code).toBe("WRONG_SIDE");
@@ -163,47 +136,11 @@ describe("account onboarding: Google, then a wallet, then a side", () => {
     expect(no.headers.get("access-control-allow-origin")).toBeNull();
   });
 
-  it("accepts a Google token once: a captured token cannot be replayed, and one without our nonce is refused", async () => {
-    const { app, google } = await makeApp();
-    const a = browser(app);
-    const n = await a.get("/api/auth/nonce");
-    const token = await google.sign({ sub: "r", email: "r@example.com", nonce: n.json.data.nonce });
-    expect((await a.post("/api/auth/google", { credential: token })).status).toBe(200);
-
-    // The same token, sent again from anywhere, is dead.
-    const thief = browser(app);
-    const replay = await thief.post("/api/auth/google", { credential: token });
-    expect(replay.status).toBe(401);
-    expect(replay.json.error.code).toBe("BAD_NONCE");
-
-    // A token Google signed for another page (no nonce from us, or one we never issued) is refused too.
-    expect((await thief.post("/api/auth/google", { credential: await google.sign({ sub: "r", email: "r@example.com" }) })).json.error.code).toBe("BAD_NONCE");
-    expect((await thief.post("/api/auth/google", { credential: await google.sign({ sub: "r", email: "r@example.com", nonce: "f".repeat(32) }) })).json.error.code).toBe("BAD_NONCE");
-  });
-
-  it("expires a sign-in nonce after ten minutes", async () => {
-    let t = new Date("2026-10-07T10:00:00Z");
-    const { app, google } = await makeApp({ now: () => t });
-    const b = browser(app);
-    const n = await b.get("/api/auth/nonce");
-    const token = await google.sign({ sub: "e", email: "e@example.com", nonce: n.json.data.nonce });
-    t = new Date(t.getTime() + 11 * 60_000);
-    expect((await b.post("/api/auth/google", { credential: token })).json.error.code).toBe("BAD_NONCE");
-  });
-
-  it("names the site in the wallet message, so a signature made on another site is not valid here", async () => {
-    const { app, google } = await makeApp();
-    const b = browser(app);
-    await login(b, google, { sub: "w", email: "w@example.com" });
-    const ch = await b.post("/api/auth/wallet/challenge", { address: wallet(1).address });
-    expect(ch.json.data.message).toContain(`Site: ${ORIGIN}`);
-  });
-
   it("limits how fast anyone can hammer sign-in", async () => {
     const { app } = await makeApp({ env: { RATE_LIMIT_PER_MIN: "5" } });
     const b = browser(app);
     const codes: number[] = [];
-    for (let i = 0; i < 8; i++) codes.push((await b.get("/api/auth/nonce")).status);
+    for (let i = 0; i < 8; i++) codes.push((await b.post("/api/auth/wallet/challenge", { address: wallet(1).address })).status);
     expect(codes.slice(0, 5).every((c) => c === 200)).toBe(true);
     expect(codes.slice(5)).toEqual([429, 429, 429]);
     expect((await b.get("/api/health")).status).toBe(200); // other routes are not affected

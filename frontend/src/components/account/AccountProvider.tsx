@@ -8,11 +8,10 @@ import { useWallet } from "@/components/wallet/WalletProvider";
 /** What the server knows about the signed-in person. `step` is the next onboarding step; "ready" means a side is chosen. */
 export interface Me {
   id: string;
-  email: string;
   name: string | null;
   side: Role | null;
   address: string | null;
-  step: "wallet" | "side" | "ready";
+  step: "side" | "ready";
 }
 
 interface AccountValue {
@@ -21,10 +20,9 @@ interface AccountValue {
   status: "loading" | "ready" | "unreachable";
   me: Me | null;
   error: string | null;
-  signIn(credential: string): Promise<string | null>;
+  /** Proves control of the connected wallet by signing a one-time message. That creates (or finds) the account and starts the session. Resolves to an error message, or null. */
+  signIn(): Promise<string | null>;
   signOut(): Promise<void>;
-  /** Proves control of the connected wallet by signing a one-time message, then links it. Resolves to an error message, or null. */
-  linkWallet(): Promise<string | null>;
   chooseSide(side: Role, confirm?: boolean): Promise<string | null>;
 }
 
@@ -47,19 +45,12 @@ export function AccountProvider({ children }: { children: ReactNode }) {
   }, []);
   useEffect(() => void refresh(), [refresh]);
 
-  const signIn = useCallback(async (credential: string) => {
-    const r = await api<Me>("/api/auth/google", { method: "POST", body: { credential } });
-    if (!r.ok) return r.error.message;
-    setState({ status: "ready", me: r.data, error: null });
-    return null;
-  }, []);
-
   const signOut = useCallback(async () => {
     await api("/api/auth/logout", { method: "POST", body: {} });
     setState({ status: "ready", me: null, error: null });
   }, []);
 
-  const linkWallet = useCallback(async () => {
+  const signIn = useCallback(async () => {
     if (w.status !== "connected" || !w.address || !w.walletClient) return "Connect your wallet first.";
     const ch = await api<{ nonce: string; message: string }>("/api/auth/wallet/challenge", { method: "POST", body: { address: w.address } });
     if (!ch.ok) return ch.error.message;
@@ -69,7 +60,7 @@ export function AccountProvider({ children }: { children: ReactNode }) {
     } catch (e) {
       return (e as { code?: number }).code === 4001 ? "You closed the signature request. Nothing was sent; try again when you are ready." : "The wallet could not sign the message.";
     }
-    const r = await api<Me>("/api/auth/wallet/bind", { method: "POST", body: { address: w.address, nonce: ch.data.nonce, signature } });
+    const r = await api<Me>("/api/auth/wallet/signin", { method: "POST", body: { address: w.address, nonce: ch.data.nonce, signature } });
     if (!r.ok) return r.error.message;
     setState({ status: "ready", me: r.data, error: null });
     return null;
@@ -83,8 +74,8 @@ export function AccountProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value = useMemo<AccountValue>(
-    () => ({ mode: apiEnabled ? "on" : "off", ...state, signIn, signOut, linkWallet, chooseSide }),
-    [state, signIn, signOut, linkWallet, chooseSide],
+    () => ({ mode: apiEnabled ? "on" : "off", ...state, signIn, signOut, chooseSide }),
+    [state, signIn, signOut, chooseSide],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
@@ -92,7 +83,7 @@ export function AccountProvider({ children }: { children: ReactNode }) {
 const shortAddr = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
 
 /**
- * With accounts on, money moves only from the wallet linked to the account. Returns a sentence saying why not, or null when the
+ * With accounts on, money moves only from the wallet the account was created with. Returns a sentence saying why not, or null when the
  * connected wallet may sign. Without accounts any connected wallet may sign (the app then runs on a wallet alone).
  */
 export function useSignerCheck(): () => string | null {
@@ -100,9 +91,9 @@ export function useSignerCheck(): () => string | null {
   const w = useWallet();
   return useCallback(() => {
     if (acct.mode === "off") return null;
-    if (!acct.me) return "Sign in first, then link your wallet.";
-    if (!acct.me.address) return "Link your wallet to your account first.";
-    if (w.address && w.address !== acct.me.address) return `This wallet (${shortAddr(w.address)}) is not the one linked to your account (${shortAddr(acct.me.address)}). Switch to the linked wallet in your wallet app.`;
+    if (!acct.me) return "Sign in with your wallet first.";
+    if (!acct.me.address) return "Sign in with your wallet first.";
+    if (w.address && w.address !== acct.me.address) return `This wallet (${shortAddr(w.address)}) is not the one you signed in with (${shortAddr(acct.me.address)}). Switch to that wallet in your wallet app, or sign out and sign in again.`;
     return null;
   }, [acct, w.address]);
 }

@@ -14,7 +14,7 @@ summary: Short answers to the questions people ask first.
 
 **What if I do nothing?** The invoice is paid on its due date as usual. Early payment is optional on both sides.
 
-**Do I need a Google account?** Only where the site has accounts turned on. Every public page can be read without one.
+**Do I need an account or an email?** No email, ever. Where the site has accounts turned on, you sign in by signing a message with your wallet. Every public page can be read without signing in.
 
 **Is it safe to try?** It runs on a test network with free test USDC. The contract is unaudited, so do not use funds you cannot lose.
 

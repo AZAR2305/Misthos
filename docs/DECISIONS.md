@@ -327,3 +327,14 @@ middle to hand over an offer, a thumbs up and a jump on accept, a dance on settl
 - Native USDC has 18 decimals, the ERC-20 interface 6. We store 6-decimal minor units everywhere and only use 18 for the chain definition's gas currency. Never mix the two.
 - The public endpoint is load-balanced; error -32014 near the head is retryable. VERIFY: confirm the indexer retries it rather than stopping.
 - Arc Foundry (`arc-forge`, `arc-cast`, `arc-anvil --network arc`) exists for Arc-specific behaviour. VERIFY: run `arc-forge test --network arc` on the contract before deploying.
+
+## Accounts: wallet-signature sign-in replaces Google (14 Oct 2026)
+- **Why.** The owner wants no centralised identity provider. Google (or Privy, which still sits on email or social login) means a company sees every
+  sign-in and we store an email. A wallet signature needs neither.
+- **What.** `POST /api/auth/wallet/challenge {address}` returns a one-time message naming the wallet, site and network (10 minutes, single use);
+  `POST /api/auth/wallet/signin {address, nonce, signature}` checks it (ECDSA, or ERC-1271 for contract wallets), then finds or creates the account by
+  address and starts the session. The address is the whole identity. Migration 007 drops `google_sub`, `email`, `email_verified`, the Google nonce
+  table, and lets a challenge exist with no account. The Google verifier, nonce routes and button are deleted. Onboarding is two steps (sign in, side).
+- **Cost.** No recovery: lose the wallet, lose the account. No email, so no notification channel. This supersedes the 7 Oct "Accounts: Google identity" decision above.
+- **Unchanged.** Money still moves only by the wallet's own signature on chain; the agent-link, exposure, policy and obligation features hang off the account as before.
+- **Stays public.** Invoices, settlements and the explorer trail are on-chain either way; wallet sign-in protects who you are off chain, not what the chain shows.

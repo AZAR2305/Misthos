@@ -27,7 +27,7 @@ often 0%. Hackathon: Tameion Agents Hackathon (Canteen x Circle x Arc). Final su
 - `frontend/` Next.js 16 (App Router) + Tailwind 4. Landing page and 3D scene in `src/components/landing`; tokens in `design/tokens.css`.
 - `contract/` Foundry: `InvoiceBook.sol`, 40 tests, deploy script. `lib/` is gitignored (`forge install`, see its README).
 - `agent/` core library, negotiation protocol, wallet adapters, supplier and buyer agent processes. `pnpm doctor` shows what is missing.
-- `backend/` REST API, chain indexer, job outbox, Google + wallet sign-in. Hono + Postgres (PGlite for local/tests). See backend/README.md.
+- `backend/` REST API, chain indexer, job outbox, wallet-signature sign-in (no Google, no email). Hono + Postgres (PGlite for local/tests). See backend/README.md.
 - `docs/` DECISIONS, design plan, inspiration notes, spec.
 
 ## Dev notes

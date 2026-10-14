@@ -2,20 +2,19 @@
 
 import { useState, type ReactNode } from "react";
 import { useAccount } from "@/components/account/AccountProvider";
-import { GoogleButton } from "@/components/account/GoogleButton";
 import { Notice, Skeleton } from "@/components/ui/kit";
 import { useWallet } from "@/components/wallet/WalletProvider";
 import { Crystals, WalletCards } from "./Gate";
 import { RoleChoice } from "./RoleChoice";
 
-const STEPS = ["Sign in with Google", "Link your wallet", "Choose your side"];
+const STEPS = ["Sign in with your wallet", "Choose your side"];
 
-function Frame({ step, title, lead, children }: { step: 1 | 2 | 3; title: string; lead: ReactNode; children: ReactNode }) {
+function Frame({ step, title, lead, children }: { step: 1 | 2; title: string; lead: ReactNode; children: ReactNode }) {
   return (
     <section className="gate" aria-labelledby="onb-title">
       <Crystals />
       <div className="gate-inner">
-        <p className="eyebrow">{`Step ${step} of 3`}</p>
+        <p className="eyebrow">{`Step ${step} of 2`}</p>
         <h1 id="onb-title" className="gate-title">
           {title}
         </h1>
@@ -38,7 +37,7 @@ function Frame({ step, title, lead, children }: { step: 1 | 2 | 3; title: string
 }
 
 /**
- * The three-step front door when the app has a server: Google proves who you are, your wallet proves which money is yours,
+ * The front door when the app has a server: your wallet signs a one-time message (no email, no third party, no transaction),
  * and you choose a side. Used by /app and by any supplier or buyer page opened before it is finished.
  */
 export function Onboarding() {
@@ -62,31 +61,12 @@ export function Onboarding() {
 
   const me = acct.me;
   if (!me) {
-    return (
-      <Frame step={1} title="Sign in to get started" lead="Google tells us who you are. Your wallet signs the money. Each account is one Google identity, one wallet and one side.">
-        <div className="onb-action">
-          <GoogleButton
-            onCredential={async (c) => {
-              setError(await acct.signIn(c));
-            }}
-          />
-          {error && <p className="field-error" role="alert">{error}</p>}
-        </div>
-      </Frame>
-    );
-  }
-
-  if (me.step === "wallet") {
     const connected = w.status === "connected" && !!w.address;
     return (
       <Frame
-        step={2}
-        title="Link your wallet"
-        lead={
-          <>
-            Signed in as <b>{me.email}</b>. Link the wallet you will sign invoices and payments with. You sign a message: it sends no transaction and costs nothing.
-          </>
-        }
+        step={1}
+        title="Sign in with your wallet"
+        lead="Your wallet is your account. You sign a message that sends no transaction and costs nothing. We store your address and nothing else: no email, no password."
       >
         <div className="onb-action">
           {!connected ? (
@@ -107,23 +87,20 @@ export function Onboarding() {
                 disabled={busy}
                 onClick={async () => {
                   setBusy(true);
-                  setError(await acct.linkWallet());
+                  setError(await acct.signIn());
                   setBusy(false);
                 }}
               >
-                {busy ? "Check your wallet…" : "Link this wallet"}
+                {busy ? "Check your wallet…" : "Sign in"}
               </button>
             </>
           )}
           {error && <p className="field-error" role="alert">{error}</p>}
-          <button type="button" className="btn btn-quiet btn-sm" onClick={() => void acct.signOut()}>
-            Use a different Google account
-          </button>
         </div>
       </Frame>
     );
   }
 
-  // Step 3: the side. RoleChoice shows the two cards and moves on once the server accepts.
+  // Step 2: the side. RoleChoice shows the two cards and moves on once the server accepts.
   return <RoleChoice address={me.address!} onChoose={(s) => acct.chooseSide(s)} />;
 }

@@ -11,7 +11,7 @@ is unconfirmed, ask in the Canteen Discord). Companion files: `docs/SETUP.md` (t
 |---|---|---|
 | `contract/` InvoiceBook | Written, 40 Foundry tests, deploy scripts | **40/40 pass** (run 14 Oct; Foundry is installed in `C:\Users\thame\dev-tools\bin`) |
 | `agent/` core, protocol, allocator, decision log, wallet adapters, two agent processes | Built | `tsc` clean, **182/182 tests pass** (14 Oct), including the credit and exposure layer, replayable decisions, the audit tool, the supplier's adaptive start and verified payables |
-| `backend/` API, indexer, job outbox, Google and wallet sign-in, claim links, ledger exports | Built | `tsc` clean, **72/72 tests pass** (14 Oct), including both Anvil suites, the registration credit gate and `pipeline.test.ts`, which runs both agents against the real API in one process |
+| `backend/` API, indexer, job outbox, wallet-signature sign-in, claim links, ledger exports | Built | `tsc` clean, **70/70 tests pass** (14 Oct), including both Anvil suites, the registration credit gate and `pipeline.test.ts`, which runs both agents against the real API in one process |
 | `frontend/` landing, app pages, docs | Built | `tsc` clean, 45/45 tests pass; `next build` passes; `e2e:local` and `e2e:accounts` both pass in a real browser (14 Oct) |
 | SRS v1.0 layer: credit limits, ranges, policy versions, audit | **Built, local only** | `docs/SRS_GAP_PLAN.md` (status per requirement) and `docs/SRS_IMPLEMENTATION_SPEC.md` (how it works, and where it differs from the plan) |
 | Deployed contract on Arc testnet | **No** | The app says "unavailable" wherever it would read the chain |
@@ -26,7 +26,7 @@ Agent code against the spec, with what was fixed on 6 Oct: **`docs/SPEC_COMPLIAN
 
 ## 2. Backend review (read of `backend/src`, tests and README)
 
-What is sound: every route returns the `{ ok, data, error }` envelope; writes are refused from foreign origins; Google tokens
+What is sound: every route returns the `{ ok, data, error }` envelope; writes are refused from foreign origins; sign-in messages
 need a one-time server nonce; wallet sign-in messages name the site; sessions are random tokens stored hashed; the relayer only
 pays gas because the contract checks the supplier's signature; jobs are idempotent and survive a crash; unbuilt features answer
 501 instead of faking; ledger exports are built from chain events only (no user text reaches a CSV cell).
@@ -40,7 +40,7 @@ What to fix or decide before the public link goes out:
 4. **No reorg handling in the indexer.** Acceptable on Arc (deterministic finality, per the notes); keep `CONFIRMATIONS` in mind
    if the chain changes.
 5. **The read model is rebuilt from events on each call.** Fine at pilot scale; add a materialised table before thousands of invoices.
-6. **No Content-Security-Policy yet** (wallet, Google sign-in and three.js need a tuned policy). Spec: do last, test with a clean browser.
+6. **No Content-Security-Policy yet** (wallet and three.js need a tuned policy). Spec: do last, test with a clean browser.
 7. **Stats cannot yet separate real pilot invoices from the team's own test runs.** `DATA_SOURCE` is `sandbox` until a real pilot
    exists. Do not call anything a pilot until it is one.
 8. **501 routes** (spec Tier 2 and 3): rounds, the server-side allocator, ERC-8004 registration and reputation, managed Circle
@@ -55,7 +55,7 @@ What to fix or decide before the public link goes out:
       fund both wallets from the faucet, fill `agent/.env`, run `pnpm --filter @misthos/agent doctor` until it is clean.
 - [ ] **Today.** Run `forge test` in `contract/` (expect 40 green), then deploy `InvoiceBook` to Arc testnet (`contract/README.md`,
       record the address in `contract/DEPLOYMENTS.md`). Set `NEXT_PUBLIC_INVOICE_BOOK_ADDRESS`, `INVOICE_BOOK_ADDRESS`, `DEPLOY_BLOCK`.
-- [ ] **Today.** Start the backend with a real Postgres (`DATABASE_URL`), Google client id, and a funded relayer key. Open
+- [ ] **Today.** Start the backend with a real Postgres (`DATABASE_URL`), and a funded relayer key. Open
       `/api/health`: every line should be green.
 - [ ] **After the agents run once (`docs/SETUP.md` 7c).** Each owner signs in, sets **Credit limits**, lists the buyer's payments, makes a
       **link code** and starts the agent once with `MISTHOS_LINK_CODE`. Without the link, the agents cannot read the calendar or the limits and

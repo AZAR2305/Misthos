@@ -156,12 +156,11 @@
 .stat-value { font-family: var(--font-display); font-weight: 600; font-size: clamp(1.5rem, 2.2vw, 2rem); letter-spacing: -0.01em; }
 @media (max-width: 640px) { .crystals { opacity: 0.5; } }
 
-/* ---------- accounts: onboarding steps, Google button, sign out ---------- */
+/* ---------- accounts: onboarding steps, sign out ---------- */
 .gate-steps li[data-current="true"] .step-dot { background: var(--color-primary); color: var(--color-on-primary); border-color: transparent; }
 .gate-steps li[data-current="false"][data-done="false"] { opacity: 0.55; }
 .gate-steps li[data-done="true"] .step-dot { background: var(--tint); color: var(--accent-strong); border-color: var(--tint-border); }
 .onb-action { display: grid; gap: 14px; justify-items: start; margin: 8px 0 18px; }
-.google-slot { display: grid; gap: 8px; min-height: 44px; }
 .linklike { background: none; border: 0; padding: 0; font: inherit; color: var(--accent-strong); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
 
 /* ---------- the agent companion: a 3D character docked above the footer ---------- */

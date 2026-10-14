@@ -18,7 +18,7 @@ export default function StartHere() {
   const w = useWallet();
   const acct = useAccount();
   const { side: role, ready: roleReady, set: setRole } = useSide();
-  // With a server, onboarding is Google, then wallet, then side. Without one it is just wallet, then side.
+  // With a server, onboarding is a wallet signature, then side. Without one it is just wallet, then side.
   if (acct.mode === "on") return acct.status === "ready" && acct.me?.step === "ready" && acct.me.side ? <Overview role={acct.me.side} /> : <Onboarding />;
   if (w.status !== "connected" || !w.address) return w.status === "connecting" ? <Skeleton rows={4} /> : <WalletGate />;
   if (!roleReady) return <Skeleton rows={4} />;
@@ -38,7 +38,7 @@ function Overview({ role }: { role: "supplier" | "buyer" }) {
 
   const checks = [
     ...(acct.mode === "on"
-      ? [{ done: !!acct.me, text: "Signed in with Google", help: acct.me ? `${acct.me.email}, wallet ${acct.me.address ? acct.me.address.slice(0, 6) + "…" + acct.me.address.slice(-4) : "not linked"}` : "Sign in to act as a supplier or buyer.", action: undefined as React.ReactNode }]
+      ? [{ done: !!acct.me, text: "Signed in with your wallet", help: acct.me ? `wallet ${acct.me.address ? acct.me.address.slice(0, 6) + "…" + acct.me.address.slice(-4) : "unknown"}` : "Sign in to act as a supplier or buyer.", action: undefined as React.ReactNode }]
       : []),
     { done: w.status === "connected", text: "Connect a wallet", help: "Use the button at the top right. A browser wallet signs invoices and payments.", action: w.status === "connected" ? undefined : <button type="button" className="btn btn-primary btn-sm" onClick={w.openModal}>Connect wallet</button> },
     { done: w.status === "connected" && w.onRightNetwork, text: `Be on ${CONFIG.networkName}`, help: "Your wallet must use the same network as this site.", action: w.status === "connected" && !w.onRightNetwork ? <button type="button" className="btn btn-ghost btn-sm" onClick={() => void w.switchNetwork()}>Switch network</button> : undefined },

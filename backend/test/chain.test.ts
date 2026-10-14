@@ -10,7 +10,7 @@ import { INVOICE_BOOK_ABI, domain, invoiceId, invoiceTypedData, offerTypedData }
 import { browser, makeApp, onboard, wallet } from "./helpers";
 
 /**
- * The real thing: an Anvil chain, the real InvoiceBook contract, the real indexer, relayer and API. Only Google (which cannot
+ * The real thing: an Anvil chain, the real InvoiceBook contract, the real indexer, relayer and API. Only the wallet pop-up (which cannot
  * run headless) and the browser wallet's key (a deterministic Anvil test account) are stand-ins.
  */
 const PORT = 8547;
@@ -148,7 +148,7 @@ describe("API, indexer and relayer against a real chain", () => {
     expect(await getCursor(db)).toBe(await pub.getBlockNumber());
 
     const health = (await supplier.get("/api/health")).json.data;
-    expect(health).toMatchObject({ db: { ok: true }, rpc: { ok: true }, contract: { configured: true }, google: { configured: true }, relayer: { configured: true } });
+    expect(health).toMatchObject({ db: { ok: true }, rpc: { ok: true }, contract: { configured: true }, relayer: { configured: true } });
     expect(health.indexer.lag).toBe("0");
   }, 180_000);
 });
