@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { publicClient } from "./chain/client";
 import { readUsdcBalance } from "./chain/invoices";
 import { CONFIG } from "./config";
+import { readRole, type OnChainRole } from "./chain/roles";
 
 /** Real USDC balance of an address (6-decimal minor units), refreshed every 10 s. */
 export function useUsdcBalance(address?: `0x${string}`) {
@@ -124,5 +125,34 @@ export function useAgentRange<T>(url: string, invoiceId: string): AgentRange<T> 
       window.clearInterval(t);
     };
   }, [url, invoiceId]);
+  return state;
+}
+
+/**
+ * The wallet's fixed role from the RoleRegistry on Arc: supplier, buyer, or none yet. It is read again on every connect, every few seconds, and right after a
+ * registration, so the answer is always the chain's. "off" means no registry is configured on this site. An unreadable registry is an error, never a guess.
+ */
+export function useOnChainRole(address?: `0x${string}`) {
+  const registry = CONFIG.roleRegistry;
+  const [state, setState] = useState<{ status: "off" | "loading" | "ready" | "error"; role: OnChainRole | null }>({ status: registry ? "loading" : "off", role: null });
+  const load = useCallback(async () => {
+    if (!registry) return setState({ status: "off", role: null });
+    if (!address) return setState({ status: "ready", role: null });
+    try {
+      setState({ status: "ready", role: await readRole(publicClient(), registry, address) });
+    } catch {
+      setState((s) => ({ status: "error", role: s.role }));
+    }
+  }, [registry, address]);
+  useEffect(() => {
+    void load();
+    const t = window.setInterval(() => !document.hidden && void load(), 8000);
+    const on = () => void load();
+    window.addEventListener("misthos:role", on);
+    return () => {
+      window.clearInterval(t);
+      window.removeEventListener("misthos:role", on);
+    };
+  }, [load]);
   return state;
 }

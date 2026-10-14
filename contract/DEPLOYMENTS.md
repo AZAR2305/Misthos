@@ -28,3 +28,8 @@ then have each buyer wallet `approve(InvoiceBook, allowance)` on USDC once befor
   (same checks, flat arguments; 59 tests incl. a parity suite, fuzz and invariants).
 - **Current InvoiceBook: `0x108DA05Fec74a1c0620CF7D66D07AeB586A5288C`**, deploy tx `0x2d0204bca37f6c07420d02e8e5912a782b90a679cd00279b4a9516aeddad99ce`, block 67164103.
   https://explorer.testnet.arc.io/address/0x108DA05Fec74a1c0620CF7D66D07AeB586A5288C
+
+### RoleRegistry (14 Oct 2026)
+- **RoleRegistry: `0x54C789EcA2d40ef902CF792077622AA7B5a901dC`**, deploy tx `0x9769ea74eb2a53c8b42142b5555f50b7874e98dd4c5537653ac9e5f95ee8ee75`, block 67192949. No owner, no upgrade, no reset: a wallet's role (supplier or buyer) is chosen once and fixed for good.
+  https://explorer.testnet.arc.io/address/0x54C789EcA2d40ef902CF792077622AA7B5a901dC
+- It is **separate from InvoiceBook**: InvoiceBook does not consult it, so a wallet calling InvoiceBook directly is not stopped by the registry. The website and the backend relayer enforce it. Making InvoiceBook check it needs a new InvoiceBook deployment (not done; asked of the owner).

@@ -12,6 +12,9 @@ import { readReputation, reputationClient, writeSettlementFeedback } from "../id
 import { chainVerifier, WalletError, type Address } from "../wallets/types.js";
 import { ProtocolError } from "../agents/buyer.js";
 import { vaultFromEnv } from "../agents/vault.js";
+import { ChatAgent } from "../agents/chat.js";
+import { supplierTools } from "../agents/chatTools.js";
+import { chatRoutes, fetchInvoiceLines, toDecisionLines } from "./chatHttp.js";
 import { serve, type ServeOptions } from "./http.js";
 
 /**
@@ -76,6 +79,37 @@ const agentFor = (invoiceId: string) => {
   return a;
 };
 
+const SUPPLIER = cfg.SUPPLIER_AGENT_WALLET_ADDRESS;
+const supplierRange = async (id: `0x${string}`) => {
+  const inv = await chain.invoice(id);
+  if (!inv || inv.supplier.toLowerCase() !== (await wallet.address()).toLowerCase()) throw new ProtocolError("NOT_FOUND", "That invoice is not yours as supplier.");
+  return { inv, agent: agents.get(id) ?? agentFor(id) };
+};
+const chat = new ChatAgent({
+  role: "supplier",
+  model: createModel(cfg),
+  tools: supplierTools({
+    health: async () => ({ wallet: await wallet.health(), modelConfigured: !!modelKeyOf(cfg) }),
+    decisions: (n) => toDecisionLines(store.all(), n),
+    listInvoices: async () => {
+      if (!cfg.BACKEND_URL) throw new Error("BACKEND_URL is not set, so I cannot read your invoices. Set it in agent/.env.");
+      return fetchInvoiceLines(cfg.BACKEND_URL, { supplier: SUPPLIER }, ["registered", "approved", "disputed", "settled_early", "settled_due"]);
+    },
+    explain: async (id) => {
+      const { inv, agent } = await supplierRange(id as `0x${string}`);
+      return `My range for this invoice: ${JSON.stringify(agent.range({ face: inv.amount, dueSec: inv.dueDate }), (_k, v) => (typeof v === "bigint" ? v.toString() : v))}`;
+    },
+    negotiate: async (id) => {
+      const { inv } = await supplierRange(id as `0x${string}`);
+      if (inv.status !== "approved" && inv.status !== "registered") throw new Error(`this invoice is ${inv.status}, so there is nothing to negotiate`);
+      paused.delete(id);
+      const agent = agentFor(id);
+      const result = await agent.start({ id: id as `0x${string}`, face: inv.amount, dueSec: inv.dueDate, status: inv.status === "approved" ? "approved" : "registered", pastAcceptedBps: [], buyer: inv.buyer });
+      return `Result: ${result.kind}. ${"reason" in result && typeof result.reason === "string" ? result.reason : ""}`.trim();
+    },
+  }),
+});
+
 const idSchema = z.string().regex(/^0x[0-9a-fA-F]{64}$/);
 
 serve(
@@ -125,6 +159,7 @@ serve(
       if (!inv || inv.supplier.toLowerCase() !== (await wallet.address()).toLowerCase()) throw new ProtocolError("NOT_FOUND", "That invoice is not yours as supplier.");
       return (agents.get(id) ?? agentFor(id)).range({ face: inv.amount, dueSec: inv.dueDate });
     },
+    ...chatRoutes(chat),
     "GET /decisions": async () => ({ entries: store.all(), verify: store.verify(), delivery: { ...store.status(), backend: !!cfg.BACKEND_URL } }),
   },
   "supplier-agent",

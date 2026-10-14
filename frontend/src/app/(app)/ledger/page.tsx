@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { ConnectPrompt } from "@/components/app/Gate";
 import { useMemo, useState } from "react";
 import { useChainData } from "@/components/app/ChainData";
 import { RequireWallet } from "@/components/app/RequireWallet";
@@ -34,7 +35,8 @@ export default function Ledger() {
             <p><b>Export.</b> Download a CSV for a spreadsheet or a beancount file for plain-text accounting. Run <span className="inline-code">bean-check</span> on the beancount file before you rely on it.</p>
           </>
         }
-      />
+      />      <ConnectPrompt />
+
       <div className="quick" role="tablist" aria-label="Ledger sections">
         <button role="tab" aria-selected={tab === "journal"} type="button" className="pill-btn" aria-pressed={tab === "journal"} onClick={() => setTab("journal")}>Journal and export</button>
         <button role="tab" aria-selected={tab === "log"} type="button" className="pill-btn" aria-pressed={tab === "log"} onClick={() => setTab("log")}>Decision log</button>

@@ -29,7 +29,7 @@ export default function StartHere() {
 function Overview({ role }: { role: "supplier" | "buyer" }) {
   const w = useWallet();
   const acct = useAccount();
-  const { set: setRole } = useSide();
+  const { set: setRole, fixed } = useSide();
   const other = role === "supplier" ? "buyer" : "supplier";
   const chain = useChainData();
   const { balance } = useUsdcBalance(w.address);
@@ -74,7 +74,7 @@ function Overview({ role }: { role: "supplier" | "buyer" }) {
         <div className="actions-row">
           <Link className="btn btn-primary" href={ROLE_HOME[role]}>Open my {role} dashboard</Link>
           <Link className="btn btn-ghost" href={role === "supplier" ? "/supplier/invoices/new" : "/buyer/approvals"}>{role === "supplier" ? "New invoice" : "Approvals"}</Link>
-          <button type="button" className="btn btn-ghost" onClick={() => { setRole(other); }}>Switch to {other}</button>
+          {fixed ? <span className="muted tiny">Your role is fixed on Arc: {role}.</span> : <button type="button" className="btn btn-ghost" onClick={() => { setRole(other); }}>Switch to {other}</button>}
         </div>
       </section>
 

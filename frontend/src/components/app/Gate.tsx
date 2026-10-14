@@ -116,3 +116,19 @@ export function InlineGate({ why }: { why: ReactNode }) {
     </section>
   );
 }
+
+/**
+ * A "connect your wallet" card for the public pages (invoices, ledger, stats). Reading is open to everyone; this is the way in for acting.
+ * It shows nothing once a wallet is connected.
+ */
+export function ConnectPrompt({ children }: { children?: ReactNode }) {
+  const w = useWallet();
+  if (w.status === "connected") return null;
+  return (
+    <section className="card connect-prompt" aria-labelledby="connect-prompt-title">
+      <h2 id="connect-prompt-title">Connect your wallet</h2>
+      <p className="muted">{children ?? "Everything here is public. Connect a wallet to act: your wallet is your account, and its role (supplier or buyer) is fixed on chain."}</p>
+      <WalletCards />
+    </section>
+  );
+}

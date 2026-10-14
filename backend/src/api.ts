@@ -25,7 +25,7 @@ import { exposureEvents, payablesOf, toInvoiceEvents } from "./exposure";
 import type { Relayer, RegisterPayload } from "./relayer";
 import { rateLimit } from "./ratelimit";
 import { fromNumeric, ser, toNumeric } from "./serialize";
-import { findDuplicate, ofOrigin, REGISTRY, GENESIS_HASH, agentReadTypedData, decisionTypedData, evaluateExposure, findPrivateKey, hashDecision, INVOICE_BOOK_ABI, balanced, domain, invoiceId, invoiceTypedData, offerTypedData, journalFrom, settlementRows, summarise, toBeancount, toCsv, verifyChain, type InvoiceRecord, type StoredDecision } from "./shared";
+import { readRole, findDuplicate, ofOrigin, REGISTRY, GENESIS_HASH, agentReadTypedData, decisionTypedData, evaluateExposure, findPrivateKey, hashDecision, INVOICE_BOOK_ABI, balanced, domain, invoiceId, invoiceTypedData, offerTypedData, journalFrom, settlementRows, summarise, toBeancount, toCsv, verifyChain, type InvoiceRecord, type StoredDecision } from "./shared";
 
 export interface AppDeps {
   config: Config;
@@ -148,6 +148,7 @@ export function createApp(d: AppDeps) {
       db: { ok: dbOk },
       rpc,
       contract: { configured: !!config.INVOICE_BOOK, address: config.INVOICE_BOOK ?? null, chainId: config.ARC_CHAIN_ID },
+      roleRegistry: { configured: !!config.ROLE_REGISTRY, address: config.ROLE_REGISTRY ?? null },
       indexer: { cursor, lag: rpc.head !== undefined && cursor !== null ? rpc.head - cursor : null, lastError: d.indexer?.status.lastError ?? null, running: !!d.indexer },
       relayer: await relayerHealth(),
     });
@@ -177,16 +178,39 @@ export function createApp(d: AppDeps) {
   /** Step two: the signed message. Finds or creates the account for that address and starts the session. */
   app.post("/api/auth/wallet/signin", async (c) => {
     const b = await body(c, z.object({ address, nonce: z.string().min(8), signature: hex() }));
-    const account = await signInWithWallet(db, b, (message, signature, addr) => verifyWalletMessage({ client: d.client, address: addr, message, signature }), now());
+    let account = await signInWithWallet(db, b, (message, signature, addr) => verifyWalletMessage({ client: d.client, address: addr, message, signature }), now());
+    // A wallet that already chose a role on chain comes back as that role, every time.
+    const fr = await fixedRole(account.address!).catch(() => ({ enforced: false as const }));
+    if (fr.enforced && fr.role && account.side !== fr.role) account = await chooseSide(db, account, fr.role, true);
     const s = await createSession(db, account.id, config.SESSION_TTL_DAYS, now());
     setCookie(c, COOKIE, s.token, { httpOnly: true, sameSite: "Lax", secure: config.COOKIE_SECURE === "true", path: "/", expires: s.expiresAt });
     return ok(c, me(account));
   });
 
+  /**
+   * The wallet's fixed role from the RoleRegistry. `enforced: false` when no registry is configured (then nothing is enforced and nothing is claimed).
+   * Throws a typed 503 when the registry cannot be read: a role is never guessed.
+   */
+  const fixedRole = async (addr: Address): Promise<{ enforced: false } | { enforced: true; role: "supplier" | "buyer" | null }> => {
+    if (!config.ROLE_REGISTRY) return { enforced: false };
+    if (!d.client) throw new AuthError("The chain is not connected, so a wallet's role cannot be checked.", "CHAIN_UNAVAILABLE", 503);
+    try {
+      return { enforced: true, role: await readRole(d.client, config.ROLE_REGISTRY, addr) };
+    } catch {
+      throw new AuthError("The role registry could not be read, so nothing was changed.", "CHAIN_UNAVAILABLE", 503);
+    }
+  };
+
   app.put("/api/me/side", async (c) => {
     const a = need(c);
     const b = await body(c, z.object({ side: z.enum(["supplier", "buyer"]), confirm: z.boolean().default(false) }));
-    return ok(c, me(await chooseSide(db, a, b.side, b.confirm)));
+    // The side is not a setting. If a role registry exists, a wallet is the one role it recorded on chain, for good.
+    const fr = await fixedRole(a.address!);
+    if (fr.enforced) {
+      if (fr.role === null) return fail(c, "ROLE_NOT_REGISTERED", "This wallet has not chosen a role on Arc yet. Choose supplier or buyer there first: it is recorded on chain and cannot be changed.", 409);
+      if (fr.role !== b.side) return fail(c, "ROLE_LOCKED", `This wallet is registered on chain as a ${fr.role}, and that cannot be changed. Use another wallet to act as a ${b.side}.`, 409);
+    }
+    return ok(c, me(await chooseSide(db, a, b.side, b.confirm || fr.enforced)));
   });
 
   // ------------------------------------------------------------------------------------------------ public reads from the index
@@ -460,6 +484,14 @@ export function createApp(d: AppDeps) {
     }
     if (!valid) valid = await d.client.verifyTypedData({ address: invoice.supplier, ...td, signature }).catch(() => false);
     if (!valid) return fail(c, "BAD_SIGNATURE", "The signature does not match this invoice and your wallet.", 400);
+
+    // With a role registry, an invoice runs only from a registered supplier to a registered buyer: a wallet cannot play both sides.
+    if (config.ROLE_REGISTRY) {
+      const sr = await fixedRole(invoice.supplier);
+      const br = await fixedRole(invoice.buyer);
+      if (sr.enforced && sr.role !== "supplier") return fail(c, "ROLE_MISMATCH", "Your wallet is not registered as a supplier on Arc, so it cannot send invoices.", 409);
+      if (br.enforced && br.role !== "buyer") return fail(c, "ROLE_MISMATCH", br.role === null ? "The buyer's wallet has not registered as a buyer on Arc yet. Ask them to choose Buyer first." : "That wallet is registered as a supplier, so it cannot be the buyer of an invoice.", 409);
+    }
 
     const id = invoiceId(dom, msg);
     const chain = await d.client.readContract({ address: config.INVOICE_BOOK, abi: INVOICE_BOOK_ABI, functionName: "invoices", args: [id] });

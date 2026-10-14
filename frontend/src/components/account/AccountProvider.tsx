@@ -4,6 +4,8 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import { api, apiEnabled } from "@/lib/api";
 import { useRole, type Role } from "@/lib/storage";
 import { useWallet } from "@/components/wallet/WalletProvider";
+import { CONFIG } from "@/lib/config";
+import { useOnChainRole } from "@/lib/hooks";
 
 /** What the server knows about the signed-in person. `step` is the next onboarding step; "ready" means a side is chosen. */
 export interface Me {
@@ -99,20 +101,25 @@ export function useSignerCheck(): () => string | null {
 }
 
 /**
- * The side the person acts as. With accounts it comes from the server (and switching asks the server, with confirm);
- * without a backend it is the per-wallet choice kept on this device.
+ * The side the person acts as. With a role registry configured it is the wallet's fixed on-chain role and cannot be set from here at all: the only way to
+ * get one is to register on Arc (see RoleChoice). Without a registry: with accounts it comes from the server, and without a backend it is the per-wallet
+ * choice kept on this device (the old behaviour).
  */
-export function useSide(): { side: Role | null; ready: boolean; set(next: Role): void } {
+export function useSide(): { side: Role | null; ready: boolean; set(next: Role): void; fixed: boolean; error: boolean } {
   const acct = useAccount();
   const w = useWallet();
+  const onchain = useOnChainRole(w.address);
   const [local, setLocal, localReady] = useRole(w.address);
+  const fixed = !!CONFIG.roleRegistry;
   const set = useCallback(
     (next: Role) => {
+      if (fixed) return; // a role is not a setting
       if (acct.mode === "off") setLocal(next);
       else void acct.chooseSide(next, true);
     },
-    [acct, setLocal],
+    [acct, setLocal, fixed],
   );
-  if (acct.mode === "off") return { side: local, ready: localReady, set };
-  return { side: acct.me?.side ?? null, ready: acct.status !== "loading", set };
+  if (fixed && acct.mode === "off") return { side: onchain.role, ready: onchain.status === "ready" || onchain.status === "error", set, fixed, error: onchain.status === "error" };
+  if (acct.mode === "off") return { side: local, ready: localReady, set, fixed, error: false };
+  return { side: acct.me?.side ?? null, ready: acct.status !== "loading", set, fixed, error: false };
 }

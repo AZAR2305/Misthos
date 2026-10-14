@@ -3,6 +3,10 @@
 import { useRouter } from "next/navigation";
 import { useState, type PointerEvent } from "react";
 import type { Role } from "@/lib/storage";
+import { CONFIG } from "@/lib/config";
+import { ROLE_REGISTRY_ABI, ROLE_VALUE } from "@/lib/chain/roles";
+import { appChain } from "@/lib/chain/client";
+import { useTx } from "@/lib/tx";
 import { Crystals } from "./Gate";
 
 export const ROLE_HOME: Record<Role, string> = { supplier: "/supplier", buyer: "/buyer" };
@@ -69,6 +73,23 @@ function Art({ role }: { role: Role }) {
 export function RoleChoice({ address, onChoose }: { address: string; onChoose(role: Role): void | null | string | Promise<void | null | string> }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
+  const [pending, setPending] = useState<Role | null>(null);
+  const [understood, setUnderstood] = useState(false);
+  const tx = useTx();
+  const fixed = !!CONFIG.roleRegistry;
+
+  /** Record the role on Arc, then carry on. The chain is the only place a role is ever made. */
+  const register = async (role: Role) => {
+    const hash = await tx.run({ pending: "Registering your role on Arc", done: "Role registered" }, (wc, account) =>
+      wc.writeContract({ address: CONFIG.roleRegistry!, abi: ROLE_REGISTRY_ABI, functionName: "choose", args: [ROLE_VALUE[role]], account, chain: appChain }),
+    );
+    if (!hash) return setError("The role was not registered, so nothing changed. Nothing is recorded until the transaction succeeds.");
+    window.dispatchEvent(new Event("misthos:role"));
+    const refused = await onChoose(role);
+    if (typeof refused === "string") return setError(refused);
+    router.push(ROLE_HOME[role]);
+  };
+
   return (
     <section className="gate role-stage" aria-labelledby="role-title">
       <Crystals />
@@ -77,7 +98,11 @@ export function RoleChoice({ address, onChoose }: { address: string; onChoose(ro
         <h1 id="role-title" className="gate-title">
           How will you use Misthos?
         </h1>
-        <p className="lead gate-lead">Pick the side that fits today. You can switch from the top bar whenever you like; the same wallet can be both.</p>
+        <p className="lead gate-lead">
+          {fixed
+            ? "Your wallet is either a supplier or a buyer, and you choose once. It is recorded on Arc by a contract and nobody, including us, can change it later."
+            : "Pick the side that fits today. You can switch from the top bar whenever you like; the same wallet can be both."}
+        </p>
         {error && <p className="field-error" role="alert">{error}</p>}
         <div className="role-cards">
           {ROLES.map((r, i) => (
@@ -89,7 +114,9 @@ export function RoleChoice({ address, onChoose }: { address: string; onChoose(ro
               style={{ ["--d" as string]: `${120 + i * 110}ms` }}
               onPointerMove={tilt}
               onPointerLeave={untilt}
+              data-selected={pending === r.role}
               onClick={async () => {
+                if (fixed) return setPending(r.role); // a permanent choice is confirmed first
                 const refused = await onChoose(r.role);
                 if (typeof refused === "string") return setError(refused);
                 router.push(ROLE_HOME[r.role]);
@@ -109,6 +136,23 @@ export function RoleChoice({ address, onChoose }: { address: string; onChoose(ro
             </button>
           ))}
         </div>
+        {fixed && pending && (
+          <div className="card role-confirm" role="group" aria-label="Confirm your role">
+            <h2>Register this wallet as a {pending}?</h2>
+            <p>
+              This is recorded on Arc and <b>can never be changed</b>. This wallet will only ever be a {pending}: it cannot act as a {pending === "supplier" ? "buyer" : "supplier"}, now or later, on this site or anywhere that checks the registry.
+              If you need the other side, use a different wallet. Registering costs a few cents of USDC for the network fee.
+            </p>
+            <label className="check" style={{ display: "flex", gap: 8, margin: "10px 0" }}>
+              <input id="role-understood" type="checkbox" checked={understood} onChange={(e) => setUnderstood(e.target.checked)} />
+              <span>I understand this is permanent.</span>
+            </label>
+            <div className="actions-row">
+              <button type="button" className="btn btn-primary" disabled={!understood} onClick={() => void register(pending)}>Register as {pending} on Arc</button>
+              <button type="button" className="btn btn-ghost" onClick={() => { setPending(null); setUnderstood(false); }}>Not yet</button>
+            </div>
+          </div>
+        )}
       </div>
     </section>
   );

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { ConnectPrompt } from "@/components/app/Gate";
 import { useState } from "react";
 import { InvoiceTable } from "@/components/app/InvoiceTable";
 import { useChainData } from "@/components/app/ChainData";
@@ -31,6 +32,7 @@ export default function AllInvoices() {
         actions={<Link className="btn btn-primary" href="/supplier/invoices/new">New invoice</Link>}
         help={<p>Invoices are public records, but only amounts and addresses are on chain. References and notes stay on the device that created them. Open any invoice to follow it from signature to payment.</p>}
       />
+      <ConnectPrompt />
       <div className="quick" role="group" aria-label="Filter">
         {FILTERS.map((f) => (
           <button key={f.id} type="button" className="pill-btn" aria-pressed={filter === f.id} onClick={() => setFilter(f.id)}>{f.label}</button>

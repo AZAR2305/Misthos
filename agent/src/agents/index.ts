@@ -6,3 +6,5 @@ export * from "./buyer.js";
 export * from "./backend.js";
 export * from "./policybook.js";
 export * from "./log.js";
+export * from "./chat.js";
+export * from "./chatTools.js";

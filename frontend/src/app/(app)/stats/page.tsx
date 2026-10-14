@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { ConnectPrompt } from "@/components/app/Gate";
 import { useChainData } from "@/components/app/ChainData";
 import { Card, Empty, Money, PageHeader, Skeleton, Stat, Tag, Term, TxLink } from "@/components/ui/kit";
 import { CONFIG } from "@/lib/config";
@@ -36,6 +37,7 @@ export default function Stats() {
           </>
         }
       />
+      <ConnectPrompt />
       <div role="tablist" aria-label="Where the activity comes from" style={{ display: "flex", gap: 8, flexWrap: "wrap", margin: "8px 0" }}>
         {ORIGINS.map((o) => (
           <button key={o} type="button" role="tab" aria-selected={origin === o} className={origin === o ? "btn btn-primary btn-sm" : "btn btn-ghost btn-sm"} onClick={() => setOrigin(o)}>

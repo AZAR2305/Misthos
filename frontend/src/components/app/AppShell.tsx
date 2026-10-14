@@ -100,7 +100,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const chain = useChainData();
   const { balance } = useUsdcBalance(w.address);
   const acct = useAccount();
-  const { side: role, set: setRole } = useSide();
+  const { side: role, set: setRole, fixed } = useSide();
   const [scrolled, setScrolled] = useState(false);
   const greeted = useRef<string | null>(null);
   useEffect(() => {
@@ -177,6 +177,11 @@ export function AppShell({ children }: { children: ReactNode }) {
             )}
             {ready &&
               (role ? (
+                fixed ? (
+                  <span className="role-switch role-fixed" role="note" title="Recorded on Arc. It cannot be changed.">
+                    <button type="button" data-role={role} aria-pressed="true" onClick={() => router.push(ROLE_HOME[role])}>{role === "supplier" ? "Supplier" : "Buyer"} · fixed on Arc</button>
+                  </span>
+                ) : (
                 <div className="role-switch" role="group" aria-label="Your side">
                   {(["supplier", "buyer"] as const).map((r) => (
                     <button key={r} type="button" data-role={r} aria-pressed={role === r} onClick={() => (role === r ? router.push(ROLE_HOME[r]) : switchTo(r))}>
@@ -184,6 +189,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                     </button>
                   ))}
                 </div>
+                )
               ) : (
                 path !== "/app" && <Link href="/app" className="btn btn-ghost btn-sm">Choose your side</Link>
               ))}
@@ -229,10 +235,10 @@ export function AppShell({ children }: { children: ReactNode }) {
             <div>
               <p className="ptag">{pathSide === "supplier" ? "Supplier" : "Buyer"}</p>
               <h2>This page is for {pathSide}s</h2>
-              <p className="muted">Your account is set up as a {acct.me?.side}. Switch sides to use this page; you can switch back at any time.</p>
+              <p className="muted">{fixed ? `Your wallet is registered on Arc as a ${acct.me?.side}, and that cannot be changed. To act as a ${pathSide} you need a different wallet.` : `Your account is set up as a ${acct.me?.side}. Switch sides to use this page; you can switch back at any time.`}</p>
             </div>
             <div className="actions-row">
-              <button type="button" className="btn btn-primary" onClick={() => switchTo(pathSide)}>Switch to {pathSide}</button>
+              {!fixed && <button type="button" className="btn btn-primary" onClick={() => switchTo(pathSide)}>Switch to {pathSide}</button>}
               <Link className="btn btn-ghost" href={ROLE_HOME[acct.me!.side!]}>Back to my dashboard</Link>
             </div>
           </section>

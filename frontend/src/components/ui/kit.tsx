@@ -7,7 +7,8 @@ import type { InvoiceStatus } from "@/lib/chain/invoices";
 
 /* ---------------------------------------------------------------- layout */
 
-export function PageHeader({ title, lead, actions, help }: { title: string; lead: ReactNode; actions?: ReactNode; help?: ReactNode }) {
+/** The page title and one plain sentence. (A "What is this page?" box used to hang off this; it was removed on purpose. The `help` prop is accepted and ignored so older pages still compile.) */
+export function PageHeader({ title, lead, actions }: { title: string; lead: ReactNode; actions?: ReactNode; help?: ReactNode }) {
   return (
     <header className="page-head">
       <div className="page-head-row">
@@ -17,12 +18,6 @@ export function PageHeader({ title, lead, actions, help }: { title: string; lead
         </div>
         {actions && <div className="page-actions">{actions}</div>}
       </div>
-      {help && (
-        <details className="help">
-          <summary>What is this page?</summary>
-          <div className="help-body">{help}</div>
-        </details>
-      )}
     </header>
   );
 }

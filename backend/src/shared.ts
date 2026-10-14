@@ -11,3 +11,4 @@ export { findDuplicate } from "../../frontend/src/lib/chain/duplicates";
 export { originOf, originOfInvoice, registryProblems, ORIGINS, type Origin } from "../../frontend/src/lib/origins";
 export { REGISTRY } from "../../frontend/src/lib/origins-registry";
 export { ofOrigin } from "../../frontend/src/lib/stats";
+export { readRole, ROLE_REGISTRY_ABI, ROLE_VALUE, type OnChainRole } from "../../frontend/src/lib/chain/roles";

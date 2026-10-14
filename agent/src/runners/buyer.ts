@@ -13,6 +13,9 @@ import { readRecentReputation, readReputation, reputationClient, writeSettlement
 import { chainVerifier, type Address } from "../wallets/types.js";
 import { ObligationStore, obligationInput } from "../agents/obligations.js";
 import { vaultFromEnv } from "../agents/vault.js";
+import { ChatAgent } from "../agents/chat.js";
+import { buyerTools } from "../agents/chatTools.js";
+import { chatRoutes, fetchInvoiceLines, toDecisionLines } from "./chatHttp.js";
 import { serve, type ServeOptions } from "./http.js";
 
 /**
@@ -109,6 +112,35 @@ const runPlan = async (body: unknown) => {
   return buyer.plan(cash, calendar, p.spentToday ? BigInt(p.spentToday) : 0n);
 };
 
+const chat = new ChatAgent({
+  role: "buyer",
+  model: createModel(cfg),
+  tools: buyerTools({
+    health: async () => ({ wallet: await wallet.health(), modelConfigured: !!modelKeyOf(cfg) }),
+    decisions: (n) => toDecisionLines(store.all(), n),
+    payables: async () => {
+      if (!cfg.BACKEND_URL) throw new Error("BACKEND_URL is not set, so I cannot read what you owe. Set it in agent/.env.");
+      return fetchInvoiceLines(cfg.BACKEND_URL, { buyer: cfg.BUYER_AGENT_WALLET_ADDRESS }, ["approved"]);
+    },
+    held: () => [...buyer.needsApproval].map(([id, v]) => ({ id, reason: v.reason })),
+    plan: async () => {
+      const { allocation } = await runPlan({});
+      return { text: allocation.explanation, ids: allocation.ids };
+    },
+    executePlan: async () => {
+      const { allocation } = await runPlan({});
+      const settled = await buyer.executePlan(allocation);
+      return settled.length ? `Paid ${settled.length} invoice(s) early.` : "Nothing was paid.";
+    },
+    acceptHeld: async (id) => {
+      const r = await buyer.acceptHeld(id);
+      return r.settled ? "Accepted and paid." : `Not paid: ${r.reasonCode ?? "refused"}.`;
+    },
+    payments: () => obligationStore.list().map((o) => ({ id: o.id, label: o.label, amount: BigInt(o.amount), dueSec: Number(o.dueSec), kind: o.kind })),
+    addPayment: (p) => (obligationStore.add({ label: p.label, amount: p.amount.toString(), dueSec: p.dueSec.toString(), kind: p.kind }), "Added to your private payment calendar."),
+  }),
+});
+
 serve(
   cfg.BUYER_AGENT_PORT,
   {
@@ -128,6 +160,7 @@ serve(
     "POST /obligations/:id/remove": async ({ params }) => ({ removed: obligationStore.remove(params.id!) }),
     "GET /policy": async () => buyerPolicyFromEnv(), // private to this machine: the hurdle is shown only to its owner
     "GET /needs-approval": async () => [...buyer.needsApproval].map(([invoiceId, v]) => ({ invoiceId, ...v })),
+    ...chatRoutes(chat),
     "GET /decisions": async () => ({ entries: store.all(), verify: store.verify(), delivery: { ...store.status(), backend: !!cfg.BACKEND_URL } }),
   },
   "buyer-agent",

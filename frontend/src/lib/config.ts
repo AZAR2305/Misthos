@@ -15,6 +15,8 @@ export const CONFIG = {
   isTestnet: chainId !== 5042,
   rpcUrl: process.env.NEXT_PUBLIC_RPC_URL ?? "https://rpc.testnet.arc.io",
   explorer: process.env.NEXT_PUBLIC_EXPLORER_URL ?? "https://explorer.testnet.arc.io",
+  /** RoleRegistry: when set, a wallet's side is read from here and cannot change. */
+  roleRegistry: addr(process.env.NEXT_PUBLIC_ROLE_REGISTRY_ADDRESS),
   usdc: (addr(process.env.NEXT_PUBLIC_USDC_ADDRESS) ?? "0x3600000000000000000000000000000000000000") as Address,
   book: addr(process.env.NEXT_PUBLIC_INVOICE_BOOK_ADDRESS),
   /** Block the contract was deployed in, so event scans do not start at genesis. */

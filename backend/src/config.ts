@@ -15,6 +15,8 @@ const schema = z.object({
   ARC_RPC_URL: optional(z.string().url()),
   ARC_CHAIN_ID: z.coerce.number().int().default(5042002),
   INVOICE_BOOK_ADDRESS: optional(address),
+  /** RoleRegistry. When set, an account's side must equal its fixed on-chain role, and the relayer registers an invoice only between a registered supplier and a registered buyer. */
+  ROLE_REGISTRY_ADDRESS: optional(address),
   USDC_ADDRESS: optional(address),
   DEPLOY_BLOCK: z.coerce.bigint().default(0n),
   /** How many blocks behind the head to index. Arc has deterministic finality, so 0 is fine there. */
@@ -53,5 +55,6 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     ORIGINS: c.FRONTEND_ORIGINS.split(",").map((s) => s.trim().replace(/\/$/, "")).filter(Boolean),
     AGENTS: c.AGENT_WALLETS.split(",").map((s) => s.trim().toLowerCase()).filter((s) => /^0x[0-9a-f]{40}$/.test(s)) as `0x${string}`[],
     INVOICE_BOOK: c.INVOICE_BOOK_ADDRESS?.toLowerCase() as `0x${string}` | undefined,
+  ROLE_REGISTRY: c.ROLE_REGISTRY_ADDRESS?.toLowerCase() as `0x${string}` | undefined,
   };
 }
