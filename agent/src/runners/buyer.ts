@@ -102,6 +102,7 @@ serve(
       const { allocation } = await runPlan(body);
       return { allocation, settled: await buyer.executePlan(allocation) };
     },
+    "GET /range/:invoiceId": async ({ params }) => buyer.range(z.string().regex(/^0x[0-9a-fA-F]{64}$/).parse(params.invoiceId).toLowerCase() as `0x${string}`),
     "GET /policy": async () => buyerPolicyFromEnv(), // private to this machine: the hurdle is shown only to its owner
     "GET /needs-approval": async () => [...buyer.needsApproval].map(([invoiceId, v]) => ({ invoiceId, ...v })),
     "GET /decisions": async () => ({ entries: store.all(), verify: store.verify(), delivery: { ...store.status(), backend: !!cfg.BACKEND_URL } }),

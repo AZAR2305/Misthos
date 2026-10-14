@@ -1,6 +1,7 @@
 import { z } from "zod";
 import {
   allocate,
+  buyerCeiling,
   decideBuyerOffer,
   evaluateExposure,
   exposureOf,
@@ -266,7 +267,7 @@ export class BuyerAgent {
    * unreadable, so the answer is "needs a person", never a favourable default. `info` is the public part of the credit check:
    * the policy version and the on-chain evidence, never a limit.
    */
-  private async decideOffer(c: Candidate, supplier: Address, nowSec: number) {
+  private async gather(supplier: Address): Promise<{ treasury: BuyerDecisionInput["treasury"]; exposure: ExposureInputs; readErrors: string[] }> {
     const readErrors: string[] = [];
     let treasury: BuyerDecisionInput["treasury"] = null;
     try {
@@ -290,6 +291,11 @@ export class BuyerAgent {
         exposure = { kind: "unreadable" };
       }
     }
+    return { treasury, exposure, readErrors };
+  }
+
+  private async decideOffer(c: Candidate, supplier: Address, nowSec: number) {
+    const { treasury, exposure, readErrors } = await this.gather(supplier);
     const input: BuyerDecisionInput = { nowSec: BigInt(nowSec), candidate: c, policy: this.d.policy, treasury, spentToday: this.spentToday(nowSec), exposure };
     const decision = decideBuyerOffer(input);
     const credit = decision.steps[1]!.result;
@@ -299,6 +305,36 @@ export class BuyerAgent {
         ? { policyVersion: exposure.policy.version, result: d.ok ? "ok" : "limit", evidence: d.evidence.map((e) => ({ ref: e.ref, kind: e.kind, ...(e.txHash ? { txHash: e.txHash } : {}), ...(e.logIndex !== undefined ? { logIndex: e.logIndex } : {}) })) }
         : undefined;
     return { input, decision, info, readErrors };
+  }
+
+  /**
+   * The buyer's own side of the range for one invoice, read from the same inputs a decision uses: the lowest rate it would accept
+   * and what sets it. Private to this machine (a control route): it is for the owner's page, never for the other side.
+   */
+  async range(invoiceId: `0x${string}`) {
+    const onchain = await this.d.chain.invoice(invoiceId);
+    if (!onchain || onchain.buyer.toLowerCase() !== (await this.d.wallet.address()).toLowerCase()) throw new ProtocolError("NOT_FOUND", "That invoice is not addressed to this buyer.");
+    const nowSec = this.now();
+    const secondsEarly = onchain.dueDate - BigInt(nowSec);
+    if (onchain.status !== "approved" || secondsEarly <= 0n) return { state: "closed" as const };
+    const { treasury, exposure, readErrors } = await this.gather(onchain.supplier);
+    if (exposure.kind === "unreadable") return { state: "unavailable" as const, missing: readErrors };
+    let exposureRoom: bigint | null = null;
+    if (exposure.kind === "on") {
+      const d = evaluateExposure({ side: "buyer", nowSec: BigInt(nowSec), newExposure: 0n, events: exposure.events, policy: exposure.policy });
+      if (d.kind === "decided") exposureRoom = d.room;
+    }
+    const ceiling = buyerCeiling({
+      face: onchain.amount,
+      secondsEarly,
+      feeBps: this.d.policy.feeBps,
+      cash: treasury ? treasury.cash : null,
+      policy: this.d.policy,
+      obligations: treasury ? treasury.obligations.map((o) => ({ ...o, provenance: "declared" as const })) : null,
+      spentToday: this.spentToday(nowSec),
+      exposureRoom,
+    });
+    return { state: "ok" as const, face: onchain.amount, secondsEarly, ceiling, creditLimit: exposure.kind === "on" ? ("set" as const) : ("not set" as const), missing: readErrors };
   }
 
   /** Everything the decision used, for the agent's own file. The public log only gets a salted commitment to it. */

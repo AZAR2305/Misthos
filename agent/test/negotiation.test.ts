@@ -632,3 +632,61 @@ describe("policy version, evidence and reproducibility (SRS FR-10 and NFR-04)", 
     }
   });
 });
+
+describe("each side's own range, for the owner's page", () => {
+  it("the buyer's range says which term sets its lowest rate", async () => {
+    const t = setup({ hurdle: 1000 });
+    const r = await t.buyerAgent.range(INVOICE);
+    expect(r).toMatchObject({ state: "ok", creditLimit: "not set", ceiling: { kind: "ok", minRateBps: 1000, binding: "hurdle" } });
+  });
+
+  it("thin cash moves the lowest rate up, and too thin ends it", async () => {
+    // face 2,000 USDC, 27 days, floor 5,000: cash 7,000 leaves 2,000 of room, so a low rate still fits...
+    const roomy = await setup({ hurdle: 0, treasury: async () => ({ cash: 7_000n * USD, obligations: [] }) }).buyerAgent.range(INVOICE);
+    expect(roomy).toMatchObject({ state: "ok", ceiling: { minRateBps: 0, binding: "hurdle" } });
+    const tight = await setup({ hurdle: 0, treasury: async () => ({ cash: 6_995n * USD, obligations: [] }) }).buyerAgent.range(INVOICE);
+    expect(tight).toMatchObject({ state: "ok", ceiling: { binding: "liquidity" } });
+    const none = await setup({ hurdle: 0, treasury: async () => ({ cash: 5_100n * USD, obligations: [] }) }).buyerAgent.range(INVOICE);
+    expect(none).toMatchObject({ state: "ok", ceiling: { minRateBps: null } });
+  });
+
+  it("an offer at exactly the stated lowest rate is accepted, and one basis point below is not", async () => {
+    const treasury = async () => ({ cash: 6_995n * USD, obligations: [] as Obligation[] });
+    const r = (await setup({ hurdle: 0, treasury }).buyerAgent.range(INVOICE)) as { ceiling: { minRateBps: number } };
+    const lowest = r.ceiling.minRateBps;
+    expect(lowest).toBeGreaterThan(0);
+    for (const [rate, accepted] of [[lowest, true], [lowest - 1, false]] as const) {
+      const t = setup({ hurdle: 0, treasury, prefs: { startRateBps: rate, maxRateBps: rate, costOfWaitingAprBps: 5000 } });
+      expect((await t.supplierAgent.start(t.inv)).kind).toBe(accepted ? "accepted" : "hold_to_due");
+    }
+  });
+
+  it("the credit limit is part of the buyer's range", async () => {
+    const exposure: ExposureSource = { policy: async () => ({ ...DEFAULT_EXPOSURE_POLICY, version: "exposure-1", newCounterpartyLimit: 1_990n * USD, maxLimit: 1_990n * USD }), events: async () => [] };
+    const r = await setup({ hurdle: 0, exposure }).buyerAgent.range(INVOICE);
+    expect(r).toMatchObject({ state: "ok", creditLimit: "set", ceiling: { binding: "exposure" } });
+    // rung 600 costs 1,992.01 USDC (over the 1,990 of room) and rung 800 costs 1,989.35, so the lowest rate that fits lies between
+    const lowest = (r as { ceiling: { minRateBps: number } }).ceiling.minRateBps;
+    expect(lowest).toBeGreaterThan(600);
+    expect(lowest).toBeLessThanOrEqual(800);
+  });
+
+  it("unreadable credit history is reported, not defaulted; a closed invoice has no range", async () => {
+    const exposure: ExposureSource = { policy: async () => ({ ...DEFAULT_EXPOSURE_POLICY, newCounterpartyLimit: 1n, maxLimit: 1n }), events: async () => { throw new Error("down"); } };
+    expect(await setup({ exposure }).buyerAgent.range(INVOICE)).toMatchObject({ state: "unavailable" });
+    expect(await setup({ status: "settled_early" as never }).buyerAgent.range(INVOICE)).toEqual({ state: "closed" });
+  });
+
+  it("only the invoice's buyer can ask", async () => {
+    const t = setup();
+    await expect(t.buyerAgent.range(("0x" + "99".repeat(32)) as `0x${string}`)).rejects.toThrow(ProtocolError);
+  });
+
+  it("the supplier's range is the highest rate it will sign and the least it will then receive", () => {
+    const t = setup({ prefs: { costOfWaitingAprBps: 2200, maxRateBps: 5000 } });
+    const r = t.supplierAgent.range({ face: 2_000n * USD, dueSec: BigInt(NOW + 27 * DAY) });
+    expect(r).toMatchObject({ state: "ok", floor: { maxRateBps: 2000, askNet: 2_000n * USD } });
+    expect((r as { floor: { floorNet: bigint } }).floor.floorNet).toBeLessThan(2_000n * USD);
+    expect(t.supplierAgent.range({ face: 1n, dueSec: BigInt(NOW - 1) })).toEqual({ state: "closed" });
+  });
+});

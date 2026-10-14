@@ -3,6 +3,7 @@ import { z } from "zod";
 import {
   MAX_RATE_BPS,
   planLadder,
+  supplierFloor,
   offerTypedData,
   type Domain,
   type ReasonCode,
@@ -98,6 +99,16 @@ export class SupplierAgent {
 
   constructor(private readonly d: SupplierDeps) {
     this.now = d.now ?? (() => Math.floor(Date.now() / 1000));
+  }
+
+  /**
+   * The supplier's own side of the range for one invoice: the highest rate it will sign and the least it will receive at that
+   * rate (S_min). Private to this machine (a control route): it is for the owner's page, never sent to the buyer.
+   */
+  range(inv: { face: bigint; dueSec: bigint }) {
+    const secondsEarly = inv.dueSec - BigInt(this.now());
+    if (secondsEarly <= 0n) return { state: "closed" as const };
+    return { state: "ok" as const, face: inv.face, secondsEarly, floor: supplierFloor({ face: inv.face, secondsEarly, prefs: this.d.prefs, feeBps: 0 }) };
   }
 
   async start(inv: SupplierInvoice): Promise<NegotiationResult> {

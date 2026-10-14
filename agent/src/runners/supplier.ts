@@ -93,6 +93,12 @@ serve(
       return { paused: true };
     },
     "GET /prefs": async () => supplierPrefsFromEnv(),
+    "GET /range/:invoiceId": async ({ params }) => {
+      const id = idSchema.parse(params.invoiceId) as `0x${string}`;
+      const inv = await chain.invoice(id);
+      if (!inv || inv.supplier.toLowerCase() !== (await wallet.address()).toLowerCase()) throw new ProtocolError("NOT_FOUND", "That invoice is not yours as supplier.");
+      return (agents.get(id) ?? agentFor(id)).range({ face: inv.amount, dueSec: inv.dueDate });
+    },
     "GET /decisions": async () => ({ entries: store.all(), verify: store.verify(), delivery: { ...store.status(), backend: !!cfg.BACKEND_URL } }),
   },
   "supplier-agent",
