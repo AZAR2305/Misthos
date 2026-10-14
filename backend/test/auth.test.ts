@@ -11,8 +11,12 @@ describe("account onboarding: sign in with a wallet, then choose a side", () => 
     // No session is needed to ask for the message: nobody has an account yet.
     const ch = await b.post("/api/auth/wallet/challenge", { address: w.address });
     expect(ch.status).toBe(200);
-    expect(ch.json.data.message).toContain(w.address.toLowerCase());
-    expect(ch.json.data.message).not.toMatch(/@/);
+    // EIP-4361: domain, wallet, URI, version, chain id, nonce, issued-at and expiry are all in the message
+    const msg = ch.json.data.message as string;
+    expect(msg.startsWith(`${new URL(ORIGIN).host} wants you to sign in with your Ethereum account:
+${w.address}`)).toBe(true);
+    for (const field of [`URI: ${ORIGIN}`, "Version: 1", "Chain ID: ", `Nonce: ${ch.json.data.nonce}`, "Issued At: ", "Expiration Time: "]) expect(msg, field).toContain(field);
+    expect(msg).not.toMatch(/@/);
 
     // A signature from a different key is refused, and the challenge stays usable.
     const wrong = await wallet(5).signMessage({ message: ch.json.data.message });
@@ -98,7 +102,8 @@ describe("account onboarding: sign in with a wallet, then choose a side", () => 
   it("names the site in the message, so a signature made on another site is not valid here", async () => {
     const { app } = await makeApp();
     const ch = await browser(app).post("/api/auth/wallet/challenge", { address: wallet(1).address });
-    expect(ch.json.data.message).toContain(`Site: ${ORIGIN}`);
+    expect(ch.json.data.message).toContain(`URI: ${ORIGIN}`);
+    expect(ch.json.data.message).toContain(`${new URL(ORIGIN).host} wants you to sign in`);
   });
 
   it("keeps no private value on the server: the old private-settings routes are gone", async () => {
@@ -123,6 +128,17 @@ describe("account onboarding: sign in with a wallet, then choose a side", () => 
     const anon = browser(app);
     expect((await anon.get("/api/exposure-policy")).status).toBe(401);
     expect((await buyer.get("/api/exposure-policy")).status).toBe(200);
+  });
+
+  it("sends restrictive security headers on every answer, including errors", async () => {
+    const { app } = await makeApp();
+    for (const path of ["/api/health", "/api/me", "/api/nope"]) {
+      const res = await app.request(path, { headers: { origin: ORIGIN } });
+      expect(res.headers.get("content-security-policy"), path).toBe("default-src 'none'; frame-ancestors 'none'");
+      expect(res.headers.get("x-content-type-options"), path).toBe("nosniff");
+      expect(res.headers.get("strict-transport-security"), path).toMatch(/max-age=/);
+      expect(res.headers.get("referrer-policy"), path).toBe("no-referrer");
+    }
   });
 
   it("answers CORS only for the configured origin", async () => {

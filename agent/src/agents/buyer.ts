@@ -28,6 +28,7 @@ import {
   type NegotiateReply,
   type OfferMsg,
 } from "../protocol/index.js";
+import type { ReputationInput } from "../core/decide.js";
 import { WalletError, type Address, type SignatureVerifier, type WalletAdapter } from "../wallets/types.js";
 import { SETTLE_EARLY_FRAGMENT, type ChainReader } from "./chain.js";
 import { ModelUnavailableError, ProposalInvalidError, type AgentModel } from "./model.js";
@@ -105,6 +106,13 @@ export interface BuyerDeps {
    * hurdle but would breach the floor is rejected. If it cannot be read, nothing is accepted (fail closed).
    */
   treasury: () => Promise<Treasury>;
+  /**
+   * A live read of the supplier agent's ERC-8004 reputation. It may only block or lower a limit, never raise one. If it throws, the decision is
+   * needs_approval with REGISTRY_UNAVAILABLE. Without it no reputation check is made.
+   */
+  reputation?: (supplier: Address) => Promise<ReputationInput>;
+  /** The most to send to a supplier with no feedback on the registry (USDC minor units). Unset: a new address is not capped. */
+  newAddressCap?: bigint;
   /** The credit limit and history. Without it no exposure check is made. */
   exposure?: ExposureSource;
   /** Private ledger lookups used to confirm model flags. */
@@ -179,9 +187,9 @@ export class BuyerAgent {
     this.offers.set(id, { msg, supplier: onchain.supplier, face: onchain.amount, dueSec: onchain.dueDate });
 
     // Gather every input, then let the pure decision function decide (SRS NFR-04). Unreadable inputs are never defaulted.
-    const { input, decision: verdict, info, readErrors } = await this.decideOffer(candidate, onchain.supplier, nowSec);
+    const { input, decision: verdict, info, rep, readErrors } = await this.decideOffer(candidate, onchain.supplier, nowSec);
     const where = { rung: msg.rung, rateBps: msg.offer.rateBps };
-    const shown = (code: string) => ({ ...where, ...(info ? { exposure: info } : {}), result: { code } });
+    const shown = (code: string) => ({ ...where, ...(info ? { exposure: info } : {}), ...(rep ? { reputation: rep } : {}), result: { code } });
     if (verdict.result === "reject") {
       this.log(id, shown(verdict.code), null, "rejected", verdict.detail, verdict.code, this.privateOf(input, verdict));
       return this.remember(replyKey, await this.reject(msg, verdict.code, nowSec));
@@ -271,7 +279,7 @@ export class BuyerAgent {
    * unreadable, so the answer is "needs a person", never a favourable default. `info` is the public part of the credit check:
    * the policy version and the on-chain evidence, never a limit.
    */
-  private async gather(supplier: Address, invoiceId: string): Promise<{ treasury: BuyerDecisionInput["treasury"]; exposure: ExposureInputs; readErrors: string[] }> {
+  private async gather(supplier: Address, invoiceId: string): Promise<{ treasury: BuyerDecisionInput["treasury"]; exposure: ExposureInputs; reputation: ReputationInput; readErrors: string[] }> {
     const readErrors: string[] = [];
     let treasury: BuyerDecisionInput["treasury"] = null;
     try {
@@ -296,12 +304,21 @@ export class BuyerAgent {
         exposure = { kind: "unreadable" };
       }
     }
-    return { treasury, exposure, readErrors };
+    let reputation: ReputationInput = { kind: "off" };
+    if (this.d.reputation) {
+      try {
+        reputation = await this.d.reputation(supplier);
+      } catch (e) {
+        readErrors.push(`The ERC-8004 registry could not be read: ${(e as Error).message}`);
+        reputation = { kind: "unavailable" };
+      }
+    }
+    return { treasury, exposure, reputation, readErrors };
   }
 
   private async decideOffer(c: Candidate, supplier: Address, nowSec: number) {
-    const { treasury, exposure, readErrors } = await this.gather(supplier, c.id);
-    const input: BuyerDecisionInput = { nowSec: BigInt(nowSec), candidate: c, policy: this.d.policy, treasury, spentToday: this.spentToday(nowSec), exposure };
+    const { treasury, exposure, reputation, readErrors } = await this.gather(supplier, c.id);
+    const input: BuyerDecisionInput = { nowSec: BigInt(nowSec), candidate: c, policy: this.d.policy, treasury, spentToday: this.spentToday(nowSec), exposure, ...(this.d.reputation ? { reputation, ...(this.d.newAddressCap !== undefined ? { newAddressCap: this.d.newAddressCap } : {}) } : {}) };
     const decision = decideBuyerOffer(input);
     const credit = decision.steps[1]!.result;
     const d = exposure.kind === "on" && (credit === "passed" || credit === "failed") ? exposureOf(input) : null;
@@ -309,7 +326,9 @@ export class BuyerAgent {
       d && d.kind === "decided" && exposure.kind === "on"
         ? { policyVersion: exposure.policy.version, result: d.ok ? "ok" : "limit", evidence: d.evidence.map((e) => ({ ref: e.ref, kind: e.kind, ...(e.txHash ? { txHash: e.txHash } : {}), ...(e.logIndex !== undefined ? { logIndex: e.logIndex } : {}) })) }
         : undefined;
-    return { input, decision, info, readErrors };
+    // Public chain facts only: where the reading came from and what it found, never a limit.
+    const rep = this.d.reputation ? { source: "erc-8004" as const, result: reputation.kind, ...(reputation.kind === "read" ? { recentCount: Math.min(reputation.recent.length, 5), recentDisputed: reputation.recent.slice(0, 5).filter((r) => r.disputed).length } : {}) } : undefined;
+    return { input, decision, info, rep, readErrors };
   }
 
   /**
@@ -365,9 +384,9 @@ export class BuyerAgent {
       offerExpirySec: BigInt(held.msg.offer.expiry),
     };
     const nowSec = this.now();
-    const { input, decision: verdict, info, readErrors } = await this.decideOffer(candidate, held.supplier, nowSec);
+    const { input, decision: verdict, info, rep, readErrors } = await this.decideOffer(candidate, held.supplier, nowSec);
     const where = { rateBps: held.msg.offer.rateBps };
-    const shown = (code: string) => ({ ...where, ...(info ? { exposure: info } : {}), result: { code } });
+    const shown = (code: string) => ({ ...where, ...(info ? { exposure: info } : {}), ...(rep ? { reputation: rep } : {}), result: { code } });
     // An offer that is no longer eligible (expired, disputed, due) is simply refused; the decision log records only real decisions.
     if (verdict.steps[0]!.result === "failed") return { settled: false, reasonCode: verdict.result === "accept" ? undefined : verdict.code };
     if (verdict.result === "reject") {

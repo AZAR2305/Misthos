@@ -50,10 +50,20 @@ export function createApp(d: AppDeps) {
   const app = new Hono<Env>();
 
   const ok = (c: Context, data: unknown, status: 200 | 201 | 202 = 200) => c.json({ ok: true, data: ser(data), error: null }, status);
-  const fail = (c: Context, code: string, message: string, status: 400 | 401 | 403 | 404 | 409 | 422 | 500 | 501 | 503) =>
+  const fail = (c: Context, code: string, message: string, status: 400 | 401 | 403 | 404 | 409 | 422 | 429 | 500 | 501 | 503) =>
     c.json({ ok: false, data: null, error: { code, message } }, status);
   const unavailable = (c: Context, what: string, how: string) => fail(c, "UNAVAILABLE", `Unavailable: ${what}. ${how}`, 503);
 
+  // The API serves JSON only, so its content policy is the strictest there is: nothing may load or frame it.
+  app.use("*", async (c, next) => {
+    await next();
+    c.header("content-security-policy", "default-src 'none'; frame-ancestors 'none'");
+    c.header("x-content-type-options", "nosniff");
+    c.header("referrer-policy", "no-referrer");
+    c.header("cross-origin-resource-policy", "same-site");
+    c.header("strict-transport-security", "max-age=63072000; includeSubDomains");
+    c.header("cache-control", c.res.headers.get("cache-control") ?? "no-store");
+  });
   app.use("/api/*", cors({ origin: (o) => (config.ORIGINS.includes(o) ? o : null), credentials: true, allowHeaders: ["content-type"], allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"] }));
 
   // A browser always sends Origin on a write. Refuse writes from any page that is not ours (cookie sessions need this).
@@ -66,9 +76,9 @@ export function createApp(d: AppDeps) {
   });
 
   // Guessing games get a tight window: sign-in, wallet linking and (later) claim links.
-  const limited = (limit: number) => rateLimit({ limit, windowMs: 60_000, trustProxy: config.TRUST_PROXY === "true", now: d.now ? () => d.now!().getTime() : undefined });
-  app.use("/api/auth/*", limited(config.RATE_LIMIT_PER_MIN));
-  app.use("/api/claims/*", limited(config.RATE_LIMIT_PER_MIN));
+  const limited = (limit: number, group: string) => rateLimit({ group, limit, windowMs: 60_000, trustProxy: config.TRUST_PROXY === "true", now: d.now ? () => d.now!().getTime() : undefined });
+  app.use("/api/auth/*", limited(config.RATE_LIMIT_PER_MIN, "auth"));
+  app.use("/api/claims/*", limited(config.RATE_LIMIT_PER_MIN, "claims"));
 
   app.use("/api/*", async (c, next) => {
     c.set("account", await accountFromToken(db, getCookie(c, COOKIE), now()));
@@ -105,6 +115,19 @@ export function createApp(d: AppDeps) {
 
   // ------------------------------------------------------------------------------------------------ health
 
+  /** The relayer pays gas for every registration. A low balance is reported here before registrations start failing. */
+  const relayerHealth = async () => {
+    if (!d.relayer) return { configured: false };
+    if (!d.client) return { configured: true, address: d.relayer.address, balance: null, low: null, warning: "balance unknown: no RPC" };
+    try {
+      const balance = await (d.client as { getBalance(a: { address: Address }): Promise<bigint> }).getBalance({ address: d.relayer.address });
+      const low = balance < config.RELAYER_MIN_BALANCE_WEI;
+      return { configured: true, address: d.relayer.address, balance: balance.toString(), low, ...(low ? { warning: `relayer balance is below ${config.RELAYER_MIN_BALANCE_WEI} wei: top it up before registrations fail` } : {}) };
+    } catch (e) {
+      return { configured: true, address: d.relayer.address, balance: null, low: null, warning: `balance could not be read: ${e instanceof Error ? e.message.split("\n")[0] : "unreachable"}` };
+    }
+  };
+
   app.get("/api/health", async (c) => {
     let dbOk = false;
     try {
@@ -126,7 +149,7 @@ export function createApp(d: AppDeps) {
       rpc,
       contract: { configured: !!config.INVOICE_BOOK, address: config.INVOICE_BOOK ?? null, chainId: config.ARC_CHAIN_ID },
       indexer: { cursor, lag: rpc.head !== undefined && cursor !== null ? rpc.head - cursor : null, lastError: d.indexer?.status.lastError ?? null, running: !!d.indexer },
-      relayer: { configured: !!d.relayer },
+      relayer: await relayerHealth(),
       dataSource: config.DATA_SOURCE,
     });
   });
@@ -214,7 +237,7 @@ export function createApp(d: AppDeps) {
     const inv = (await indexed()).find((i) => i.id === id);
     if (!inv) return fail(c, "NOT_FOUND", "No such invoice in the index yet. It may still be indexing.", 404);
     const events = await db.query<{ tx_hash: string; log_index: number; block: string; name: string; payload_json: unknown }>(
-      "select tx_hash, log_index, block::text as block, name, payload_json from chain_events where payload_json->>'id' = $1 order by block, log_index",
+      "select tx_hash, log_index, block::text as block, name, payload_json from chain_events where payload_json->>'id' = $1 order by chain_events.block, chain_events.log_index",
       [id],
     );
     return ok(c, { invoice: inv, events });
@@ -277,7 +300,7 @@ export function createApp(d: AppDeps) {
     signature: hex(),
   });
 
-  app.use("/api/log/ingest", limited(120));
+  app.use("/api/log/ingest", limited(120, "log-ingest"));
   app.post("/api/log/ingest", async (c) => {
     if (config.AGENTS.length === 0 || !config.INVOICE_BOOK) return unavailable(c, "the decision log is not switched on", "Set AGENT_WALLETS and INVOICE_BOOK_ADDRESS.");
     const { entries } = await body(c, z.object({ entries: z.array(entrySchema).min(1).max(100) }));
@@ -403,8 +426,20 @@ export function createApp(d: AppDeps) {
     signature: hex(),
   });
 
+  // Per supplier address, not per IP: the relayer pays gas for every registration, so one address cannot ask for more than REGISTER_LIMIT_PER_HOUR an hour.
+  const registrations = new Map<string, number[]>();
+  const overRegisterLimit = (addr: string, nowMs: number) => {
+    const recent = (registrations.get(addr) ?? []).filter((t) => nowMs - t < 3_600_000);
+    if (recent.length >= config.REGISTER_LIMIT_PER_HOUR) return Math.ceil((3_600_000 - (nowMs - recent[0]!)) / 60_000);
+    recent.push(nowMs);
+    registrations.set(addr, recent);
+    return 0;
+  };
+
   app.post("/api/relay/register", async (c) => {
     const a = need(c, "supplier");
+    const waitMin = overRegisterLimit(a.address!, now().getTime());
+    if (waitMin) return fail(c, "REGISTER_LIMIT", `This wallet has asked for ${config.REGISTER_LIMIT_PER_HOUR} registrations in the last hour. Try again in about ${waitMin} minutes, or register from your own wallet.`, 429);
     if (!d.relayer || !d.client || !config.INVOICE_BOOK) return unavailable(c, "the relayer is not configured", "Set RELAYER_PRIVATE_KEY, ARC_RPC_URL and INVOICE_BOOK_ADDRESS, or register the invoice from your own wallet.");
     const { invoice, signature } = await body(c, registerBody);
     if (invoice.supplier !== a.address) return fail(c, "NOT_YOUR_INVOICE", "You can only register invoices where your linked wallet is the supplier.", 403);
@@ -463,15 +498,18 @@ export function createApp(d: AppDeps) {
    * and the API answers with that wallet's own business data only. This is how the buyer agent gets its payment calendar
    * without a browser session. Every value here is declared by the owner, so it is labelled declared.
    */
-  const READ_WINDOW_SEC = 120;
+  /** A signed read must be fresh (60 seconds) and carry a nonce that has not been used: a captured request is dead after one use. */
+  const READ_WINDOW_SEC = 60;
   const agentCaller = async (c: Context, resource: string, opts: { linked?: boolean } = {}): Promise<{ orgId: string; wallet: Address } | Response> => {
     if (config.AGENTS.length === 0 || !config.INVOICE_BOOK) return unavailable(c, "agent reads are not switched on", "Set AGENT_WALLETS and INVOICE_BOOK_ADDRESS.");
     const wallet = (c.req.header("x-agent-wallet") ?? "").toLowerCase() as Address;
     const ts = Number(c.req.header("x-agent-ts"));
+    const nonce = c.req.header("x-agent-nonce") ?? "";
     const signature = (c.req.header("x-agent-sig") ?? "") as Hex;
     if (!config.AGENTS.includes(wallet)) return fail(c, "UNKNOWN_AGENT", "That wallet is not one of this deployment's agents.", 403);
     if (!Number.isInteger(ts) || Math.abs(Math.floor(Date.now() / 1000) - ts) > READ_WINDOW_SEC) return fail(c, "STALE_REQUEST", "The signed request is too old or too new.", 401);
-    const td = agentReadTypedData(domain(config.ARC_CHAIN_ID, config.INVOICE_BOOK), { resource, ts });
+    if (!/^[0-9a-zA-Z]{16,64}$/.test(nonce)) return fail(c, "BAD_NONCE", "The signed request has no valid nonce.", 401);
+    const td = agentReadTypedData(domain(config.ARC_CHAIN_ID, config.INVOICE_BOOK), { resource, ts, nonce });
     let signedByAgent = false;
     try {
       signedByAgent = (await recoverTypedDataAddress({ ...td, signature })).toLowerCase() === wallet;
@@ -480,6 +518,11 @@ export function createApp(d: AppDeps) {
     }
     if (!signedByAgent && d.client) signedByAgent = await d.client.verifyTypedData({ address: wallet, ...td, signature }).catch(() => false);
     if (!signedByAgent) return fail(c, "BAD_SIGNATURE", "The request is not signed by that agent.", 401);
+    // Only a request with a valid signature spends a nonce, so a stranger cannot burn an agent's nonces. A repeat is refused.
+    const now = d.now?.() ?? new Date();
+    await db.query("delete from agent_read_nonces where expires_at < $1", [now.toISOString()]);
+    const fresh = await db.query("insert into agent_read_nonces (wallet, nonce, expires_at) values ($1, $2, $3) on conflict do nothing returning nonce", [wallet, nonce, new Date(now.getTime() + 2 * READ_WINDOW_SEC * 1000).toISOString()]);
+    if (fresh.length === 0) return fail(c, "REPLAYED_REQUEST", "That signed request was already used.", 401);
     // Linking is the one call an agent may make before it is linked: it is how it becomes linked.
     if (opts.linked === false) return { orgId: "", wallet };
     const org = await db.query<{ org_id: string }>("select org_id::text as org_id from wallets where address = $1 and purpose = 'agent'", [wallet]);
@@ -517,7 +560,7 @@ export function createApp(d: AppDeps) {
    * The agent redeems the code. The request is signed by the agent wallet over this exact path, which includes the code, so the
    * signature cannot be replayed for another code or route. The wallet must be one of this deployment's configured agents.
    */
-  app.use("/api/agent/link/*", limited(20));
+  app.use("/api/agent/link/*", limited(20, "agent-link"));
   app.post("/api/agent/link/:code", async (c) => {
     const code = c.req.param("code");
     const who = await agentCaller(c, `/api/agent/link/${code}`, { linked: false });
@@ -538,7 +581,7 @@ export function createApp(d: AppDeps) {
     return ok(c, { linked: true });
   });
 
-  app.use("/api/agent/*", limited(120));
+  app.use("/api/agent/*", limited(120, "agent"));
 
   // NOTE (privacy): there is deliberately no route here for a buyer's hurdle, liquidity floor, caps or payment calendar, nor for a supplier's
   // cost of waiting. Those private values stay with the owning agent (an encrypted local store). Migration 008 drops their old tables.

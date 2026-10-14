@@ -60,3 +60,45 @@ describe("writing feedback after a settlement", () => {
     expect(logs[0]).toMatch(/not written/);
   });
 });
+
+import { readRecentReputation } from "../src/identity/erc8004";
+describe("reading recent reputation from the registry", () => {
+  const R = ERC8004_ARC_TESTNET.reputation;
+  const A = "0x" + "a1".repeat(20);
+  const B = "0x" + "b2".repeat(20);
+  /** A registry stand-in shaped like the real return values (value, decimals, tag1, tag2, isRevoked), indexed from 1. */
+  const registry = (byClient: Record<string, [bigint, string, string, boolean][]>, fail?: string) => ({
+    readContract: async (a: { functionName: string; args: unknown[] }) => {
+      if (fail === a.functionName) throw new Error("registry down");
+      const [, who, idx] = a.args as [bigint, string, bigint];
+      if (a.functionName === "getClients") return Object.keys(byClient);
+      if (a.functionName === "getLastIndex") return BigInt(byClient[who]!.length);
+      const [value, tag1, tag2, revoked] = byClient[who]![Number(idx) - 1]!;
+      return [value, 0, tag1, tag2, revoked];
+    },
+  }) as never;
+  const ok: [bigint, string, string, boolean] = [100n, "misthos.settlement", "early_pay", false];
+
+  it("no agent id, or no feedback, is a new address; a failed read throws so the buyer asks a person", async () => {
+    expect(await readRecentReputation(registry({}), R, undefined)).toEqual({ kind: "none" });
+    expect(await readRecentReputation(registry({}), R, 7n)).toEqual({ kind: "none" });
+    await expect(readRecentReputation(registry({ [A]: [ok] }, "getLastIndex"), R, 7n)).rejects.toThrow(/registry down/);
+    await expect(readRecentReputation(registry({ [A]: [ok] }, "readFeedback"), R, 7n)).rejects.toThrow(/registry down/);
+  });
+
+  it("marks a rating disputed by tag or by a negative value, ignores revoked ratings, and keeps only the 5 newest", async () => {
+    const r = await readRecentReputation(
+      registry({
+        [A]: [ok, ok, [100n, "misthos.settlement", "disputed", false], ok, ok, ok, ok], // seven ratings; index 3 is the oldest of the five newest
+        [B]: [[-5n, "x", "y", false], [100n, "x", "y", true] /* revoked */],
+      }),
+      R,
+      7n,
+    );
+    expect(r.kind).toBe("read");
+    if (r.kind !== "read") return;
+    expect(r.recent).toHaveLength(5);
+    // The 5 newest by index are A7, A6, A5, A4, A3. A3 is the disputed one and makes the cut; B1 (negative) is older than all five and does not; B2 was revoked.
+    expect(r.recent.filter((x) => x.disputed)).toHaveLength(1);
+  });
+});

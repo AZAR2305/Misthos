@@ -5,7 +5,7 @@ import type { MiddlewareHandler } from "hono";
  * links. It counts requests per client in a sliding window. One process only: behind several instances put the limit at the
  * proxy as well. The client is the first X-Forwarded-For entry only when TRUST_PROXY is set; otherwise the socket address.
  */
-export function rateLimit(o: { limit: number; windowMs: number; trustProxy: boolean; now?: () => number }): MiddlewareHandler {
+export function rateLimit(o: { limit: number; windowMs: number; trustProxy: boolean; now?: () => number; group: string }): MiddlewareHandler {
   const hits = new Map<string, number[]>();
   const clock = o.now ?? Date.now;
   let sweep = 0;
@@ -13,7 +13,8 @@ export function rateLimit(o: { limit: number; windowMs: number; trustProxy: bool
     const t = clock();
     const fwd = o.trustProxy ? c.req.header("x-forwarded-for")?.split(",")[0]?.trim() : undefined;
     const socket = (c.env as { incoming?: { socket?: { remoteAddress?: string } } } | undefined)?.incoming?.socket?.remoteAddress;
-    const key = `${fwd ?? socket ?? "local"}:${new URL(c.req.url).pathname}`;
+    // Keyed by the route GROUP, never the full path: a code or token sits in the path, and a guesser who changes it must not get a fresh allowance.
+    const key = `${fwd ?? socket ?? "local"}:${o.group}`;
     const recent = (hits.get(key) ?? []).filter((x) => t - x < o.windowMs);
     if (recent.length >= o.limit) {
       const retry = Math.max(1, Math.ceil((o.windowMs - (t - recent[0]!)) / 1000));

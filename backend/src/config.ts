@@ -25,6 +25,10 @@ const schema = z.object({
   /** The agent wallets whose signed decision logs this API accepts (comma separated 0x addresses). Empty: the log is off. */
   AGENT_WALLETS: z.string().default(""),
   /** Requests per minute per client on /api/auth/* and /api/claims/*. */
+  /** Most invoices one supplier address may ask the relayer to register in an hour. Gas is paid by the relayer, so this bounds what one address can cost. */
+  REGISTER_LIMIT_PER_HOUR: z.coerce.number().int().min(1).default(10),
+  /** The relayer's native balance (18 decimals) below which /api/health warns. Default 0.05 USDC. */
+  RELAYER_MIN_BALANCE_WEI: z.coerce.bigint().default(50_000_000_000_000_000n),
   RATE_LIMIT_PER_MIN: z.coerce.number().int().min(1).default(30),
   /** Set to true behind a proxy that sets X-Forwarded-For, so the limiter sees the real client. */
   TRUST_PROXY: z.enum(["true", "false"]).default("false"),

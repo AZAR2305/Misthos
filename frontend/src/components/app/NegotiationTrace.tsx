@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import { CONFIG } from "@/lib/config";
 import { Notice, Skeleton, Tag, TxLink } from "@/components/ui/kit";
 import type { InvoiceLogState } from "@/lib/invoicelog";
 import { dateTime } from "@/lib/format";
@@ -45,6 +46,13 @@ export function NegotiationTrace({ log, settledTx }: { log: InvoiceLogState; set
                 {r.credit && (
                   <span className="muted tiny trace-credit">
                     {" "}Credit check: {r.credit.result === "ok" ? "inside the limit" : "over the limit"} ({r.credit.version}; {r.credit.evidenceCount} on-chain record{r.credit.evidenceCount === 1 ? "" : "s"})
+                  </span>
+                )}
+                {r.reputation && (
+                  <span className="muted tiny trace-credit">
+                    {" "}<Tag tone="agent">erc-8004</Tag>{" "}
+                    {r.reputation.result === "read" ? `Supplier's agent: ${r.reputation.recentCount} recent rating${r.reputation.recentCount === 1 ? "" : "s"}, ${r.reputation.recentDisputed} disputed` : r.reputation.result === "none" ? "Supplier's agent: no ratings yet, so a new-address cap applies" : "The registry could not be read, so a person decides"}
+                    {" "}(read by the buyer's agent from the registry at <a className="source" href={`${CONFIG.explorer}/address/0x8004B663056A597Dffe9eCcC1965A193B7388713`} target="_blank" rel="noreferrer">0x8004B663…8713</a>)
                   </span>
                 )}
               </span>

@@ -83,3 +83,8 @@ export function buyerPolicyFromEnv(env: NodeJS.ProcessEnv = process.env): BuyerP
     feeBps: bps(env.FEE_BPS, DEFAULT_FEE_BPS),
   };
 }
+
+/** BUYER_NEW_ADDRESS_CAP: the most to send to a supplier with no feedback on the ERC-8004 registry, in whole USDC. Unset means no cap for a new address. */
+export function newAddressCapFromEnv(env: NodeJS.ProcessEnv = process.env): bigint | undefined {
+  return env.BUYER_NEW_ADDRESS_CAP ? usdc(env.BUYER_NEW_ADDRESS_CAP, 0n) : undefined;
+}

@@ -36,6 +36,8 @@ export interface TraceRung {
   at?: number;
   /** How many on-chain records the credit check rested on, and what it found. */
   credit?: { version: string; result: "ok" | "limit"; evidenceCount: number };
+  /** What the buyer's agent read from the ERC-8004 registry about the supplier's agent when it decided. Public chain data, with its source. */
+  reputation?: { result: "read" | "none" | "unavailable"; recentCount?: number; recentDisputed?: number };
   signed: boolean;
 }
 
@@ -59,6 +61,12 @@ function creditOf(snapshot: Record<string, unknown>, policyVersion?: string): Tr
   const e = snapshot.exposure as { policyVersion?: string; result?: string; evidence?: unknown[] } | undefined;
   if (!e || (e.result !== "ok" && e.result !== "limit")) return undefined;
   return { version: e.policyVersion ?? policyVersion ?? "", result: e.result, evidenceCount: Array.isArray(e.evidence) ? e.evidence.length : 0 };
+}
+
+function reputationOf(snapshot: Record<string, unknown>): TraceRung["reputation"] {
+  const r = snapshot.reputation as { source?: string; result?: string; recentCount?: unknown; recentDisputed?: unknown } | undefined;
+  if (!r || r.source !== "erc-8004" || (r.result !== "read" && r.result !== "none" && r.result !== "unavailable")) return undefined;
+  return { result: r.result, ...(typeof r.recentCount === "number" ? { recentCount: r.recentCount } : {}), ...(typeof r.recentDisputed === "number" ? { recentDisputed: r.recentDisputed } : {}) };
 }
 
 export function buildTrace(entries: readonly LogEntry[]): Trace {
@@ -98,7 +106,7 @@ export function buildTrace(entries: readonly LogEntry[]): Trace {
     if (e.outcome === "needs_approval" && result) waiting.push({ actor: e.actor, code: result, text: textFor(result), hash: e.hash });
     if (rate === undefined || !result) continue;
     const accepted = result === "ACCEPT";
-    const row: TraceRung = { rung: num(snap.rung) ?? null, rateBps: rate, code: result, accepted, text: textFor(result), policyVersion: pv, hash: e.hash, at: e.at, credit: creditOf(snap, pv), signed: !!e.signed };
+    const row: TraceRung = { rung: num(snap.rung) ?? null, rateBps: rate, code: result, accepted, text: textFor(result), policyVersion: pv, hash: e.hash, at: e.at, credit: creditOf(snap, pv), reputation: reputationOf(snap), signed: !!e.signed };
     if (row.rung === null) extra.push(row);
     else byRung.set(row.rung, row);
   }

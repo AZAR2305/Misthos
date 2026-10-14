@@ -19,6 +19,7 @@ import {
   type OnChainInvoice,
   type ProposeArgs,
 } from "../src/agents/index.js";
+import type { ReputationInput } from "../src/core/decide.js";
 import { messageSchema, type OfferMsg } from "../src/protocol/index.js";
 import { auditDecision, auditFromFiles } from "../src/audit.js";
 import { WalletError, eoaVerifier, type ContractCall, type Eip712Payload, type WalletAdapter } from "../src/wallets/types.js";
@@ -68,7 +69,7 @@ const down = () => new ScriptedModel(() => {
   throw new ModelUnavailableError("The model is unavailable: test");
 });
 
-function setup(opts: { hurdle?: number; humanAbove?: bigint; model?: AgentModel; prefs?: Partial<SupplierPrefs>; buyerExecuteFails?: WalletError; status?: OnChainInvoice["status"]; treasury?: () => Promise<{ cash: bigint; obligations: Obligation[] }>; exposure?: ExposureSource; supplierExposure?: ExposureSource; stamped?: { dir?: string; push?: (e: readonly unknown[]) => Promise<void> } } = {}) {
+function setup(opts: { hurdle?: number; humanAbove?: bigint; model?: AgentModel; prefs?: Partial<SupplierPrefs>; buyerExecuteFails?: WalletError; status?: OnChainInvoice["status"]; treasury?: () => Promise<{ cash: bigint; obligations: Obligation[] }>; exposure?: ExposureSource; reputation?: (s: `0x${string}`) => Promise<ReputationInput>; newAddressCap?: bigint; supplierExposure?: ExposureSource; stamped?: { dir?: string; push?: (e: readonly unknown[]) => Promise<void> } } = {}) {
   const supplier = keyWallet("supplier");
   const buyer = keyWallet("buyer", opts.buyerExecuteFails);
   const onchain: OnChainInvoice = {
@@ -102,7 +103,7 @@ function setup(opts: { hurdle?: number; humanAbove?: bigint; model?: AgentModel;
   const prefs: SupplierPrefs = { costOfWaitingAprBps: 2200, maxRateBps: 1000, startRateBps: 600, stepBps: 200, ...opts.prefs };
   const buyerStore = new DecisionStore(stampOpts("buyer", buyerBook, policy) as never);
   const supplierStore = new DecisionStore(stampOpts("supplier", supplierBook, prefs) as never);
-  const buyerAgent = new BuyerAgent({ wallet: buyer.wallet, domain: D, model: new ScriptedModel({ risk_flags: [], summary: "none" }), policy, store: buyerStore, chain, invoiceBook: BOOK, verifier: eoaVerifier, treasury: opts.treasury ?? rich, exposure: opts.exposure, now: () => NOW });
+  const buyerAgent = new BuyerAgent({ wallet: buyer.wallet, domain: D, model: new ScriptedModel({ risk_flags: [], summary: "none" }), policy, store: buyerStore, chain, invoiceBook: BOOK, verifier: eoaVerifier, treasury: opts.treasury ?? rich, exposure: opts.exposure, reputation: opts.reputation, newAddressCap: opts.newAddressCap, now: () => NOW });
   const sent: unknown[] = [];
   const supplierAgent = new SupplierAgent({
     wallet: supplier.wallet,
@@ -795,5 +796,74 @@ describe("what the chain says the buyer owes is a verified obligation", () => {
     await t.supplierAgent.start(t.inv);
     const refused = t.buyerStore.all().find((e) => e.reasonCode === "LIQUIDITY_FLOOR")!;
     expect(auditDecision(refused, t.buyerStore.preimageOf(refused.hash), t.buyerBook).ok).toBe(true);
+  });
+});
+
+describe("reputation-aware buyer (ERC-8004): it may only block or lower, never raise", () => {
+  const clean: ReputationInput = { kind: "read", recent: [{ disputed: false }, { disputed: false }, { disputed: false }] };
+  const run = async (o: Parameters<typeof setup>[0]) => {
+    const t = setup({ hurdle: 0, prefs: { startRateBps: 0 }, ...o });
+    const result = await t.supplierAgent.start(t.inv);
+    return { t, result };
+  };
+  const lastBuyerEntry = (t: ReturnType<typeof setup>) => t.buyerStore.all().filter((e) => e.actor === "buyer_agent").at(-1)!;
+
+  it("the same invoice is accepted with a clean summary and rejected with two recent disputes", async () => {
+    const ok = await run({ reputation: async () => clean });
+    expect(ok.result.kind).toBe("accepted");
+    expect(ok.t.buyer.calls).toHaveLength(1);
+
+    const bad = await run({ reputation: async () => ({ kind: "read", recent: [{ disputed: true }, { disputed: false }, { disputed: true }] }) });
+    expect(bad.result.kind).toBe("hold_to_due");
+    expect(bad.t.buyer.calls).toHaveLength(0); // nothing was paid
+    expect(bad.t.supplierAgent.transcript.every((x) => x.outcome === "REPUTATION_FLAG")).toBe(true);
+    // the public log says where the reading came from and what it found, and nothing private
+    expect(lastBuyerEntry(bad.t).snapshot).toMatchObject({ reputation: { source: "erc-8004", result: "read", recentCount: 3, recentDisputed: 2 } });
+    expect(findPrivateKey(lastBuyerEntry(bad.t).snapshot)).toBeUndefined();
+  });
+
+  it("one dispute is not enough, and a dispute older than the 5 most recent entries does not count", async () => {
+    expect((await run({ reputation: async () => ({ kind: "read", recent: [{ disputed: true }, { disputed: false }] }) })).result.kind).toBe("accepted");
+    const old = { kind: "read" as const, recent: [{ disputed: false }, { disputed: false }, { disputed: false }, { disputed: false }, { disputed: false }, { disputed: true }, { disputed: true }] };
+    expect((await run({ reputation: async () => old })).result.kind).toBe("accepted");
+  });
+
+  it("a registry that cannot be read means a person decides: needs_approval, REGISTRY_UNAVAILABLE, nothing paid", async () => {
+    const { t, result } = await run({
+      reputation: async () => {
+        throw new Error("rpc down");
+      },
+    });
+    expect(result.kind).toBe("hold_to_due");
+    expect(t.buyer.calls).toHaveLength(0);
+    expect(t.buyerAgent.needsApproval.get(INVOICE)).toMatchObject({ reasonCode: "REGISTRY_UNAVAILABLE" });
+    expect(lastBuyerEntry(t)).toMatchObject({ outcome: "needs_approval", reasonCode: "REGISTRY_UNAVAILABLE" });
+  });
+
+  it("a supplier with no history is held to the new-address cap (and one with history is not)", async () => {
+    // The invoice costs about 2,000 USDC at 0%. A cap of 500 stops it; a cap of 5,000 does not.
+    const capped = await run({ reputation: async () => ({ kind: "none" }), newAddressCap: 500n * USD });
+    expect(capped.result.kind).toBe("hold_to_due");
+    expect(capped.t.buyer.calls).toHaveLength(0);
+    expect(capped.t.supplierAgent.transcript.every((x) => x.outcome === "EXPOSURE_LIMIT")).toBe(true);
+    expect((await run({ reputation: async () => ({ kind: "none" }), newAddressCap: 5_000n * USD })).result.kind).toBe("accepted");
+    expect((await run({ reputation: async () => clean, newAddressCap: 500n * USD })).result.kind).toBe("accepted");
+  });
+
+  it("never raises a limit: with a good reputation the exposure limit still binds, and a cap above it changes nothing", async () => {
+    const exposure: ExposureSource = { policy: async () => ({ version: "exposure-1", newCounterpartyLimit: 1_000n * USD, maxLimit: 1_000n * USD, growthBps: 2000, lookbackDays: 180, graceSeconds: 86400 }), events: async () => [] };
+    const strong: ReputationInput = { kind: "read", recent: Array.from({ length: 5 }, () => ({ disputed: false })) };
+    const a = await run({ exposure, reputation: async () => strong }); // 2,000 USDC invoice, 1,000 limit
+    expect(a.result.kind).toBe("hold_to_due");
+    expect(a.t.supplierAgent.transcript.every((x) => x.outcome === "EXPOSURE_LIMIT")).toBe(true);
+    const b = await run({ exposure, reputation: async () => ({ kind: "none" }), newAddressCap: 50_000n * USD }); // a huge cap does not lift the 1,000 limit
+    expect(b.result.kind).toBe("hold_to_due");
+  });
+
+  it("is replayable: the audit reproduces a reputation decision from the agent's own record", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "misthos-rep-"));
+    const { t } = await run({ stamped: { dir }, reputation: async () => ({ kind: "read", recent: [{ disputed: true }, { disputed: true }] }) });
+    const rejected = t.buyerStore.all().find((e) => e.actor === "buyer_agent" && e.reasonCode === "REPUTATION_FLAG")!;
+    expect(auditDecision(rejected, t.buyerStore.preimageOf(rejected.hash), t.buyerBook)).toMatchObject({ ok: true });
   });
 });

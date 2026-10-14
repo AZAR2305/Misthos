@@ -1,4 +1,5 @@
 import { mnemonicToAccount } from "viem/accounts";
+import { agentReadTypedData, domain } from "../src/shared";
 import { createApp, type AppDeps } from "../src/api";
 import { loadConfig } from "../src/config";
 import { migrate, openDb, type Db } from "../src/db";
@@ -65,4 +66,17 @@ export async function onboard(
   const side = await b.put("/api/me/side", { side: o.side });
   if (side.status !== 200) throw new Error(`side failed: ${side.text}`);
   return side.json.data;
+}
+
+/** The headers an agent process sends on a signed read: wallet, time, a single-use nonce and the EIP-712 signature over the exact path. */
+export async function agentHeaders(
+  account: { address: string; signTypedData: (a: never) => Promise<string> },
+  d: ReturnType<typeof domain>,
+  path: string,
+  o: { signedPath?: string; ts?: number; nonce?: string; as?: string } = {},
+) {
+  const ts = o.ts ?? Math.floor(Date.now() / 1000);
+  const nonce = o.nonce ?? Array.from({ length: 32 }, () => Math.floor(Math.random() * 16).toString(16)).join("");
+  const sig = await account.signTypedData(agentReadTypedData(d, { resource: o.signedPath ?? path, ts, nonce }) as never);
+  return { "x-agent-wallet": o.as ?? account.address, "x-agent-ts": String(ts), "x-agent-nonce": nonce, "x-agent-sig": sig };
 }

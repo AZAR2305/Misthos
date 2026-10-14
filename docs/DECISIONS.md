@@ -375,3 +375,21 @@ These closed spec Appendix A items and fixed three bugs that no scripted-CLI tes
 ## Market research and recommended policy numbers (14 Oct 2026)
 - See `docs/MARKET_RESEARCH.md` (rates, sources, confidence) and `docs/GO_TO_MARKET.md` (what the 10% fee really earns, other revenue, first-user plan). Supplier ceiling lowered from
   5,000 to 2,400 bps and step to 400 bps in `agent/.env`; all other numbers await the owners. At 0% the on-chain fee is zero, so revenue must come from elsewhere.
+
+## T2 security fixes and what the tests found (14 Oct 2026)
+- **Content-Security-Policy** on the website uses the documented no-nonce form (nonces would make every page render dynamically). `script-src` therefore allows `'unsafe-inline'`, which weakens XSS
+  protection; everything else is `'self'` plus the API, RPC and agent origins taken from `NEXT_PUBLIC_*`. Headers also set: HSTS, nosniff, frame deny, no referrer leakage, a permissions policy,
+  `Cross-Origin-Opener-Policy: same-origin-allow-popups` (wallet pop-ups). The API sends its own `default-src 'none'` policy and `no-store`. VERIFY: check the live site's console for CSP violations from a clean browser.
+- **Wallet sign-in is EIP-4361 (Sign-In with Ethereum)**, built and validated with viem's SIWE helpers: domain, wallet, URI, version, chain id, single-use server nonce, issued-at and expiry.
+- **Signed agent reads carry a single-use nonce** in the typed data and a 60-second window (was 120). Replays answer `REPLAYED_REQUEST`; only a request with a valid signature spends a nonce, so a stranger cannot burn an agent's.
+  Table `agent_read_nonces` (migration 009).
+- **Rate limit bug found by a test:** the limiter keyed requests by full path, so a client guessing link codes or claim tokens (which sit in the path) got a fresh allowance for every guess. It is now keyed by route
+  group. Sign-in, claim, link and ingest limits were weaker than documented until this fix.
+- **Event ordering bug found by a test:** two queries sorted chain events by `block`, which in those queries was the text alias, so block 9 sorted after block 10. It affected invoice detail and `loadInvoices`
+  whenever block numbers crossed a digit boundary (99 to 100, and so on). Sorted numerically now; regression test `event-order.test.ts`.
+- **Registration limit per supplier address** (`REGISTER_LIMIT_PER_HOUR`, default 10): the relayer pays gas, so one address cannot cost unlimited gas. **Relayer balance** appears in `/api/health` with a warning below
+  `RELAYER_MIN_BALANCE_WEI` (default 0.05 USDC, 18-decimal native). A balance that cannot be read is reported as unknown, never as fine.
+- **Claim tokens are not 15 minutes.** The plan said "the same as link codes", but a supplier needs time to open a link. Claim tokens are single-use, expire after 1 to 168 hours (default 72) and never after the invoice is
+  nearly due, are stored only as a SHA-256, are rate-limited and are never logged or echoed. Link codes remain 15 minutes.
+- **Git history scan (no key printed):** no Groq (`gsk_`), Anthropic (`sk-ant-`), relayer, deployer or store key found in any commit. The Groq key that was pasted into chat exists only in the git-ignored `agent/.env`.
+  It must still be rotated, because it was exposed in a conversation.

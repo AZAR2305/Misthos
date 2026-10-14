@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { privateKeyToAccount } from "viem/accounts";
-import { agentReadTypedData, domain } from "../src/shared";
-import { makeApp } from "./helpers";
+import { domain } from "../src/shared";
+import { agentHeaders, makeApp } from "./helpers";
 
 const BOOK = "0x00000000000000000000000000000000000000b1" as const;
 const D = domain(5042002, BOOK);
@@ -20,10 +20,8 @@ async function setup() {
   return { ...made, org };
 }
 
-async function signed(account: typeof buyerAgent, o: { resource?: string; ts?: number; as?: string } = {}) {
-  const ts = o.ts ?? Math.floor(Date.now() / 1000);
-  const signature = await account.signTypedData(agentReadTypedData(D, { resource: o.resource ?? PATH, ts }) as never);
-  return { "x-agent-wallet": o.as ?? account.address, "x-agent-ts": String(ts), "x-agent-sig": signature };
+async function signed(account: typeof buyerAgent, o: { resource?: string; ts?: number; as?: string; nonce?: string } = {}) {
+  return agentHeaders(account, D, o.resource ?? PATH, { ts: o.ts, as: o.as, nonce: o.nonce });
 }
 
 describe("signed agent read of the owner's exposure (risk) limit", () => {
@@ -66,10 +64,38 @@ describe("signed agent read of the owner's exposure (risk) limit", () => {
     expect((await app.request(PATH, { headers: await signed(stranger, { as: buyerAgent.address }) })).status).toBe(401);
     // signed for a different resource: cannot be replayed on this route
     expect((await app.request(PATH, { headers: await signed(buyerAgent, { resource: "/api/agent/other" }) })).status).toBe(401);
-    // two minutes old
+    // ten minutes old
     expect((await app.request(PATH, { headers: await signed(buyerAgent, { ts: Math.floor(Date.now() / 1000) - 600 }) })).status).toBe(401);
     // no headers at all
     expect((await app.request(PATH)).status).toBe(403);
+  });
+
+  it("a signed request is good for 60 seconds and one use: stale, replayed and nonce-less requests all fail", async () => {
+    const { app, db, org } = await setup();
+    await org("Buyer A", buyerAgent.address);
+    const now = Math.floor(Date.now() / 1000);
+    // 90 seconds old is stale now (the window used to be 120)
+    const stale = await app.request(PATH, { headers: await signed(buyerAgent, { ts: now - 90 }) });
+    expect(stale.status).toBe(401);
+    expect(((await stale.json()) as { error: { code: string } }).error.code).toBe("STALE_REQUEST");
+    // a fresh request works once; the identical request, replayed by anyone who captured it, does not
+    const headers = await signed(buyerAgent);
+    expect((await app.request(PATH, { headers })).status).toBe(200);
+    const replay = await app.request(PATH, { headers });
+    expect(replay.status).toBe(401);
+    expect(((await replay.json()) as { error: { code: string } }).error.code).toBe("REPLAYED_REQUEST");
+    // no nonce, or a malformed one
+    const { "x-agent-nonce": _drop, ...noNonce } = await signed(buyerAgent);
+    expect(((await (await app.request(PATH, { headers: noNonce })).json()) as { error: { code: string } }).error.code).toBe("BAD_NONCE");
+    expect(((await (await app.request(PATH, { headers: { ...(await signed(buyerAgent)), "x-agent-nonce": "short" } })).json()) as { error: { code: string } }).error.code).toBe("BAD_NONCE");
+    // a header nonce that is not the one that was signed fails the signature and does not spend that nonce
+    const good = await signed(buyerAgent, { nonce: "a".repeat(32) });
+    expect((await app.request(PATH, { headers: { ...good, "x-agent-nonce": "b".repeat(32) } })).status).toBe(401);
+    expect((await app.request(PATH, { headers: good })).status).toBe(200);
+    // a stranger's forged request does not burn the real agent's nonce
+    const forged = await signed(stranger, { as: buyerAgent.address, nonce: "c".repeat(32) });
+    expect((await app.request(PATH, { headers: forged })).status).toBe(401);
+    expect((await db.query("select 1 from agent_read_nonces where nonce = $1", ["c".repeat(32)])).length).toBe(0);
   });
 
   it("refuses an agent that is not linked to a business", async () => {

@@ -23,7 +23,8 @@ async function api(rows: unknown, status = 200) {
     // Public reads carry no signature; signed reads are checked the way the real endpoint checks them.
     if (req.headers["x-agent-sig"]) {
       const ts = Number(req.headers["x-agent-ts"]);
-      seen.signer = await recoverTypedDataAddress({ ...agentReadTypedData(D, { resource: req.url ?? "", ts }), signature: req.headers["x-agent-sig"] as `0x${string}` } as never);
+      const nonce = String(req.headers["x-agent-nonce"] ?? "");
+      seen.signer = await recoverTypedDataAddress({ ...agentReadTypedData(D, { resource: req.url ?? "", ts, nonce }), signature: req.headers["x-agent-sig"] as `0x${string}` } as never);
     }
     res.writeHead(status, { "content-type": "application/json" });
     res.end(JSON.stringify(status === 200 ? { ok: true, data: rows } : { ok: false, error: { message: "nope" } }));

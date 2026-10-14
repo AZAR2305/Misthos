@@ -1,8 +1,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, expect, it } from "vitest";
 import { privateKeyToAccount } from "viem/accounts";
-import { agentReadTypedData, domain } from "../src/shared";
-import { browser, makeApp, onboard } from "./helpers";
+import { domain } from "../src/shared";
+import { browser, makeApp, onboard, agentHeaders } from "./helpers";
 
 const BOOK = "0x00000000000000000000000000000000000000b1" as const;
 const D = domain(5042002, BOOK);
@@ -19,11 +19,9 @@ async function setup(clock?: { now: Date }) {
 }
 
 /** What the agent process does: sign the exact path, which includes the code, and POST it. */
-async function redeem(app: Awaited<ReturnType<typeof setup>>["app"], code: string, who = agent, o: { path?: string; ts?: number } = {}) {
+async function redeem(app: Awaited<ReturnType<typeof setup>>["app"], code: string, who = agent, o: { path?: string; ts?: number; nonce?: string } = {}) {
   const path = `/api/agent/link/${code}`;
-  const ts = o.ts ?? Math.floor(Date.now() / 1000);
-  const sig = await who.signTypedData(agentReadTypedData(D, { resource: o.path ?? path, ts }) as never);
-  return app.request(path, { method: "POST", headers: { "x-agent-wallet": who.address, "x-agent-ts": String(ts), "x-agent-sig": sig } });
+  return app.request(path, { method: "POST", headers: await agentHeaders(who, D, path, { signedPath: o.path, ts: o.ts, nonce: o.nonce }) });
 }
 
 describe("linking an agent wallet to a business", () => {
@@ -45,9 +43,7 @@ describe("linking an agent wallet to a business", () => {
     const org = await db.query<{ org_id: string }>("select org_id::text as org_id from accounts where address = $1", [(await buyer.get("/api/me")).json.data.address]);
     await db.query("insert into exposure_policies (org_id, version, new_counterparty_limit, max_limit, growth_bps, lookback_days, grace_seconds) values ($1, 1, 1500, 6000, 2000, 180, 86400)", [org[0]!.org_id]);
     const path = "/api/agent/exposure-policy";
-    const ts = Math.floor(Date.now() / 1000);
-    const sig = await agent.signTypedData(agentReadTypedData(D, { resource: path, ts }) as never);
-    const read = await app.request(path, { headers: { "x-agent-wallet": agent.address, "x-agent-ts": String(ts), "x-agent-sig": sig } });
+    const read = await app.request(path, { headers: await agentHeaders(agent, D, path) });
     expect(((await read.json()) as any).data).toMatchObject({ configured: true, newCounterpartyLimit: "1500000000", maxLimit: "6000000000" });
   });
 
@@ -58,6 +54,32 @@ describe("linking an agent wallet to a business", () => {
     const again = await redeem(app, code);
     expect(again.status).toBe(400);
     expect(((await again.json()) as any).error.code).toBe("BAD_CODE");
+  });
+
+  it("guessing codes is rate-limited, and a refusal never repeats the code it was sent", async () => {
+    const { app } = await setup();
+    const statuses: number[] = [];
+    let echoed = false;
+    for (let i = 0; i < 30; i++) {
+      const guess = "AAAA-AAAA-" + String(i).padStart(4, "2");
+      const res = await redeem(app, guess);
+      statuses.push(res.status);
+      if ((await res.text()).includes(guess)) echoed = true;
+    }
+    expect(statuses.slice(0, 20), statuses.join(",")).toEqual(Array(20).fill(400));
+    expect(statuses.slice(20).every((s) => s === 429)).toBe(true);
+    expect(echoed).toBe(false);
+  });
+
+  it("a replayed signed redemption is refused even before the code is looked at", async () => {
+    const { app, buyer } = await setup();
+    const { code } = (await buyer.post("/api/me/agent-link", {})).json.data;
+    const path = `/api/agent/link/${code}`;
+    const headers = await agentHeaders(agent, D, path);
+    expect((await app.request(path, { method: "POST", headers })).status).toBe(200);
+    const again = await app.request(path, { method: "POST", headers });
+    expect(again.status).toBe(401);
+    expect(((await again.json()) as any).error.code).toBe("REPLAYED_REQUEST");
   });
 
   it("a code that is wrong or has expired is refused", async () => {

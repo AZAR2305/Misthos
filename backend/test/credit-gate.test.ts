@@ -90,3 +90,55 @@ describe("GET /api/payables: what a buyer owes on approved, unpaid invoices", ()
     expect((await t.app.request("/api/payables?buyer=nope")).status).toBeGreaterThanOrEqual(400);
   });
 });
+
+describe("the relayer is not an open gas faucet", () => {
+  it("one supplier address can ask for only so many registrations an hour, then it is told when to retry", async () => {
+    const made = await makeApp({ env: { INVOICE_BOOK_ADDRESS: BOOK, REGISTER_LIMIT_PER_HOUR: "3" }, ...stubs });
+    const supplier = browser(made.app);
+    await onboard(supplier, made.google, { sub: "s", email: "supplier@example.com", walletIndex: 1, side: "supplier" });
+    const me = wallet(1);
+    const reg = async (nonce: number) => {
+      const invoice = { supplier: me.address, buyer: BUYER, token: TOKEN, amount: 1_000n * USD, dueDate: BigInt(Math.floor(Date.now() / 1000) + 40 * 86400), refHash: id(250 + nonce) as `0x${string}`, nonce: BigInt(nonce) };
+      const signature = await me.signTypedData(invoiceTypedData(D, invoice) as never);
+      return supplier.post("/api/relay/register", { invoice: { ...invoice, amount: invoice.amount.toString(), dueDate: invoice.dueDate.toString(), nonce: invoice.nonce.toString() }, signature });
+    };
+    for (const n of [1, 2, 3]) expect((await reg(n)).status).toBe(202);
+    const over = await reg(4);
+    expect(over.status).toBe(429);
+    expect(over.json.error.code).toBe("REGISTER_LIMIT");
+    expect(over.json.error.message).toMatch(/Try again in about \d+ minutes/);
+  });
+
+  it("a different address is not held back by someone else's use", async () => {
+    const made = await makeApp({ env: { INVOICE_BOOK_ADDRESS: BOOK, REGISTER_LIMIT_PER_HOUR: "1" }, ...stubs });
+    const post = async (idx: number, nonce: number) => {
+      const b = browser(made.app);
+      await onboard(b, made.google, { sub: `s${idx}`, email: `s${idx}@example.com`, walletIndex: idx, side: "supplier" });
+      const w = wallet(idx);
+      const invoice = { supplier: w.address, buyer: BUYER, token: TOKEN, amount: 1_000n * USD, dueDate: BigInt(Math.floor(Date.now() / 1000) + 40 * 86400), refHash: id(250 + nonce) as `0x${string}`, nonce: BigInt(nonce) };
+      const signature = await w.signTypedData(invoiceTypedData(D, invoice) as never);
+      return { b, send: (n: number) => b.post("/api/relay/register", { invoice: { ...invoice, nonce: String(n), amount: invoice.amount.toString(), dueDate: invoice.dueDate.toString() }, signature }) };
+    };
+    const one = await post(1, 1);
+    const two = await post(2, 1);
+    expect((await one.send(1)).status).not.toBe(429);
+    expect((await one.send(1)).status).toBe(429);
+    expect((await two.send(1)).status).not.toBe(429);
+  });
+});
+
+describe("the relayer's balance is reported before it runs dry", () => {
+  const withBalance = (balance: bigint | Error) => ({ relayer: { address: ("0x" + "d4".repeat(20)) as `0x${string}` } as never, client: { getBlockNumber: async () => 1n, getBalance: async () => { if (balance instanceof Error) throw balance; return balance; } } as never });
+  it("says low, with a warning, below the threshold and fine above it", async () => {
+    const low = await makeApp({ ...withBalance(10_000_000_000_000_000n), env: { INVOICE_BOOK_ADDRESS: BOOK } }); // 0.01 USDC native
+    const lowHealth = (await browser(low.app).get("/api/health")).json.data;
+    expect(lowHealth.relayer).toMatchObject({ configured: true, balance: "10000000000000000", low: true });
+    expect(lowHealth.relayer.warning).toMatch(/top it up/);
+    const ok = await makeApp({ ...withBalance(500_000_000_000_000_000n), env: { INVOICE_BOOK_ADDRESS: BOOK } });
+    expect((await browser(ok.app).get("/api/health")).json.data.relayer).toMatchObject({ low: false });
+  });
+  it("never invents a balance it could not read", async () => {
+    const t = await makeApp({ ...withBalance(new Error("rpc down")), env: { INVOICE_BOOK_ADDRESS: BOOK } });
+    expect((await browser(t.app).get("/api/health")).json.data.relayer).toMatchObject({ configured: true, balance: null, low: null });
+  });
+});

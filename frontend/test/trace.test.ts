@@ -156,3 +156,13 @@ describe("log sources", () => {
     expect(merged.find((e) => e.hash === h(5))!.signed).toBe(true);
   });
 });
+
+describe("the ERC-8004 reading in the trace", () => {
+  const entry = (snapshot: object) => ({ actor: "buyer_agent", snapshot: { rung: 0, rateBps: 0, ...snapshot }, outcome: "rejected", reason: "x", hash: "0x" + "ab".repeat(32), at: 1, signed: true, policyVersion: "buyer-policy-1" }) as never;
+  it("carries what the buyer's agent read, only from the registry source, and ignores anything else", () => {
+    const t = buildTrace([entry({ result: { code: "REPUTATION_FLAG" }, reputation: { source: "erc-8004", result: "read", recentCount: 3, recentDisputed: 2 } })]);
+    expect(t.rungs[0]!.reputation).toEqual({ result: "read", recentCount: 3, recentDisputed: 2 });
+    expect(buildTrace([entry({ result: { code: "ACCEPT" }, reputation: { source: "made-up", result: "read" } })]).rungs[0]!.reputation).toBeUndefined();
+    expect(buildTrace([entry({ result: { code: "ACCEPT" } })]).rungs[0]!.reputation).toBeUndefined();
+  });
+});

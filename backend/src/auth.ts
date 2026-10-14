@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
-import { recoverMessageAddress, type Address, type Hex, type PublicClient } from "viem";
+import { getAddress, recoverMessageAddress, type Address, type Hex, type PublicClient } from "viem";
+import { createSiweMessage, parseSiweMessage, validateSiweMessage } from "viem/siwe";
 import type { Db } from "./db";
 
 /** Anything the caller did wrong or any identity check that failed. `code` is stable for the UI; `status` is the HTTP status. */
@@ -80,19 +81,22 @@ export async function accountById(db: Db, id: string): Promise<Account> {
 
 // ---------------------------------------------------------------------------------------------------- wallet sign-in
 
+/**
+ * The sign-in message is EIP-4361 (Sign-In with Ethereum), built and checked with viem's own SIWE helpers: the domain that asked, the wallet,
+ * the chain id, a server-issued single-use nonce, the time it was issued and when it expires.
+ */
 export const challengeMessage = (a: { address: string; chainId: number; site: string; nonce: string; issuedAt: Date; expiresAt: Date }) =>
-  [
-    "Misthos wants you to sign in with this wallet.",
-    "",
-    `Wallet: ${a.address}`,
-    `Site: ${a.site}`,
-    `Network: ${a.chainId}`,
-    `Nonce: ${a.nonce}`,
-    `Issued: ${a.issuedAt.toISOString()}`,
-    `Expires: ${a.expiresAt.toISOString()}`,
-    "",
-    "Signing this message sends no transaction and costs nothing. No email or personal detail is collected.",
-  ].join("\n");
+  createSiweMessage({
+    domain: new URL(a.site).host,
+    address: getAddress(a.address),
+    statement: "Sign in to Misthos with your wallet. This sends no transaction and costs nothing. No email or personal detail is collected.",
+    uri: new URL(a.site).origin,
+    version: "1",
+    chainId: a.chainId,
+    nonce: a.nonce,
+    issuedAt: a.issuedAt,
+    expirationTime: a.expiresAt,
+  });
 
 /** A one-time message for this address and this site. The account does not exist yet; signing it creates it. */
 export async function createChallenge(db: Db, address: Address, chainId: number, site: string, now = new Date()) {
@@ -135,6 +139,9 @@ export async function signInWithWallet(
     [a.nonce, address, now.toISOString()],
   );
   if (!rows[0]) throw new AuthError("That sign-in request expired or was already used. Start again.", "BAD_CHALLENGE", 400);
+  // The stored message must still be a valid, unexpired SIWE message for this very address and nonce before its signature is even looked at.
+  const siwe = parseSiweMessage(rows[0].message);
+  if (!validateSiweMessage({ message: siwe, address: getAddress(address), nonce: a.nonce, time: now })) throw new AuthError("That sign-in request expired or does not match. Start again.", "BAD_CHALLENGE", 400);
   if (!(await verify(rows[0].message, a.signature, address))) throw new AuthError("The signature does not match that wallet.", "BAD_SIGNATURE", 400);
   const id = await db.tx(async (t) => {
     const spent = await t.query("update auth_challenges set used_at = $2 where nonce = $1 and used_at is null returning nonce", [a.nonce, now.toISOString()]);

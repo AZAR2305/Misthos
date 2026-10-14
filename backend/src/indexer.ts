@@ -117,7 +117,7 @@ export function startIndexer(o: IndexerOptions & { pollMs: number }) {
 /** The read model: every stored event folded into one record per invoice by the same code the UI uses. */
 export async function loadInvoices(db: Db): Promise<InvoiceRecord[]> {
   const rows = await db.query<{ tx_hash: string; log_index: number; block: string; name: string; payload_json: Record<string, unknown> }>(
-    "select tx_hash, log_index, block::text as block, name, payload_json from chain_events order by block, log_index",
+    "select tx_hash, log_index, block::text as block, name, payload_json from chain_events order by chain_events.block, chain_events.log_index",
   );
   const logs: RawLog[] = rows.map((r) => ({
     eventName: r.name,

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { privateKeyToAccount } from "viem/accounts";
-import { agentReadTypedData, domain } from "../src/shared";
-import { browser, makeApp, onboard, wallet } from "./helpers";
+import { domain } from "../src/shared";
+import { browser, makeApp, onboard, wallet, agentHeaders } from "./helpers";
 
 const BOOK = "0x00000000000000000000000000000000000000b1" as const;
 const D = domain(5042002, BOOK);
@@ -61,13 +61,10 @@ describe("exposure policy", () => {
     const org = await db.query<{ org_id: string }>("select org_id::text as org_id from accounts where address = $1", [wallet(2).address.toLowerCase()]);
     await db.query("insert into wallets (org_id, address, purpose, mode) values ($1, $2, 'agent', 'agent')", [org[0]!.org_id, agent.address.toLowerCase()]);
     const path = "/api/agent/exposure-policy";
-    const ts = Math.floor(Date.now() / 1000);
-    const sig = await agent.signTypedData(agentReadTypedData(D, { resource: path, ts }) as never);
-    const res = await app.request(path, { headers: { "x-agent-wallet": agent.address, "x-agent-ts": String(ts), "x-agent-sig": sig } });
+    const res = await app.request(path, { headers: await agentHeaders(agent, D, path) });
     expect(res.status).toBe(200);
     expect(((await res.json()) as { data: unknown }).data).toMatchObject({ configured: true, version: "exposure-1", newCounterpartyLimit: "5000000000", maxLimit: "20000000000" });
     // a signature for another path cannot read it
-    const wrong = await agent.signTypedData(agentReadTypedData(D, { resource: "/api/agent/payables", ts }) as never);
-    expect((await app.request(path, { headers: { "x-agent-wallet": agent.address, "x-agent-ts": String(ts), "x-agent-sig": wrong } })).status).toBe(401);
+    expect((await app.request(path, { headers: await agentHeaders(agent, D, path, { signedPath: "/api/agent/payables" }) })).status).toBe(401);
   });
 });

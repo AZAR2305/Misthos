@@ -42,6 +42,15 @@ const buyerInputs = z.object({
       ),
     }),
   ]),
+  reputation: z
+    .discriminatedUnion("kind", [
+      z.object({ kind: z.literal("off") }),
+      z.object({ kind: z.literal("unavailable") }),
+      z.object({ kind: z.literal("none") }),
+      z.object({ kind: z.literal("read"), recent: z.array(z.object({ disputed: z.boolean() })) }),
+    ])
+    .optional(),
+  newAddressCap: opt(big),
   decision: z.string(),
 });
 

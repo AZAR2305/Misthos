@@ -1,4 +1,5 @@
 import { createPublicClient, http, keccak256, parseAbi, toHex, type Hex, type PublicClient } from "viem";
+import type { ReputationInput } from "../core/decide.js";
 import type { Address, ContractCall, WalletAdapter } from "../wallets/types.js";
 
 /**
@@ -29,6 +30,8 @@ export const IDENTITY_ABI = parseAbi([
 export const REPUTATION_ABI = parseAbi([
   "function getSummary(uint256 agentId, address[] clientAddresses, string tag1, string tag2) view returns (uint64 count, int128 summaryValue, uint8 summaryValueDecimals)",
   "function getClients(uint256 agentId) view returns (address[])",
+  "function getLastIndex(uint256 agentId, address clientAddress) view returns (uint64)",
+  "function readFeedback(uint256 agentId, address clientAddress, uint64 feedbackIndex) view returns (int128 value, uint8 valueDecimals, string tag1, string tag2, bool isRevoked)",
 ]);
 
 /** The tags every Misthos feedback carries, so a reader can ask for exactly this kind of rating. */
@@ -113,4 +116,30 @@ export async function writeSettlementFeedback(d: FeedbackDeps, invoiceId: Hex): 
     d.log?.(`ERC-8004 feedback not written: ${(e as Error).message}`);
     return false;
   }
+}
+
+const MAX_CLIENTS = 25;
+const RECENT = 5;
+
+/**
+ * The most recent feedback about an agent, read live from the registry, as the buyer's decision needs it.
+ * VERIFY: ERC-8004 gives no global time order across raters without scanning events, so "most recent" here means the highest feedback index
+ * (indices start at 1 and count up per rater) taken from each of up to 25 raters, newest index first. Revoked feedback is ignored.
+ * A rating is "disputed" when it carries the tag "disputed" or a negative value.
+ * No agent id, or no feedback at all, is "none" (a new address). A failed read THROWS: the caller turns that into REGISTRY_UNAVAILABLE.
+ */
+export async function readRecentReputation(client: PublicClient, reputation: Address, agentId: bigint | undefined): Promise<ReputationInput> {
+  if (agentId === undefined) return { kind: "none" };
+  const clients = (await client.readContract({ address: reputation, abi: REPUTATION_ABI, functionName: "getClients", args: [agentId] })) as readonly Address[];
+  const rows: { index: bigint; order: number; disputed: boolean }[] = [];
+  for (const [order, who] of clients.slice(0, MAX_CLIENTS).entries()) {
+    const last = (await client.readContract({ address: reputation, abi: REPUTATION_ABI, functionName: "getLastIndex", args: [agentId, who] })) as bigint;
+    for (let i = last; i >= 1n && i > last - BigInt(RECENT); i--) {
+      const [value, , tag1, tag2, revoked] = (await client.readContract({ address: reputation, abi: REPUTATION_ABI, functionName: "readFeedback", args: [agentId, who, i] })) as readonly [bigint, number, string, string, boolean];
+      if (!revoked) rows.push({ index: i, order, disputed: tag1.toLowerCase() === "disputed" || tag2.toLowerCase() === "disputed" || value < 0n });
+    }
+  }
+  if (rows.length === 0) return { kind: "none" };
+  rows.sort((a, b) => (a.index === b.index ? a.order - b.order : a.index > b.index ? -1 : 1));
+  return { kind: "read", recent: rows.slice(0, RECENT).map((r) => ({ disputed: r.disputed })) };
 }

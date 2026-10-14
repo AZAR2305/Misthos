@@ -7,9 +7,9 @@ import { viemChainReader } from "../agents/chain.js";
 import { openDecisionStore } from "../agents/log.js";
 import { fetchExposureEvents, fetchExposurePolicy, fetchPayables, linkAgent, signedReader } from "../agents/backend.js";
 import { offerMsgSchema } from "../protocol/index.js";
-import { buyerPolicyFromEnv, loadConfig, loadEnvFile } from "../config.js";
+import { buyerPolicyFromEnv, loadConfig, loadEnvFile, newAddressCapFromEnv } from "../config.js";
 import { CircleCliAdapter } from "../wallets/circleCli.js";
-import { readReputation, reputationClient, writeSettlementFeedback } from "../identity/erc8004.js";
+import { readRecentReputation, readReputation, reputationClient, writeSettlementFeedback } from "../identity/erc8004.js";
 import { chainVerifier, type Address } from "../wallets/types.js";
 import { ObligationStore, obligationInput } from "../agents/obligations.js";
 import { vaultFromEnv } from "../agents/vault.js";
@@ -82,6 +82,10 @@ const buyer = new BuyerAgent({
   // After a settlement, rate the supplier's ERC-8004 agent (owners cannot rate their own agents, so each side rates the other). Best effort.
   onSettled: (invoiceId) =>
     void writeSettlementFeedback({ wallet, reputation: cfg.ERC8004_REPUTATION as Address, counterpartyAgentId: cfg.SUPPLIER_ERC8004_ID ? BigInt(cfg.SUPPLIER_ERC8004_ID) : undefined, log: (m) => console.log(`[buyer-agent] ${m}`) }, invoiceId),
+  // Live reputation of the supplier's ERC-8004 agent before every accept. It can only block or lower a limit. A supplier we cannot map to an agent id counts as having no history.
+  reputation: (supplier) =>
+    readRecentReputation(reputationClient(cfg.ARC_RPC_URL), cfg.ERC8004_REPUTATION as Address, cfg.SUPPLIER_ERC8004_ID && supplier.toLowerCase() === cfg.SUPPLIER_AGENT_WALLET_ADDRESS?.toLowerCase() ? BigInt(cfg.SUPPLIER_ERC8004_ID) : undefined),
+  newAddressCap: newAddressCapFromEnv(),
   treasury: async () => ({ cash: await wallet.balance("USDC"), obligations: [...(await obligations()), ...(await payables())] }),
 });
 

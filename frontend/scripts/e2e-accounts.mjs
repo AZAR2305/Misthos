@@ -205,14 +205,22 @@ async function main() {
   const linkCode = /MISTHOS_LINK_CODE=([A-Z2-7]{4}-[A-Z2-7]{4}-[A-Z2-7]{4})/.exec(await page.locator("body").innerText())?.[1];
   check(!!linkCode, "the owner got a one-time link code");
   const agentAcct = acct(5);
-  const readSig = async (resource, ts) => agentAcct.signTypedData({ domain: { name: "Misthos", version: "1", chainId: 31337, verifyingContract: dep.invoiceBook }, types: { AgentRead: [{ name: "resource", type: "string" }, { name: "ts", type: "uint64" }] }, primaryType: "AgentRead", message: { resource, ts: BigInt(ts) } });
+  const nonceOf = () => [...crypto.getRandomValues(new Uint8Array(16))].map((x) => x.toString(16).padStart(2, "0")).join("");
+  const readHeaders = async (resource, ts, nonce = nonceOf()) => ({
+    "x-agent-wallet": agentAcct.address,
+    "x-agent-ts": String(ts),
+    "x-agent-nonce": nonce,
+    "x-agent-sig": await agentAcct.signTypedData({ domain: { name: "Misthos", version: "1", chainId: 31337, verifyingContract: dep.invoiceBook }, types: { AgentRead: [{ name: "resource", type: "string" }, { name: "ts", type: "uint64" }, { name: "nonce", type: "string" }] }, primaryType: "AgentRead", message: { resource, ts: BigInt(ts), nonce } }),
+  });
   const ts0 = Math.floor(Date.now() / 1000);
-  const wrongSig = await readSig("/api/agent/link/SOMEONE-ELSES-CODE", ts0);
-  const bad = await fetch(`${API_URL}/api/agent/link/${linkCode}`, { method: "POST", headers: { "x-agent-wallet": agentAcct.address, "x-agent-ts": String(ts0), "x-agent-sig": wrongSig } });
+  const bad = await fetch(`${API_URL}/api/agent/link/${linkCode}`, { method: "POST", headers: await readHeaders("/api/agent/link/SOMEONE-ELSES-CODE", ts0) });
   check(bad.status === 401, "a request signed for a different code is refused");
-  const okRes = await fetch(`${API_URL}/api/agent/link/${linkCode}`, { method: "POST", headers: { "x-agent-wallet": agentAcct.address, "x-agent-ts": String(ts0), "x-agent-sig": await readSig(`/api/agent/link/${linkCode}`, ts0) } });
+  const okHeaders = await readHeaders(`/api/agent/link/${linkCode}`, ts0);
+  const okRes = await fetch(`${API_URL}/api/agent/link/${linkCode}`, { method: "POST", headers: okHeaders });
   check(okRes.status === 200, "the agent wallet redeemed the code with a signature of its own");
-  const again = await fetch(`${API_URL}/api/agent/link/${linkCode}`, { method: "POST", headers: { "x-agent-wallet": agentAcct.address, "x-agent-ts": String(ts0), "x-agent-sig": await readSig(`/api/agent/link/${linkCode}`, ts0) } });
+  const replayed = await fetch(`${API_URL}/api/agent/link/${linkCode}`, { method: "POST", headers: okHeaders });
+  check(replayed.status === 401, "the same signed request cannot be replayed");
+  const again = await fetch(`${API_URL}/api/agent/link/${linkCode}`, { method: "POST", headers: await readHeaders(`/api/agent/link/${linkCode}`, ts0) });
   check(again.status === 400, "the code works once");
   await page.reload({ waitUntil: "networkidle" });
   await text("Your agent is linked").waitFor();

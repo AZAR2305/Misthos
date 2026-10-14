@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { z } from "zod";
 import { agentReadTypedData, type Domain, type ExposurePolicy, type InvoiceEvent } from "../core/index.js";
 import type { WalletAdapter } from "../wallets/types.js";
@@ -21,10 +22,11 @@ export function signedReader(args: { backendUrl: string; wallet: WalletAdapter; 
   return {
     async get(path) {
       const ts = now();
+      const nonce = randomBytes(16).toString("hex");
       const wallet = await args.wallet.address();
-      const signature = await args.wallet.signTypedData(agentReadTypedData(args.domain, { resource: path, ts }) as never);
+      const signature = await args.wallet.signTypedData(agentReadTypedData(args.domain, { resource: path, ts, nonce }) as never);
       const res = await (args.fetch ?? fetch)(`${base}${path}`, {
-        headers: { "x-agent-wallet": wallet, "x-agent-ts": String(ts), "x-agent-sig": signature },
+        headers: { "x-agent-wallet": wallet, "x-agent-ts": String(ts), "x-agent-nonce": nonce, "x-agent-sig": signature },
         signal: AbortSignal.timeout(args.timeoutMs ?? 15_000),
       });
       const body = (await res.json().catch(() => ({}))) as { ok?: boolean; data?: unknown; error?: { message?: string } };
@@ -96,12 +98,13 @@ export async function fetchExposureEvents(args: { backendUrl: string; side: "sup
 export async function linkAgent(args: { backendUrl: string; wallet: WalletAdapter; domain: Domain; code: string; now?: () => number; timeoutMs?: number; fetch?: FetchLike }): Promise<{ ok: true } | { ok: false; message: string }> {
   const path = `/api/agent/link/${encodeURIComponent(args.code.trim())}`;
   const ts = (args.now ?? (() => Math.floor(Date.now() / 1000)))();
+  const nonce = randomBytes(16).toString("hex");
   try {
     const wallet = await args.wallet.address();
-    const signature = await args.wallet.signTypedData(agentReadTypedData(args.domain, { resource: path, ts }) as never);
+    const signature = await args.wallet.signTypedData(agentReadTypedData(args.domain, { resource: path, ts, nonce }) as never);
     const res = await (args.fetch ?? fetch)(`${args.backendUrl.replace(/\/$/, "")}${path}`, {
       method: "POST",
-      headers: { "x-agent-wallet": wallet, "x-agent-ts": String(ts), "x-agent-sig": signature },
+      headers: { "x-agent-wallet": wallet, "x-agent-ts": String(ts), "x-agent-nonce": nonce, "x-agent-sig": signature },
       signal: AbortSignal.timeout(args.timeoutMs ?? 15_000),
     });
     const body = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: { message?: string } };
