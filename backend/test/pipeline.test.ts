@@ -182,7 +182,7 @@ describe("the whole path, with the real code on both ends", () => {
     expect(t.log.total).toBe(t.buyerStore.all().length + t.supplierStore.all().length);
 
     // The calendar really came through the signed read: the buyer's kept inputs hold the 3,000 USDC payroll.
-    const decisionHash = t.buyerWallet.calls[0].args[3] as string;
+    const decisionHash = t.buyerWallet.calls[0].args[5] as string;
     const kept = t.buyerStore.preimageOf(decisionHash)!.inputs as any;
     expect(kept.treasury.obligations).toEqual([expect.objectContaining({ amount: "3000000000" })]);
 
