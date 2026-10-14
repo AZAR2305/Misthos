@@ -1,17 +1,25 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useChainData } from "@/components/app/ChainData";
 import { Card, Empty, Money, PageHeader, Skeleton, Stat, Tag, Term, TxLink } from "@/components/ui/kit";
 import { CONFIG } from "@/lib/config";
 import { formatUsd } from "@/lib/core";
 import { dateOnly, shortId } from "@/lib/format";
-import { headline, settlementRows, summarise, type SettlementRow } from "@/lib/stats";
+import { ORIGINS, type Origin } from "@/lib/origins";
+import { REGISTRY } from "@/lib/origins-registry";
+import { headline, ofOrigin, settlementRows, summarise, type SettlementRow } from "@/lib/stats";
 
 /** Public traction numbers, recomputed from chain events in your browser. Nothing is typed in. */
+const LABEL: Record<Origin, string> = { pilot: "Independent pilots", team: "Team runs", unverified: "Unverified" };
+
 export default function Stats() {
   const chain = useChainData();
-  const rows = useMemo(() => settlementRows(chain.invoices, chain.time), [chain.invoices, chain]);
+  // One origin at a time, never added together. The default is the one that counts as traction: independent pilots with a written note.
+  const [origin, setOrigin] = useState<Origin>("pilot");
+  const everything = useMemo(() => settlementRows(chain.invoices, chain.time, REGISTRY), [chain.invoices, chain]);
+  const rows = useMemo(() => ofOrigin(everything, origin), [everything, origin]);
+  const counts = useMemo(() => Object.fromEntries(ORIGINS.map((o) => [o, ofOrigin(everything, o).length])) as Record<Origin, number>, [everything]);
   const s = useMemo(() => summarise(rows), [rows]);
   const open = chain.invoices.filter((i) => i.status === "registered" || i.status === "approved").length;
 
@@ -28,7 +36,16 @@ export default function Stats() {
           </>
         }
       />
-      <p className="muted tiny"><Tag>testnet</Tag> All activity on {CONFIG.networkName}, including test runs. Not a measure of customers.</p>
+      <div role="tablist" aria-label="Where the activity comes from" style={{ display: "flex", gap: 8, flexWrap: "wrap", margin: "8px 0" }}>
+        {ORIGINS.map((o) => (
+          <button key={o} type="button" role="tab" aria-selected={origin === o} className={origin === o ? "btn btn-primary btn-sm" : "btn btn-ghost btn-sm"} onClick={() => setOrigin(o)}>
+            {LABEL[o]} ({counts[o]})
+          </button>
+        ))}
+      </div>
+      <p className="muted tiny">
+        <Tag>testnet</Tag> {origin === "pilot" ? "Independent pilots only: businesses with a written independence note in the repo. This is the only view that counts as traction." : origin === "team" ? "Runs by wallets the build team controls. A demonstration, not traction, and never added to the pilot numbers." : "Activity from wallets nobody has documented. Real or not, it is not counted until someone does."}
+      </p>
 
       {chain.status === "loading" ? (
         <Skeleton rows={4} />
@@ -44,7 +61,7 @@ export default function Stats() {
           </div>
 
           {rows.length === 0 ? (
-            <Empty title="No early payment yet" body="When the first invoice is paid early, this page shows how many days it saved and what it cost." />
+            <Empty title={origin === "pilot" ? "No independent pilot yet" : "Nothing here yet"} body={origin === "pilot" ? "No business outside the build team has settled an invoice yet, so this is empty on purpose. Team runs and unverified activity are under the other tabs, labelled." : "When an invoice of this kind is paid early, this page shows how many days it saved and what it cost."} />
           ) : (
             <>
               <Card title="Wait before and after">

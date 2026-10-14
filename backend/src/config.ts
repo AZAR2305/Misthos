@@ -37,7 +37,6 @@ const schema = z.object({
   /** Pays gas to submit registerInvoice for suppliers. It never holds user funds. Optional. */
   RELAYER_PRIVATE_KEY: optional(z.string().regex(/^0x[0-9a-fA-F]{64}$/, "not a 32-byte hex key")),
   /** What the public stats call this data (spec 6: stats show pilot by default). Honest default: sandbox. */
-  DATA_SOURCE: z.enum(["pilot", "sandbox"]).default("sandbox"),
 });
 
 export type Config = ReturnType<typeof loadConfig>;

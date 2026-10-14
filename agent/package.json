@@ -10,6 +10,8 @@
     "typecheck": "tsc --noEmit",
     "doctor": "tsx src/doctor.ts",
     "audit-decision": "tsx src/audit.ts",
+    "shadow": "tsx src/shadow-cli.ts",
+    "applied-report": "tsx src/applied.ts",
     "supplier": "tsx src/runners/supplier.ts",
     "buyer": "tsx src/runners/buyer.ts"
   },

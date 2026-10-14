@@ -3,6 +3,8 @@ import { pathToFileURL } from "node:url";
 import { z } from "zod";
 import { canonicalJson, commitTo, decideBuyerOffer, hashDecision, planLadder, type BuyerDecisionInput, type SupplierPrefs } from "./core/index.js";
 import { DecisionStore, PolicyBook, type LoggedDecision } from "./agents/index.js";
+import { vaultFromEnv, type Vault } from "./agents/vault.js";
+import { loadEnvFile } from "./config.js";
 
 /**
  * Replay and verify one logged decision (SRS NFR-04 and FR-10). Given the agent's own files (its decision log, which holds the
@@ -123,9 +125,9 @@ export function auditDecision(entry: LoggedDecision, preimage: { policyVersion: 
 }
 
 /** Load an agent's files from its data directory and audit one entry by hash (a prefix of at least 10 characters is enough). */
-export function auditFromFiles(dataDir: string, name: "buyer" | "supplier", hashOrPrefix: string): AuditReport {
-  const store = new DecisionStore({ file: join(dataDir, `${name}-decisions.jsonl`) }); // throws if the chain was changed
-  const book = new PolicyBook(join(dataDir, `${name}-policy.jsonl`));
+export function auditFromFiles(dataDir: string, name: "buyer" | "supplier", hashOrPrefix: string, vault?: Vault): AuditReport {
+  const store = new DecisionStore({ file: join(dataDir, `${name}-decisions.jsonl`), vault }); // throws if the chain was changed
+  const book = new PolicyBook(join(dataDir, `${name}-policy.jsonl`), undefined, vault);
   const matches = store.all().filter((e) => e.hash.startsWith(hashOrPrefix.toLowerCase()));
   if (matches.length !== 1) throw new Error(matches.length ? "That prefix matches more than one entry; give more characters." : "No entry in this log has that hash.");
   const entry = matches[0]!;
@@ -133,13 +135,15 @@ export function auditFromFiles(dataDir: string, name: "buyer" | "supplier", hash
 }
 
 function main() {
+  loadEnvFile();
   const [hash, dir = process.env.AGENT_DATA_DIR ?? ".agent-data", name = "buyer"] = process.argv.slice(2);
   if (!hash || (name !== "buyer" && name !== "supplier")) {
     console.error("usage: pnpm --filter @misthos/agent audit-decision <hash or prefix> [data dir] [buyer|supplier]");
     process.exit(2);
   }
   try {
-    const r = auditFromFiles(dir, name, hash);
+    // The private files are sealed with AGENT_STORE_KEY: the owner's key opens them, nobody else's does.
+    const r = auditFromFiles(dir, name, hash, process.env.AGENT_STORE_KEY ? vaultFromEnv(process.env.AGENT_STORE_KEY) : undefined);
     console.log(`${r.ok ? "VERIFIED" : "FAILED"}  ${r.hash}${r.policyVersion ? `  (${r.policyVersion})` : ""}`);
     for (const c of r.checks) console.log(`  ${c.ok ? "ok  " : "FAIL"} ${c.name}: ${c.detail}`);
     for (const line of r.replay ?? []) console.log(`  ${line}`);

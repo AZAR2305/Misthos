@@ -1,0 +1,43 @@
+# VERIFY: this workflow has not been run on GitHub from this machine. Every command in it was run locally (see docs/DECISIONS.md).
+name: ci
+on: [push, pull_request]
+
+jobs:
+  node:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - uses: foundry-rs/foundry-toolchain@v1 # the backend tests start a real Anvil chain
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @misthos/agent exec tsc --noEmit
+      - run: pnpm --filter @misthos/agent test
+      - run: pnpm --filter @misthos/backend exec tsc --noEmit
+      - run: pnpm --filter @misthos/backend test
+      - run: pnpm --filter @misthos/frontend exec tsc --noEmit
+      - run: pnpm --filter @misthos/frontend test
+
+  contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: foundry-rs/foundry-toolchain@v1
+      - name: Install the contract's libraries (contract/lib is not committed; see contract/README.md)
+        working-directory: contract
+        run: forge install --no-git OpenZeppelin/openzeppelin-contracts foundry-rs/forge-std
+      - run: forge test
+        working-directory: contract
+
+  beancount:
+    # The ledger export must be valid double-entry bookkeeping. The fixtures are the REAL exports of the two real settlements of 14 Oct 2026
+    # (public chain data); the backend test suite separately generates fresh exports and checks they balance.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install beancount
+      - run: bean-check backend/test/fixtures/real-run-buyer.beancount
+      - run: bean-check backend/test/fixtures/real-run-supplier.beancount

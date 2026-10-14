@@ -120,3 +120,16 @@ describe("possible duplicate invoices", () => {
     expect(findDuplicate(all, all[1] as never)).toBeUndefined();
   });
 });
+
+import { walletNotice } from "../src/lib/walletnotice";
+describe("an agent wallet problem is shown as a plain step", () => {
+  it("activation and expired sessions become steps with the exact command; anything else is shown as it is", () => {
+    const a = walletNotice('WALLET_NOT_ACTIVATED: your agent wallet has not been activated yet. Activate your wallet: send 0.01 USDC from it to any address you control. $env:CIRCLE_CLI_HOME="C:/h/circle-buyer"; pnpm exec circle wallet transfer <any address you control> --amount 0.01 --address 0x1 --chain ARC-TESTNET');
+    expect(a.title).toBe("Activate your wallet");
+    expect(a.command).toMatch(/^\$env:CIRCLE_CLI_HOME="C:\/h\/circle-buyer"; pnpm exec circle wallet transfer/);
+    const s = walletNotice('SESSION_EXPIRED: not logged in Log in again: $env:CIRCLE_CLI_HOME="C:/h/circle-supplier"; pnpm exec circle wallet login <the email you used for this agent> --testnet   (then type the code Circle emails you)');
+    expect(s.title).toBe("Log your agent in again");
+    expect(s.command).toContain("circle wallet login");
+    expect(walletNotice("CLI_ERROR: something odd")).toEqual({ title: "Its wallet needs attention", body: "CLI_ERROR: something odd" });
+  });
+});

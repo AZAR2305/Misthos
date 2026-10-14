@@ -71,3 +71,27 @@ describe("an expired Circle session tells you the exact command for that agent's
     expect(e.hint).toContain('CIRCLE_CLI_HOME="C:/x/circle-supplier"');
   });
 });
+
+import { CircleCliAdapter, activateCommand } from "../src/wallets/circleCli.js";
+describe("a new Circle wallet must be activated once, and the person is told how in plain words", () => {
+  const real = "Error: This wallet isn't deployed on-chain yet. Send any transaction first (e.g. a zero-value transfer) to deploy it before signing.";
+  it("the CLI's own message becomes WALLET_NOT_ACTIVATED with the exact step for this wallet", () => {
+    const e = classifyCliFailure({ exitCode: 1, stdout: "", stderr: real }, "x", { address: "0x6afd3cac8e4ac3d15388b58ac999481c96ffdf6f", cliHome: "C:/h/circle-supplier" });
+    expect(e.code).toBe("WALLET_NOT_ACTIVATED");
+    expect(e.message).toMatch(/not been activated/);
+    expect(e.hint).toMatch(/Activate your wallet/);
+    expect(e.hint).toContain("--address 0x6afd3cac8e4ac3d15388b58ac999481c96ffdf6f");
+    expect(e.hint).toContain('CIRCLE_CLI_HOME="C:/h/circle-supplier"');
+    expect(activateCommand()).toContain("<this wallet>");
+  });
+  const adapter = (code: string | undefined | null) => {
+    const runner = async (args: readonly string[]) => ({ exitCode: 0, stdout: JSON.stringify(args.includes("list") ? { data: [{ address: "0x6afd3cac8e4ac3d15388b58ac999481c96ffdf6f" }] } : { ok: true }), stderr: "" });
+    return new CircleCliAdapter({ address: "0x6afd3cac8e4ac3d15388b58ac999481c96ffdf6f", runner, codeOf: async () => code as never });
+  };
+  it("health says so before anything is signed: no code on chain means not activated", async () => {
+    const h = await adapter("0x").health();
+    expect(h.ok).toBe(false);
+    expect(h.detail).toMatch(/^WALLET_NOT_ACTIVATED: .*Activate your wallet/);
+    expect((await adapter("0x7f").health()).ok).toBe(true);
+  });
+});

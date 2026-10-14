@@ -1,0 +1,22 @@
+{
+  "note": "Who is who on chain, for tagging activity. 'team' wallets are ones the build team created or controls: anything they touch is source=team whatever anyone says. A wallet is only ever 'pilot' if a pilot entry below has a complete independence note AND docs/TRACTION.md records the same note (a test checks both). Everything else is 'unverified'. Never edit this to make a number look better.",
+  "team": [
+    {
+      "label": "Contract deployer / fee recipient",
+      "address": "0xe56357e6efe146a33223dd90f11bca992c1b137c"
+    },
+    {
+      "label": "Backend relayer",
+      "address": "0xd8d88a6ef074004c308e240bd7f2499363e80c8d"
+    },
+    {
+      "label": "Supplier agent wallet (Circle)",
+      "address": "0x6afd3cac8e4ac3d15388b58ac999481c96ffdf6f"
+    },
+    {
+      "label": "Buyer agent wallet (Circle)",
+      "address": "0x156af8e7298fc862c54b8d72b2b232770ceefa15"
+    }
+  ],
+  "pilots": []
+}

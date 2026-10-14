@@ -87,7 +87,7 @@ async function main() {
   check(health.db.ok && health.rpc.ok && health.relayer.configured, "backend healthy: db, rpc and relayer are on");
 
   log("3. build the app against the backend");
-  const env = { ...process.env, NEXT_DIST_DIR: ".next-e2e-acct", NEXT_PUBLIC_CHAIN_ID: "31337", NEXT_PUBLIC_RPC_URL: RPC, NEXT_PUBLIC_INVOICE_BOOK_ADDRESS: dep.invoiceBook, NEXT_PUBLIC_USDC_ADDRESS: dep.usdc, NEXT_PUBLIC_DEPLOY_BLOCK: String(dep.deployBlock), NEXT_PUBLIC_EXPLORER_URL: "http://localhost:1", NEXT_PUBLIC_API_URL: API_URL };
+  const env = { ...process.env, NEXT_DIST_DIR: ".next-e2e-acct", NEXT_PUBLIC_CHAIN_ID: "31337", NEXT_PUBLIC_RPC_URL: RPC, NEXT_PUBLIC_INVOICE_BOOK_ADDRESS: dep.invoiceBook, NEXT_PUBLIC_USDC_ADDRESS: dep.usdc, NEXT_PUBLIC_DEPLOY_BLOCK: String(dep.deployBlock), NEXT_PUBLIC_EXPLORER_URL: "http://localhost:1", NEXT_PUBLIC_API_URL: API_URL, NEXT_PUBLIC_BUYER_AGENT_URL: "", NEXT_PUBLIC_SUPPLIER_AGENT_URL: "" };
   const cwd = path.resolve(import.meta.dirname, "..");
   const nextBin = path.join(cwd, "node_modules", "next", "dist", "bin", "next");
   execFileSync(process.execPath, [nextBin, "build"], { cwd, env, stdio: "pipe", maxBuffer: 64 * 1024 * 1024 });
@@ -362,6 +362,31 @@ async function main() {
   await text("Sign in with your wallet").waitFor();
   const me3 = await page.evaluate(async (u) => (await (await fetch(`${u}/api/me`, { credentials: "include" })).json()).data, API_URL);
   check(me3 === null, "signed out on the server too");
+
+  log("11. shadow report: computed in the browser, nothing sent, nothing stored");
+  await page.goto(`${BASE}/shadow`);
+  await page.getByRole("heading", { name: "Shadow report" }).waitFor();
+  const day = (n) => new Date(Date.now() + n * 86_400_000).toISOString().slice(0, 10);
+  const sent = [];
+  page.on("request", (r) => sent.push(r.url()));
+  const storageBefore = await page.evaluate(() => JSON.stringify([Object.entries(localStorage), Object.entries(sessionStorage)]));
+  await page.fill("#sh-cash", "12000");
+  await page.fill("#sh-floor", "5000");
+  await page.fill("#sh-hurdle", "0");
+  await page.fill("#sh-invoices", `counterparty,amount,due_date,approved_date,offer_rate_pct
+Acme Ltd,2000,${day(27)},${day(-1)},
+Birch Co,1500,${day(20)},,`);
+  sent.length = 0;
+  await page.getByRole("button", { name: "Compute the shadow report" }).click();
+  await page.getByText("Your agent would pay").waitFor();
+  check((await page.getByText("Shadow report: computation on your data. No funds moved.").count()) >= 2, "the report carries the shadow label");
+  check((await page.getByText("Pay early").count()) >= 1 && (await page.getByText("cannot be paid early under the rules").count()) >= 1, "one invoice is paid early and the unapproved one is held with the agent's own reason");
+  const toServer = sent.filter((u) => u.startsWith(API_URL) || u.startsWith(RPC));
+  check(toServer.length === 0, `computing sent nothing to the API or the chain${toServer.length ? ": " + toServer.join(", ") : ""}`);
+  const storageAfter = await page.evaluate(() => JSON.stringify([Object.entries(localStorage), Object.entries(sessionStorage)]));
+  check(storageAfter === storageBefore, "computing wrote nothing to the browser's storage");
+  const report = await page.locator("main").innerText();
+  check(!/12,000|5,000/.test(report.split("Shadow report as of")[1] ?? ""), "the report does not repeat your cash or your floor");
 
   check(errors.length === 0, `no console errors in the app${errors.length ? ": " + errors.slice(0, 3).join(" | ") : ""}`);
   await browser.close();

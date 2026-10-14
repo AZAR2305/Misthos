@@ -49,6 +49,7 @@ export type WalletErrorCode =
   | "CLI_ERROR"
   | "CLI_NOT_FOUND"
   | "TERMS_NOT_ACCEPTED"
+  | "WALLET_NOT_ACTIVATED"
   | "SIGNATURE_MISMATCH"
   | "BAD_OUTPUT"
   | "NOT_CONFIGURED"

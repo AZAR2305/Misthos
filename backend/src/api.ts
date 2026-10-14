@@ -25,7 +25,7 @@ import { exposureEvents, payablesOf, toInvoiceEvents } from "./exposure";
 import type { Relayer, RegisterPayload } from "./relayer";
 import { rateLimit } from "./ratelimit";
 import { fromNumeric, ser, toNumeric } from "./serialize";
-import { findDuplicate, GENESIS_HASH, agentReadTypedData, decisionTypedData, evaluateExposure, findPrivateKey, hashDecision, INVOICE_BOOK_ABI, balanced, domain, invoiceId, invoiceTypedData, offerTypedData, journalFrom, settlementRows, summarise, toBeancount, toCsv, verifyChain, type InvoiceRecord, type StoredDecision } from "./shared";
+import { findDuplicate, ofOrigin, REGISTRY, GENESIS_HASH, agentReadTypedData, decisionTypedData, evaluateExposure, findPrivateKey, hashDecision, INVOICE_BOOK_ABI, balanced, domain, invoiceId, invoiceTypedData, offerTypedData, journalFrom, settlementRows, summarise, toBeancount, toCsv, verifyChain, type InvoiceRecord, type StoredDecision } from "./shared";
 
 export interface AppDeps {
   config: Config;
@@ -150,7 +150,6 @@ export function createApp(d: AppDeps) {
       contract: { configured: !!config.INVOICE_BOOK, address: config.INVOICE_BOOK ?? null, chainId: config.ARC_CHAIN_ID },
       indexer: { cursor, lag: rpc.head !== undefined && cursor !== null ? rpc.head - cursor : null, lastError: d.indexer?.status.lastError ?? null, running: !!d.indexer },
       relayer: await relayerHealth(),
-      dataSource: config.DATA_SOURCE,
     });
   });
 
@@ -245,8 +244,12 @@ export function createApp(d: AppDeps) {
   });
 
   app.get("/api/stats", async (c) => {
-    const rows = settlementRows(await indexed(), await blockTimes(db));
-    return ok(c, { source: config.DATA_SOURCE, summary: summarise(rows), settlements: rows });
+    // Origins are never added together. The default is the one that counts as traction: independent pilots with a written note. Everything else is shown only when asked for, labelled.
+    const q = z.object({ source: z.enum(["pilot", "team", "unverified"]).default("pilot") }).parse(c.req.query());
+    const all = settlementRows(await indexed(), await blockTimes(db), REGISTRY);
+    const rows = ofOrigin(all, q.source);
+    const counts = { pilot: ofOrigin(all, "pilot").length, team: ofOrigin(all, "team").length, unverified: ofOrigin(all, "unverified").length };
+    return ok(c, { source: q.source, counts, summary: summarise(rows), settlements: rows });
   });
 
   const journalFor = async (c: Context<Env>) => {

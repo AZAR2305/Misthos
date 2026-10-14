@@ -4,7 +4,15 @@ Why this exists: judges weigh **real use** (30%). Test USDC counts. Runs where o
 labels them as team-operated. So the one thing that moves the score is **a different person or business with their own wallet and a real invoice**.
 Nobody on the build side can be that counterparty. This guide is what you hand to them.
 
-## What the counterparty needs (about 15 minutes)
+## Two kinds of pilot
+| Type | What they have | What they do | Counts as |
+|---|---|---|---|
+| **(a) Browser wallet and test USDC** (about 15 minutes) | MetaMask, Rabby or Coinbase Wallet, and test USDC from the faucet | A real settlement on the live site (the steps below) | **pilot**, once `docs/TRACTION.md` holds a written independence note for them |
+| **(b) Neither** | Real invoices and real cash figures, but no wallet | A **shadow report** at `/shadow` in their browser: what the agent would do with their invoices. Nothing is uploaded or stored | **shadow**: engagement, never on-chain traction. A wallet-free claim needs managed wallets (T10), which are not built yet |
+
+Be plain with (b): a shadow report shows the value, it is not a settlement. Do not describe it as usage.
+
+## What the counterparty needs for type (a) (about 15 minutes)
 1. A browser wallet (MetaMask, Rabby or Coinbase Wallet) on **Arc Testnet** (chain 5042002, RPC `https://rpc.testnet.arc.io`, explorer
    `https://explorer.testnet.arc.io`, currency USDC). The site adds the network for them on the first "Switch" press.
 2. Test USDC from https://faucet.circle.com (Arc Testnet). A supplier needs almost none (the server pays gas to register). A buyer needs
@@ -32,6 +40,8 @@ Either way the two wallets must be **different people's wallets**. Do not run bo
    login per agent (an email per agent) and a model key. Not required for a first pilot.
 
 ## What counts, and what to record
+Three origins, never added together: **pilot** (an independent business with a written note), **team** (wallets we control) and **unverified** (undocumented wallets). `/stats` shows pilot by default. Shadow reports are a fourth kind of thing and are not on `/stats` at all.
+
 Write each real deal in `docs/TRACTION.md` as you go: date, who (a business name you can disclose, or "anonymous supplier"), face amount, rate
 cleared, days early, transaction link. State plainly which wallets are independent of the team. Never include team-only test runs in the
 traction answer; the two Arc settlements already on chain (25 and 40 USDC, 14 Oct) were run by the build team and are labelled that way.

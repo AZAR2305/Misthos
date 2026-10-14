@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { walletNotice } from "@/lib/walletnotice";
 import { Card, Notice } from "@/components/ui/kit";
 import { useAgentHealth } from "@/lib/hooks";
 
@@ -25,7 +26,15 @@ export function AgentPanel({ role, url }: { role: "supplier" | "buyer"; url: str
               ? "Your agent can offer early payment on approved invoices, starting at 0%, and stops at the limit you set."
               : "Your agent answers offers, settles those that fit your policy, and plans the best set to pay early."}
           </p>
-          {h.data.wallet && !h.data.wallet.ok && <Notice kind="warn" title="Its wallet needs attention">{h.data.wallet.detail}</Notice>}
+          {h.data.wallet && !h.data.wallet.ok && (() => {
+            const n = walletNotice(h.data.wallet!.detail ?? "The wallet could not be checked.");
+            return (
+              <Notice kind="warn" title={n.title}>
+                {n.body}
+                {n.command && <pre className="code" style={{ whiteSpace: "pre-wrap", wordBreak: "break-all", marginTop: 8 }}>{n.command}</pre>}
+              </Notice>
+            );
+          })()}
           {h.data.modelConfigured === false && <Notice kind="warn" title="No model key">Without a model key it takes no action on its own.</Notice>}
         </>
       ) : h.state === "offline" ? (

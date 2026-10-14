@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+const EMPTY_REGISTRY = { team: [], pilots: [] };
 import { balanced, journalFor, journalFrom, toBeancount, toCsv } from "../src/lib/accounting";
 import { buildInvoices, type RawLog } from "../src/lib/chain/invoices";
 import { decodeOfferCode, encodeOfferCode, offerCodeSchema, randomNonce, type OfferCode } from "../src/lib/offers";
@@ -83,7 +84,7 @@ describe("accounting", () => {
 describe("stats", () => {
   const [inv] = buildInvoices(logs);
   it("derives the Appendix B numbers from chain events", () => {
-    const rows = settlementRows([inv!], time);
+    const rows = settlementRows([inv!], time, EMPTY_REGISTRY);
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ daysEarly: 27, discount: 14_794_520n, aprBps: 1007n });
     const s = summarise(rows);
@@ -95,7 +96,7 @@ describe("stats", () => {
   });
   it("reports the share that cleared at 0%", () => {
     const zero = { ...inv!, settled: { ...inv!.settled!, rateBps: 0, discount: 0n } };
-    const s = summarise(settlementRows([zero], time));
+    const s = summarise(settlementRows([zero], time, EMPTY_REGISTRY));
     expect(s.zeroSharePct).toBe(100);
     expect(headline(s)).toContain("100% cleared at 0%");
   });

@@ -1,5 +1,6 @@
 import { BPS, SECONDS_PER_YEAR, effectiveAprBps, formatUsd } from "./core";
 import type { InvoiceRecord } from "./chain/invoices";
+import { originOfInvoice, type Origin, type OriginRegistry } from "./origins";
 
 /** Public traction numbers, recomputed from chain events (CLAUDE.md P10). Nothing here is typed in or estimated. */
 export interface SettlementRow {
@@ -15,9 +16,11 @@ export interface SettlementRow {
   daysEarly: number;
   aprBps: bigint;
   tx: `0x${string}`;
+  /** Where it came from: pilot (counts), team (our own wallets), or unverified. Origins are never added together. */
+  origin: Origin;
 }
 
-export function settlementRows(invoices: readonly InvoiceRecord[], time: (block: bigint) => number | undefined): SettlementRow[] {
+export function settlementRows(invoices: readonly InvoiceRecord[], time: (block: bigint) => number | undefined, registry: OriginRegistry): SettlementRow[] {
   const rows: SettlementRow[] = [];
   for (const inv of invoices) {
     const s = inv.settled;
@@ -38,6 +41,7 @@ export function settlementRows(invoices: readonly InvoiceRecord[], time: (block:
       daysEarly: Math.floor(Number(secondsEarly) / 86_400),
       aprBps: effectiveAprBps(s.discount, s.net, secondsEarly),
       tx: s.tx,
+      origin: originOfInvoice(inv, registry),
     });
   }
   return rows.sort((a, b) => b.paidSec - a.paidSec);
@@ -94,3 +98,6 @@ export function headline(s: Summary): string {
   const zero = s.zeroSharePct ? ` ${s.zeroSharePct}% cleared at 0%.` : "";
   return `${plural(s.count, "invoice was", "invoices were")} paid${med} early, moving ${formatUsd(s.net)} in USDC.${apr}${zero}`;
 }
+
+/** Only the rows of one origin. There is deliberately no function that totals across origins. */
+export const ofOrigin = (rows: readonly SettlementRow[], origin: Origin) => rows.filter((r) => r.origin === origin);

@@ -92,11 +92,22 @@ function cliError(r: CliRunResult): CliError {
   return { message: text.split("\n").filter(Boolean).slice(-1)[0] ?? `The Circle CLI exited with code ${r.exitCode}.` };
 }
 
+/**
+ * A Circle Agent Wallet is a smart-contract wallet. It cannot sign until it has sent one transaction, which deploys it (found on the first real run).
+ * This is the plain instruction: any tiny transfer, from this wallet, to anyone.
+ */
+export function activateCommand(address?: string, cliHome?: string): string {
+  return `${cliHome ? `$env:CIRCLE_CLI_HOME="${cliHome}"; ` : ""}pnpm exec circle wallet transfer <any address you control> --amount 0.01 --token 0x3600000000000000000000000000000000000000 --address ${address ?? "<this wallet>"} --chain ARC-TESTNET --rpc-url https://rpc.testnet.arc.io`;
+}
+
 /** Map a failed CLI run to a typed error. Exported for tests. */
-export function classifyCliFailure(r: CliRunResult, loginHint = "circle wallet login <email> --testnet"): WalletError {
+export function classifyCliFailure(r: CliRunResult, loginHint = "circle wallet login <email> --testnet", ctx: { address?: string; cliHome?: string } = {}): WalletError {
   if (r.spawnError === "ENOENT") return new WalletError("CLI_NOT_FOUND", "The Circle CLI could not be started.", "Install it with: pnpm add -D @circle-fin/cli");
   const e = cliError(r);
   const text = `${e.code ?? ""} ${e.message}`;
+  if (/isn.t deployed on-chain|not deployed on-chain|wallet is not deployed/i.test(text)) {
+    return new WalletError("WALLET_NOT_ACTIVATED", "Your agent wallet has not been activated yet. A Circle wallet needs one small transaction before it can sign.", `Activate your wallet: send 0.01 USDC from it to any address you control. ${activateCommand(ctx.address, ctx.cliHome)}`);
+  }
   if (/terms/i.test(text) && /accept|required/i.test(text)) {
     return new WalletError("TERMS_NOT_ACCEPTED", e.message, "Accept the Circle CLI Terms of Use yourself (run `circle wallet status` once interactively).");
   }
@@ -197,6 +208,8 @@ export interface CircleCliAdapterOptions {
   /** Delays before each retry of a RATE_LIMITED call. */
   backoffMs?: readonly number[];
   loginHint?: string;
+  /** Reads the code at the wallet address. Replaceable for tests; by default a real call to the RPC (skipped, and never assumed, when no RPC is set). */
+  codeOf?: (address: Address) => Promise<string | undefined>;
 }
 
 export class CircleCliAdapter implements WalletAdapter {
@@ -219,6 +232,16 @@ export class CircleCliAdapter implements WalletAdapter {
     return this.o.address;
   }
 
+  private async codeOf(): Promise<string | undefined | null> {
+    if (this.o.codeOf) return this.o.codeOf(this.o.address);
+    if (!this.o.rpcUrl) return null; // cannot tell: not a failure, not a pass
+    try {
+      return (await createPublicClient({ transport: http(this.o.rpcUrl) }).getCode({ address: this.o.address })) ?? "0x";
+    } catch {
+      return null;
+    }
+  }
+
   /** One call at a time. A rate limit is retried with backoff; every other failure surfaces as a typed error. */
   private run(args: readonly string[]): Promise<unknown> {
     const job = async (): Promise<unknown> => {
@@ -229,7 +252,7 @@ export class CircleCliAdapter implements WalletAdapter {
           if (json === undefined) throw new WalletError("BAD_OUTPUT", "The Circle CLI returned no JSON.", r.stdout.slice(0, 200));
           return json;
         }
-        const err = classifyCliFailure(r, this.o.loginHint ?? reloginCommand(this.o.cliHome));
+        const err = classifyCliFailure(r, this.o.loginHint ?? reloginCommand(this.o.cliHome), { address: this.o.address, cliHome: this.o.cliHome });
         if (err.code === "RATE_LIMITED" && attempt < this.backoff.length) {
           await new Promise((res) => setTimeout(res, this.backoff[attempt]));
           continue;
@@ -285,7 +308,11 @@ export class CircleCliAdapter implements WalletAdapter {
       await this.run(["wallet", "status", "--type", "agent"]);
       const list = await this.run(["wallet", "list", "--chain", this.chain, "--type", "agent"]);
       const listed = findString(list, (s) => s.toLowerCase() === this.o.address.toLowerCase());
-      return listed ? { ok: true } : { ok: false, detail: "The configured address is not an agent wallet of the current login." };
+      if (!listed) return { ok: false, detail: "The configured address is not an agent wallet of the current login." };
+      // A smart-contract wallet has code on chain once it has sent its first transaction. Without it, signing fails, so say so before anything is attempted.
+      const code = await this.codeOf();
+      if (code === "0x") return { ok: false, detail: `WALLET_NOT_ACTIVATED: your agent wallet has not been activated yet. Activate your wallet: send 0.01 USDC from it to any address you control. ${activateCommand(this.o.address, this.o.cliHome)}` };
+      return { ok: true };
     } catch (e) {
       const err = e as WalletError;
       return { ok: false, detail: err.hint ? `${err.code}: ${err.message} ${err.hint}` : `${err.code}: ${err.message}` };

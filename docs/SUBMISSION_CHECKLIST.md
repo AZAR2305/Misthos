@@ -1,0 +1,24 @@
+# Submission checklist (spec section 14): what is true on 14 Oct 2026
+
+Honest status per line. **PASS** means it was run and the evidence is named. **NOT DONE** and **UNKNOWN** are not softened. Re-run before submitting; do not trust this file over the system.
+
+| # | Line | Status | Evidence / what is missing |
+|---|---|---|---|
+| 1 | `forge test` green; vitest green; `pnpm e2e:testnet` on the real testnet | **PARTLY** | Contract 59/59, agent 236, backend 91, frontend 56, all green. There is no single `e2e:testnet` command: its parts were run by hand against the real testnet (`agent/scripts/testnet-invoice.ts`, two real settlements, `agent/scripts/failclosed-matrix.ts` 4 of 4). Wrap them into one script before the final run. |
+| 2 | The demo used at least one real Circle Agent Wallet, and the video shows `circle wallet list --type agent --chain ARC-TESTNET` | **PARTLY** | Both settlements used real Circle Agent Wallets (list output in `docs/DECISIONS.md`). **The video does not exist yet.** |
+| 3 | Two separate agent processes; no shared memory | **PASS** | The supplier agent (port 4101) and buyer agent (4102) are separate OS processes that talk only over HTTP, run for the two real settlements. |
+| 4 | Judge mode works from a clean browser; the Beancount export passes `bean-check` | **NOT DONE** | Public pages work locally in a real browser (`e2e:accounts`, `e2e:local`). There is no hosted site, so no clean-browser run of a live URL. `bean-check` has not been run on an export (T13). |
+| 5 | The three failure-mode tests pass, including a forwarded claim link | **PASS** | `backend/test/claims-safety.test.ts` (wrong vendor, forwarded link, fake or duplicate invoice) and `agent/test/prompt-and-retry.test.ts` (retry pays twice); contract fuzz and invariants. |
+| 6 | `/api/log/verify` returns ok | **PASS (tests), UNKNOWN (live)** | Returns `ok: true` in `backend/test/pipeline.test.ts` after a real two-agent run in one process. The two real settlements ran with `BACKEND_URL` unset, so the live log is empty. Check it on the hosted backend. |
+| 7 | All injected-attack tests fail safely, including a forged agent message and an MCP write without confirm | **PARTLY** | Forged and wrong-signer agent messages, replayed nonces, replayed signed reads, forwarded links, reused and expired tokens, free text in prompts: tested and failing safely. **No MCP server exists**, so the MCP-write case does not apply. The full injected-attack list has not been run as one suite. |
+| 8 | ERC-8004 feedback transactions are visible on the explorer | **PASS** | Registrations [`0x8571bde2…87bd`](https://explorer.testnet.arc.io/tx/0x8571bde25695d50039e27c297238f17e363923096d2ea0a93f3b89d084ce87bd) and [`0x2ab0542e…476c`](https://explorer.testnet.arc.io/tx/0x2ab0542eb6284dbb9967438f933ff288e98e224d249cedf030090d77073f476c); feedback `0xa5484ec8…d8eb`, `0x20f0f339…ed9c`, `0x5d74a9ac…9b2b`, `0x1e68ca4d…cf3f`. All from our own agents. |
+| 9 | Live link works from a clean browser; no console errors on the MVP pages | **NOT DONE** | No hosted site (T1 needs your Vercel and Railway or Fly accounts). Locally, the production build passes the browser tests with no console errors and a content security policy active. |
+| 10 | Video under 3:00, a real on-chain settlement, the 0% case, the explorer | **NOT DONE** | Shot list in `docs/VIDEO_SHOTLIST.md`. |
+| 11 | Traction answers written: businesses onboarded, invoices, value moved, days gained, share cleared at 0% | **PASS (written), and they are zero for traction** | Independent businesses onboarded: **0**. Team runs, shown separately and not traction: 2 invoices, 65 USDC face, 1 of 2 cleared at 0%, 29 and 44 days early. `docs/TRACTION.md`. |
+| 12 | No secrets in git history | **PASS** | Scanned all commits for Groq, Anthropic, relayer, deployer and store keys: none (counts only; no key printed). The Groq key that was pasted into chat is only in the git-ignored `agent/.env` and **must be rotated**. |
+| 13 | Checkpoint submitted Sat 10 Oct | **UNKNOWN** | Not something this repository can show. Owner to confirm. |
+| 14 | Final submitted by the deadline | **NOT DONE** | Target Sat 17 Oct 10 PM IST; hard cutoff reported as Sun 18 Oct 09:29 AM IST, **NOT CONFIRMED in writing**. Plan around the earlier time. |
+| 15 | README, video and live link match each other | **NOT CHECKABLE** | The video and live link do not exist. The README is written against the numbers above. |
+
+## What blocks the rest
+Hosting (T1) needs your accounts: a Vercel account for the site, Railway or Fly for the backend and agents with a persistent volume, and the Circle login step on that host. Nobody else can create those. The video needs the live site or a labelled local recording. A pilot needs a real independent business. None of these can be faked, and none are.

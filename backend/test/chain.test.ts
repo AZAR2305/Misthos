@@ -120,8 +120,12 @@ describe("API, indexer and relayer against a real chain", () => {
 
     const [log] = await pub.getContractEvents({ address: dep.invoiceBook, abi: INVOICE_BOOK_ABI, eventName: "EarlySettled", fromBlock: BigInt(dep.deployBlock) });
     const { net, discount, fee, rateBps } = log!.args as { net: bigint; discount: bigint; fee: bigint; rateBps: number };
-    const stats = (await supplier.get("/api/stats")).json.data;
-    expect(stats.source).toBe("sandbox");
+    // These are Anvil test wallets nobody has documented, so the default view (independent pilots) is empty and the settlement is "unverified", never counted as traction.
+    const pilotView = (await supplier.get("/api/stats")).json.data;
+    expect(pilotView).toMatchObject({ source: "pilot", counts: { pilot: 0, team: 0, unverified: 1 } });
+    expect(pilotView.summary.count).toBe(0);
+    const stats = (await supplier.get("/api/stats?source=unverified")).json.data;
+    expect(stats.source).toBe("unverified");
     expect(stats.summary).toMatchObject({ count: 1, face: "2000000000", net: net.toString(), discount: discount.toString(), fee: fee.toString() });
     expect(BigInt(stats.settlements[0].net) + BigInt(stats.settlements[0].discount)).toBe(2_000_000_000n);
     expect(stats.settlements[0].rateBps).toBe(rateBps);
@@ -149,7 +153,7 @@ describe("API, indexer and relayer against a real chain", () => {
 
     // ---- the shared store is a rebuildable cache: wipe every chain-derived table, re-index from the chain, and get the same answers
     const snapshot = async () => ({
-      stats: (await supplier.get("/api/stats")).json.data,
+      stats: (await supplier.get("/api/stats?source=unverified")).json.data,
       invoices: (await supplier.get("/api/invoices")).json.data,
       buyerLedger: (await buyer.get("/api/ledger")).json.data,
       supplierLedger: (await supplier.get("/api/ledger")).json.data,

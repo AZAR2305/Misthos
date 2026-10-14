@@ -1,0 +1,15 @@
+option "operating_currency" "USDC"
+
+2026-10-14 open Assets:AccountsReceivable USDC
+2026-10-14 open Assets:Cash:USDC USDC
+2026-10-14 open Expenses:EarlyPaymentDiscounts USDC
+
+2026-10-14 * "Misthos" "Paid early at 2% (0xc0a324c9…)"
+  tx: "0x8d581c6a48fcb14892ea647405a9370d274d80dfb9e9f7459241da1bee3ec8a1"
+  Assets:Cash:USDC                          24.958906 USDC
+  Expenses:EarlyPaymentDiscounts             0.041094 USDC
+  Assets:AccountsReceivable                -25.000000 USDC
+2026-10-14 * "Misthos" "Paid early at 0% (0x7b1fca0a…)"
+  tx: "0x7f0e67359180504dd7b00455fc85c542d43b7389536bfdb456c313f9df0c8119"
+  Assets:Cash:USDC                          40.000000 USDC
+  Assets:AccountsReceivable                -40.000000 USDC

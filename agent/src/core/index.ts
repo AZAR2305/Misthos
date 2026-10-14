@@ -9,3 +9,4 @@ export * from "./decision";
 export * from "./exposure";
 export * from "./commit";
 export * from "./decide";
+export * from "./shadow";

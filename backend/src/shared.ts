@@ -8,3 +8,6 @@ export { buildInvoices, type InvoiceRecord, type InvoiceStatus, type RawLog } fr
 export { journalFor, journalFrom, balanced, toCsv, toBeancount, type JournalLine, type Side } from "../../frontend/src/lib/accounting";
 export { settlementRows, summarise, type SettlementRow, type Summary } from "../../frontend/src/lib/stats";
 export { findDuplicate } from "../../frontend/src/lib/chain/duplicates";
+export { originOf, originOfInvoice, registryProblems, ORIGINS, type Origin } from "../../frontend/src/lib/origins";
+export { REGISTRY } from "../../frontend/src/lib/origins-registry";
+export { ofOrigin } from "../../frontend/src/lib/stats";
