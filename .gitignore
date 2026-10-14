@@ -60,3 +60,13 @@ backend/.data/
 # agent decision logs (kept on the agent machine)
 .agent-data*/
 agent/.agent-data*/
+
+.vercel
+
+# kept on disk, no longer part of the repository
+# The website's in-app docs were removed (the pages and loader are gone); the Markdown is kept locally in case it is wanted again.
+frontend/content/docs/
+# browser-test and tool scratch folders
+.playwright-mcp/
+.next-*/
+/tmp/

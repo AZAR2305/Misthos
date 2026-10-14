@@ -33,19 +33,17 @@ const PUBLIC: Tab[] = [
   { href: "/stats", label: "Live stats" },
   { href: "/shadow", label: "Shadow report" },
   { href: "/agents", label: "Agent log" },
-  { href: "/docs", label: "Docs" },
 ];
 
-const DOCS = PUBLIC[PUBLIC.length - 1]!;
-const EXPLORE = PUBLIC.slice(0, -1);
+const EXPLORE = PUBLIC;
 
 /**
- * The side the person chose gets its own pages in the bar, then Docs; the other public pages sit under "More" so the bar
+ * The side the person chose gets its own pages in the bar; the other public pages sit under "More" so the bar
  * never has to squeeze. Without a side there is nothing private to show, so every public page stands on its own.
  */
 function tabsFor(role: Role | null): { primary: Tab[]; more: Tab[] } {
-  if (role === "supplier") return { primary: [HOME, { href: "/supplier", label: "My invoices", exact: true }, { href: "/supplier/invoices/new", label: "New invoice" }, { href: "/supplier/policy", label: "Credit limits" }, DOCS], more: EXPLORE };
-  if (role === "buyer") return { primary: [HOME, { href: "/buyer", label: "Treasury", exact: true }, { href: "/buyer/approvals", label: "Approvals" }, { href: "/buyer/policy", label: "Policy" }, DOCS], more: EXPLORE };
+  if (role === "supplier") return { primary: [HOME, { href: "/supplier", label: "My invoices", exact: true }, { href: "/supplier/invoices/new", label: "New invoice" }, { href: "/supplier/policy", label: "Credit limits" }], more: EXPLORE };
+  if (role === "buyer") return { primary: [HOME, { href: "/buyer", label: "Treasury", exact: true }, { href: "/buyer/approvals", label: "Approvals" }, { href: "/buyer/policy", label: "Policy" }], more: EXPLORE };
   return { primary: [HOME, ...PUBLIC], more: [] };
 }
 

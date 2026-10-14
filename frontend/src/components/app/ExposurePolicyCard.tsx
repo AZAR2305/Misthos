@@ -86,6 +86,7 @@ export function ExposurePolicyCard({ side }: { side: "supplier" | "buyer" }) {
           <p className="muted">
             How much you will {what}, at most. A business you have not dealt with gets the starting limit. Each invoice it settles through Arc raises its limit by the percentage below, up to your maximum.
           </p>
+          <p className="muted tiny"><Tag>stored on the Misthos server</Tag> Unlike your hurdle, cash floor and payments (which stay with your own agent), these limits are kept on the server, because the invoice registration gate has to apply them. They are not private from the server.</p>
           {p.policy === null && <Notice kind="info" title="No limits set yet">Until you save limits, nobody is given credit and your agent makes no credit check.</Notice>}
           <form className="form" onSubmit={(e) => { e.preventDefault(); void submit(); }} noValidate>
             <Field label="Starting limit for a new business (USDC)" htmlFor="xp-start" error={touched ? errors.start : undefined} hint="0 means no credit until you raise it.">

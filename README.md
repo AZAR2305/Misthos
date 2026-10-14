@@ -39,7 +39,7 @@ supplier agent ──signed offer (rung 0%, then up)──▶ buyer agent ──
 ([transaction](https://explorer.testnet.arc.io/tx/0x8d581c6a48fcb14892ea647405a9370d274d80dfb9e9f7459241da1bee3ec8a1)).
 
 ## Live link and demo video
-- **Live link: none yet.** The site runs locally. **VERIFY** and fill in after hosting (`docs/DECISIONS.md`, T1).
+- **Live link: https://misthos-kit.vercel.app** (wallet-only mode: public pages, the stats split by origin and the shadow report. Accounts, credit limits and claim links need the backend, which is **not hosted yet**: `docs/HOSTING.md`).
 - **Demo video: not recorded yet.** The shot list is in `docs/VIDEO_SHOTLIST.md`. Before recording, run `pnpm --filter @misthos/agent doctor` and `circle wallet list --type agent --chain ARC-TESTNET`.
 
 ## Deployed contract
@@ -60,6 +60,7 @@ The buyer reads the supplier's registry entry before accepting; it can only bloc
 On chain (`contract/`, 59 Foundry tests including fuzz and invariants on `settleEarlyFlat`): signed invoices and offers (EOA or ERC-1271), a single-use offer nonce shared by both settle functions, a rate ceiling, per-invoice and daily caps set by the buyer,
 net plus discount equals the face amount, fee never above the discount, an invoice settles at most once, the contract never holds funds.
 Off chain: the **exposure limit is an off-chain policy layer** (it is enforced where credit is extended, at invoice registration, and by the agents); the contract caps are the on-chain bound.
+**Claim links bind the expected supplier when the link is made, not at approval**, because approval is the buyer's own on-chain transaction and the server cannot add a step to it; the link is refused if the invoice pays an address other than the one the buyer said they expect. The exposure limits are **stored on the Misthos server and labelled so**, because the registration gate must apply them.
 The contract cannot judge whether an invoice is true; the buyer's approval is that judgement. The relayer only pays gas. Sign-in is EIP-4361; signed agent reads carry a single-use nonce and a 60-second window; claim and link codes are single-use, expiring, hashed and rate-limited; the site sends a content security policy (with `'unsafe-inline'` for scripts, a stated trade-off).
 
 ## Kit quickstart
@@ -88,7 +89,7 @@ Setup for a real run (Circle login, faucet, deploy, model key): `docs/SETUP.md`.
 | **Retry pays twice** | A single-use signed nonce, one settlement per invoice (the contract), a stable idempotency key, and one shared decision for offers that arrive together | `agent/test/prompt-and-retry.test.ts`, contract invariants |
 
 ## Judge tour (what to click, in order)
-Run it locally (`pnpm dev`; hosting is not done): `/stats` (the default view is independent pilots only and is **empty on purpose**; the Team runs tab shows our settlements, labelled) → `/invoices` and one invoice's negotiation trace → `/agents` (the signed, hash-chained log) → `/shadow` (a computation on your own numbers, nothing uploaded) → `/ledger` (double-entry export, Beancount). The explorer links above are real transactions.
+Open the live site (or run it locally with `pnpm dev`): `/stats` (the default view is independent pilots only and is **empty on purpose**; the Team runs tab shows our settlements, labelled) → `/invoices` and one invoice's negotiation trace → `/agents` (the signed, hash-chained log) → `/shadow` (a computation on your own numbers, nothing uploaded) → `/ledger` (double-entry export, Beancount). The explorer links above are real transactions.
 
 ## Traction: honest
 **There is no independent user yet.** Both real settlements were run by our own two agents, and every ERC-8004 rating comes from those agents, so all of it is `team`, labelled so on `/stats` and in `docs/TRACTION.md`, and none of it counts as traction.
@@ -101,10 +102,14 @@ Pilot plan and scripts: `docs/PILOT_GUIDE.md`, `docs/PILOT_SCRIPT.md`, `docs/PIL
 - An early payment funded from the buyer's own cash is a payment-timing agreement, not a loan; rules vary by country (not legal advice).
 - Agent Wallet spending policies are mainnet-only, so spending caps live in our contract.
 - Reputation on testnet comes only from our own runs.
-- Nothing has run on a hosted deployment; the failure matrix was run locally against the real Arc testnet, Circle CLI and Groq.
+- Only the website is hosted; the backend and agents are not, and the failure matrix was run locally against the real Arc testnet, Circle CLI and Groq.
 - The model's quality (Groq `openai/gpt-oss-120b`) on real proposals is lightly tested; code, not the model, decides every number.
+- The reputation dispute path is proven only against a registry stand-in shaped like the real return values; no dispute rating exists on chain, and none will be faked.
+- The ERC-8004 registry has no global time order across raters, so "the 5 most recent ratings" means the highest index per rater, newest first.
+- The site's content security policy allows `'unsafe-inline'` for scripts (the no-nonce form, so pages can stay static): XSS protection is partial.
+- The CI workflow (`.github/workflows/ci.yml`) has not yet run on GitHub; its commands were run locally.
 - No fuzz or invariant run has covered the backend, and the contract is unaudited.
-- No pilot, no revenue, no hosted site, no demo video yet.
+- No pilot, no revenue, no hosted backend, no demo video yet.
 
 ## How to run against the Arc testnet
 `docs/SETUP.md` (accounts and wallets, in order), then `agent/scripts/testnet-invoice.ts` to create a real invoice and `agent/scripts/failclosed-matrix.ts` to break each dependency on purpose. RPC `https://rpc.testnet.arc.io`, explorer `https://explorer.testnet.arc.io`, faucet via `circle wallet fund` or https://faucet.circle.com.

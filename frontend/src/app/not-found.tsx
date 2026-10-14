@@ -9,7 +9,7 @@ export default function NotFound() {
       <div className="fallback-actions">
         <Link className="btn btn-primary" href="/">Back to the start</Link>
         <Link className="btn btn-ghost" href="/invoices">All invoices</Link>
-        <Link className="btn btn-ghost" href="/docs">Docs</Link>
+        <Link className="btn btn-ghost" href="/stats">Live stats</Link>
       </div>
     </main>
   );

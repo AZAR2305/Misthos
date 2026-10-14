@@ -1,42 +1,80 @@
-# Hosting: what is ready, what needs your accounts, and the exact steps
+# Hosting checklist: Vercel (website, done) and Render (backend and agents)
 
-**Status 14 Oct 2026: nothing is hosted.** Hosting needs accounts only you can create. This file is everything that can be prepared without them. Nothing here has been run on a host; every
-host-specific claim is marked VERIFY. Do not tell anyone the site is live until `GET /api/health` on the real URL says so.
+Status 14 Oct 2026. **Website: live** at https://misthos-kit.vercel.app (Vercel project `misthos-kit`, account `azars-projects-e39ca787`, deployed from this machine). **Backend and agents: not hosted.** Everything marked VERIFY below was written
+from general knowledge of Render and has not been done on your account; check each screen as you go and tell me where it differs. No value of any secret appears in this file: only names.
 
-## What you need to create (I cannot do these)
-1. A **Vercel** account (the website) and a **Railway** or **Fly.io** account (the backend, indexer and the two agent processes), with a payment method if the free tier does not allow a persistent volume (VERIFY on the host's pricing page).
-2. Your **Circle login** on the host: an agent process needs its Circle CLI login state, and that login is an email code that only you can type. The exact step is below; it is not worked around.
-3. A **dedicated Arc RPC URL** for the site. The public endpoint answered a browser with HTTP 429 during testing, so a hosted site that many people load would be throttled. The Canteen node needs a key from `arc-canteen login` (VERIFY the terms).
+Do not say "live" about anything except what a clean browser can open. The website is live in **wallet-only mode** (no accounts, because there is no hosted backend yet).
 
-## Architecture (single instance, on purpose)
-- **Website** (`frontend/`): Vercel. Static plus client-side reads from Arc. Set the project's root directory to `frontend`.
-- **Backend** (`backend/`): one Node process (API, indexer and relayer together) with an **embedded database (PGlite) on a persistent volume**. No hosted database. `DATABASE_URL=pglite:///data/backend`.
-- **Supplier agent** and **buyer agent** (`agent/`): two more processes, each with its **own volume** holding its encrypted private files (`AGENT_DATA_DIR`) and its Circle login folder (`SUPPLIER_CIRCLE_CLI_HOME` or `BUYER_CIRCLE_CLI_HOME`).
-- Limits to state honestly: **one instance only** (PGlite is single-writer, and the rate limiter is in memory); **manual backups** (copy the volume; VERIFY the host's snapshot feature); a redeploy must keep the volume mounted. The database is a cache of the chain plus small operational data, so losing it loses sessions and claim links, not money or history.
+## Part A: the website on Vercel (already done; how to change it)
+What exists: project `misthos-kit`, Root Directory `frontend`, "include source files outside the Root Directory" on (the site imports the agent's pure core), framework Next.js, production alias `misthos-kit.vercel.app`.
+Only an allowlist of files is uploaded (`.vercelignore`): the website source, `agent/src/core`, and the workspace manifests. No env file, database, agent data or contract cache is ever uploaded.
 
-## Environment (set in the host's secret store, never in git)
-| Service | Variables |
-|---|---|
-| Backend | `ARC_RPC_URL`, `ARC_CHAIN_ID=5042002`, `INVOICE_BOOK_ADDRESS=0x108DA05Fec74a1c0620CF7D66D07AeB586A5288C`, `DEPLOY_BLOCK=67164103`, `FRONTEND_ORIGINS=https://<your site>`, `COOKIE_SECURE=true`, `TRUST_PROXY=true`, `DATABASE_URL=pglite:///data/backend`, `RELAYER_PRIVATE_KEY` (a funded throwaway), `AGENT_WALLETS=<both agent addresses>` |
-| Each agent | the contents of `agent/.env` for that role, plus `AGENT_STORE_KEY` (32 random bytes), `AGENT_DATA_DIR=/data/agent`, `AGENT_HOST=0.0.0.0` only if the host needs it (and then `AGENT_CONTROL_TOKEN` is mandatory), `BACKEND_URL=<the backend's URL>`, `BUYER_AGENT_URL` for the supplier agent |
-| Website (Vercel) | `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_RPC_URL`, `NEXT_PUBLIC_INVOICE_BOOK_ADDRESS`, `NEXT_PUBLIC_EXPLORER_URL`, `NEXT_PUBLIC_SITE_URL`, optionally `NEXT_PUBLIC_BUYER_AGENT_URL` |
-Rotate the Groq key first: the one pasted into chat on 14 Oct must not be used on a host.
+**Environment variables set in Vercel (Production):**
+`NEXT_PUBLIC_INVOICE_BOOK_ADDRESS`, `NEXT_PUBLIC_EXPLORER_URL`, `NEXT_PUBLIC_RPC_URL`, `NEXT_PUBLIC_SITE_URL`.
+**Add these when the backend is hosted (Part B), then redeploy:** `NEXT_PUBLIC_API_URL`. Optional: `NEXT_PUBLIC_CHAIN_ID`, `NEXT_PUBLIC_USDC_ADDRESS`, `NEXT_PUBLIC_DEPLOY_BLOCK`, `NEXT_PUBLIC_BUYER_AGENT_URL`, `NEXT_PUBLIC_SUPPLIER_AGENT_URL` (leave the agent URLs unset: agents run on each owner's own machine).
 
-## The Circle login on the host (the exact step; do not skip it)
-Each agent's login is stored in its own folder on its own volume. On the host, open a shell in that agent's service (Railway: `railway shell`; Fly: `fly ssh console`; VERIFY the command on your host) and run:
-```
-CIRCLE_CLI_HOME=/data/circle pnpm exec circle wallet login <the email you used for this agent> --testnet
-```
-Type the code Circle emails you. Then `pnpm --filter @misthos/agent doctor` inside the service must show every line `ok`. Sessions were about 28 days on CLI 1.1.4 on 14 Oct (VERIFY). When one expires the agent stops, reports `SESSION_EXPIRED` and the exact command on `/health`.
+**To redeploy from this machine:** `npx vercel@latest deploy --prod --yes` in the repo root (the installed Vercel CLI 46 is too old for the upload endpoint; `npx vercel@latest` works).
+Or in the Vercel dashboard: Project `misthos-kit` > Deployments > the three dots on the latest > Redeploy.
+
+**RPC note (found in testing):** `https://rpc.testnet.arc.io` answered the browser with HTTP 429 on the site's log reads, and so did the QuickNode endpoint. `https://rpc.blockdaemon.testnet.arc.io` allowed bursts and any origin, so the site uses it. A keyed RPC (Canteen) is still better; when you have one, change `NEXT_PUBLIC_RPC_URL` in Vercel and redeploy.
+
+## Part B: backend and agents on Render (click by click)
+**Plan (single instance, on purpose):** three services. Render's free tier has no persistent disk (VERIFY on https://render.com/pricing), and the backend database and each agent's private files must survive a restart, so use a paid instance type with a **disk** for each. Limits to state honestly: one instance only (PGlite is single-writer and the rate limiter is in memory); manual backups (disk snapshots, VERIFY); a deploy must keep the disk mounted.
+
+### B1. Connect the repository
+1. Go to https://dashboard.render.com and sign in.
+2. Click **New +** > **Web Service**.
+3. Choose **Build and deploy from a Git repository** > **Next**. Click **Connect GitHub** (first time only), approve access to `AZAR2305/Misthos`, then select it.
+4. Branch `main`. Leave Root Directory empty (the services need the whole workspace).
+
+### B2. Backend service
+1. Name `misthos-backend`. Region: the one nearest you. Runtime **Node**.
+2. Build command: `corepack enable && pnpm install --frozen-lockfile`
+3. Start command: `pnpm --filter @misthos/backend start`
+4. Instance type: a paid one that offers a disk (VERIFY the cheapest).
+5. Under **Advanced** > **Add Disk**: Name `backend-data`, Mount Path `/data`, Size 1 GB.
+6. Health Check Path: `/api/health`
+7. Add the environment variables below (click **Add Environment Variable** for each; use **Secret Files** or the secret toggle for the secret ones).
+8. Click **Create Web Service**. When it says **Live**, open `https://<service>.onrender.com/api/health` in a clean browser and read every field.
+
+**Backend environment variable names:**
+`PORT` (leave to Render), `ARC_RPC_URL`, `ARC_CHAIN_ID`, `INVOICE_BOOK_ADDRESS`, `USDC_ADDRESS`, `DEPLOY_BLOCK`, `DATABASE_URL`, `FRONTEND_ORIGINS`, `COOKIE_SECURE`, `TRUST_PROXY`, `RATE_LIMIT_PER_MIN`, `REGISTER_LIMIT_PER_HOUR`, `RELAYER_MIN_BALANCE_WEI`, `SESSION_TTL_DAYS`, **secret:** `RELAYER_PRIVATE_KEY`, `AGENT_WALLETS` (public addresses, comma separated).
+Values to remember: `DATABASE_URL` is `pglite:///data/backend` (the disk), `FRONTEND_ORIGINS` is the Vercel URL, `COOKIE_SECURE` and `TRUST_PROXY` are `true`.
+
+### B3. Buyer agent service
+1. **New +** > **Web Service**, same repository. Name `misthos-buyer-agent`. Runtime **Node**.
+2. Build command: `corepack enable && pnpm install --frozen-lockfile`
+3. Start command: `pnpm --filter @misthos/agent buyer`
+4. Disk: Name `buyer-data`, Mount Path `/data`, 1 GB.
+5. Make it reachable by the supplier agent only. Prefer a **Private Service** (VERIFY the option name) so only your other services reach it; if you use a Web Service it is public, so `AGENT_CONTROL_TOKEN` is mandatory.
+6. Environment variable names: `ARC_RPC_URL`, `ARC_CHAIN_ID`, `INVOICE_BOOK_ADDRESS`, `USDC_ADDRESS`, `BUYER_AGENT_WALLET_ADDRESS`, `SUPPLIER_AGENT_WALLET_ADDRESS`, `BUYER_CIRCLE_CLI_HOME` (`/data/circle`), `AGENT_DATA_DIR` (`/data/agent`), `AGENT_HOST` (`0.0.0.0`), `BUYER_AGENT_PORT`, `BACKEND_URL`, `MODEL_PROVIDER`, `GROQ_MODEL`, `ERC8004_IDENTITY`, `ERC8004_REPUTATION`, `SUPPLIER_ERC8004_ID`, `BUYER_ERC8004_ID`, `BUYER_HURDLE_APR_BPS`, `BUYER_LIQUIDITY_FLOOR`, `BUYER_PER_INVOICE_CAP`, `BUYER_DAILY_CAP`, `BUYER_HUMAN_ABOVE`, `BUYER_NEW_ADDRESS_CAP`, `FEE_BPS`, `LADDER_RUNG_SECONDS`, `AGENT_ALLOWED_ORIGINS`, **secrets:** `GROQ_API_KEY` (the new one, after rotation), `AGENT_STORE_KEY`, `AGENT_CONTROL_TOKEN`.
+
+### B4. Supplier agent service
+Same as B3 with: name `misthos-supplier-agent`, start command `pnpm --filter @misthos/agent supplier`, disk `supplier-data`, and `SUPPLIER_CIRCLE_CLI_HOME`, `SUPPLIER_AGENT_PORT`, `BUYER_AGENT_URL` (the buyer service's internal URL), `SUPPLIER_COST_OF_WAITING_APR_BPS`, `SUPPLIER_MAX_RATE_BPS`, `SUPPLIER_START_RATE_BPS`, `SUPPLIER_STEP_BPS` in place of the buyer ones. Secrets: `GROQ_API_KEY`, `AGENT_STORE_KEY`, `AGENT_CONTROL_TOKEN`.
+
+### B5. The Circle login on each agent (only you can do this)
+1. Open the agent service in Render > **Shell** tab (VERIFY: Shell may need a paid instance).
+2. Accept the Circle terms once and log in, with that agent's own email:
+   `CIRCLE_CLI_HOME=/data/circle pnpm exec circle wallet login <the email for this agent> --testnet`
+3. Type the code Circle emails you.
+4. Run `pnpm --filter @misthos/agent doctor` in the same shell. Every line must say `ok`.
+5. Repeat for the other agent. The two agents use different emails and different folders.
+When a session expires the agent stops and its `/health` shows the exact command (`SESSION_EXPIRED`).
+
+### B6. Point the website at the backend
+1. Copy the backend's `https://<service>.onrender.com` URL.
+2. Vercel > Project `misthos-kit` > **Settings** > **Environment Variables** > add `NEXT_PUBLIC_API_URL` (Production) with that URL > **Save**.
+3. Backend service > set `FRONTEND_ORIGINS` to `https://misthos-kit.vercel.app` > **Save, rebuild and deploy**.
+4. Vercel > **Deployments** > the latest > **Redeploy**.
 
 ## Acceptance (tick only after you have looked)
-- [ ] A clean browser opens the live URL; `/`, `/stats`, `/ledger`, `/invoices` load with honest empty states (the pilot tab on `/stats` is empty on purpose).
-- [ ] `GET /api/health` reports RPC, database, relayer address and balance, and indexer lag truthfully.
-- [ ] Each agent's `/health` reports its wallet (and whether it is activated), the model, and its session.
-- [ ] No console errors, and no content-security-policy violations, on the MVP pages.
-- [ ] The fail-closed matrix (`agent/scripts/failclosed-matrix.ts`) run from the host passes 4 of 4.
-- [ ] Write the live URL and the host choices into `docs/DECISIONS.md`.
+- [ ] A clean browser opens https://misthos-kit.vercel.app; `/`, `/stats`, `/shadow`, `/invoices`, `/ledger`, `/agents` load; the pilot tab on `/stats` is empty on purpose and the Team runs tab shows our two settlements.
+- [ ] No red errors in the browser console on those pages, and no CSP violation.
+- [ ] `GET <backend>/api/health` shows the database, RPC, relayer balance and indexer lag truthfully.
+- [ ] Each agent's `/health`: wallet ok and activated, model configured, session valid.
+- [ ] Sign in with a real browser wallet on the live site; `/api/me` shows only an address.
+- [ ] `agent/scripts/failclosed-matrix.ts` run from a host shell: 4 of 4.
+- [ ] Write the live URLs and host choices into `docs/DECISIONS.md`.
 
-## Prepared files
-There is deliberately no Dockerfile or `railway.json` in the repository yet: Docker was not available on the build machine, so an image could not be built and tested, and an untested one would only look finished.
-Railway and Fly can build a Node service from the repository with the start commands `pnpm --filter @misthos/backend start`, `pnpm --filter @misthos/agent supplier` and `pnpm --filter @misthos/agent buyer`. VERIFY on first deploy.
+## Not prepared, on purpose
+No Dockerfile or `render.yaml` exists: Docker was not running on the build machine, so an image could not be tested, and Render can build Node services directly with the commands above. If you want infrastructure-as-code later, a `render.yaml` can be added once the first manual deploy has shown which settings are right.

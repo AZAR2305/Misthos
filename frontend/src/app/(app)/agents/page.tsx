@@ -169,7 +169,7 @@ export default function AgentLog() {
           <summary>The seven reason codes</summary>
           <div className="help-body">{REASONS.map(([c, d]) => <p key={c}><b className="mono">{c}</b> {d}</p>)}</div>
         </details>
-        <p className="muted tiny">An AI model may suggest where to start and what to flag, but it can never sign or send anything. Plain code checks every number and the contract has the final say. To run your own agent, see <Link className="link" href="/docs/run-the-agents">Run the agents</Link>.</p>
+        <p className="muted tiny">An AI model may suggest where to start and what to flag, but it can never sign or send anything. Plain code checks every number and the contract has the final say.</p>
       </Card>
 
       <AgentsShowcase compact />

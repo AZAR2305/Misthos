@@ -25,7 +25,6 @@ function tipFor(path: string): string | null {
   if (path === "/invoices") return "Every invoice on this network. Anyone can read it.";
   if (path.startsWith("/ledger")) return "A balanced journal of what was paid. You can export it.";
   if (path.startsWith("/stats")) return "Live numbers, recomputed from the chain. Nothing typed in.";
-  if (path.startsWith("/docs")) return "Short answers. Ask me by reading, I am not a chatbot.";
   return null;
 }
 

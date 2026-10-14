@@ -1,0 +1,23 @@
+# Allowlist: upload only what the website's build needs. Everything else (env files, local databases, agent data, contract caches and broadcasts,
+# screenshots, node_modules) stays on this machine. Do not loosen this without checking `git status --ignored` for secrets.
+/*
+!/package.json
+!/pnpm-lock.yaml
+!/pnpm-workspace.yaml
+!/vercel.json
+!/frontend
+!/agent
+!/backend
+/frontend/node_modules
+/frontend/.next*
+/frontend/.env*
+/frontend/shots
+/frontend/.vercel
+/frontend/*.tsbuildinfo
+/agent/*
+!/agent/package.json
+!/agent/src
+/agent/src/*
+!/agent/src/core
+/backend/*
+!/backend/package.json

@@ -112,11 +112,11 @@ function Body({ me }: { me: `0x${string}` }) {
               <div><dt><Term tip="Payments above this wait for you instead of being settled automatically.">Sign-off above</Term></dt><dd>{BigInt(policy.humanAbove) === 0n ? "Never asks" : <Money minor={BigInt(policy.humanAbove)} />}</dd></div>
               <div><dt>Success fee</dt><dd>{(policy.feeBps / 100).toFixed(1)}% of the discount</dd></div>
             </dl>
-            <p className="muted tiny">Read from your own agent on this machine. To change them, edit your agent's settings file and restart it (<Link href="/docs/run-the-agents">how</Link>).</p>
+            <p className="muted tiny">Read from your own agent on this machine. To change them, edit your agent's settings file and restart it.</p>
           </>
         ) : (
           <Notice kind="info" title="Your buyer agent is not running">
-            Its hurdle, cash floor and sign-off amount are set in your agent's settings file (see <Link href="/docs/run-the-agents">Run the agents</Link>). Start it to see them here.
+            Its hurdle, cash floor and sign-off amount are set in your agent's settings file. Start it to see them here.
           </Notice>
         )}
         <p className="muted tiny">These stay in your agent&apos;s process. They are the reason a reject only ever says &quot;below hurdle&quot; and never what the hurdle is.</p>

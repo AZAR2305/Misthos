@@ -112,7 +112,6 @@ function DecisionLog() {
       <Empty
         title="No agent is running"
         body="Each agent keeps its own log while it runs. Start an agent to see what it decides and why."
-        action={<Link className="link" href="/docs/run-the-agents">How to start an agent</Link>}
       />
     );
   }

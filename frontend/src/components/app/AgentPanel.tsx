@@ -42,7 +42,7 @@ export function AgentPanel({ role, url }: { role: "supplier" | "buyer"; url: str
           <p className="muted">
             {role === "supplier" ? "A supplier agent can negotiate for you." : "A buyer agent can plan and settle for you."} You can do everything by hand without one.
           </p>
-          <Link className="link" href="/docs/run-the-agents">How to start it</Link>
+          <p className="muted tiny">Start your agent on your own machine and this panel connects to it.</p>
           <button type="button" className="btn btn-ghost btn-sm" onClick={h.recheck}>Check again</button>
         </>
       ) : (
