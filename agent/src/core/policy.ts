@@ -73,14 +73,17 @@ export type Evaluation = { ok: true } | { ok: false; reason: ReasonCode; detail:
  * Eligibility and hurdle check for one offer. Deterministic. Order matters: the first failing check wins, so the
  * reason code is stable.
  */
+/** An offer with less life than this is not settled: by the time the transaction lands it could be expired. The supplier re-signs the rung instead. */
+export const MIN_OFFER_LIFE_SEC = 60n;
+
 export function evaluateOffer(policy: BuyerPolicy, c: Candidate, nowSec: bigint): Evaluation {
   if (c.status === "disputed") return { ok: false, reason: "DISPUTED", detail: "The invoice is disputed." };
   if (c.status !== "approved") {
     return { ok: false, reason: "NOT_ELIGIBLE", detail: "Only approved invoices can be paid early." };
   }
   if (c.dueSec <= nowSec) return { ok: false, reason: "NOT_ELIGIBLE", detail: "The invoice is already due." };
-  if (c.offerExpirySec < nowSec) {
-    return { ok: false, reason: "EXPIRED", detail: "The offer expired. Ask for a new offer." };
+  if (c.offerExpirySec < nowSec + MIN_OFFER_LIFE_SEC) {
+    return { ok: false, reason: "EXPIRED", detail: "The offer has expired or has too little life left to settle safely. Ask for a new offer." };
   }
   if (c.reputationBlocked) {
     return { ok: false, reason: "REPUTATION_FLAG", detail: "A reputation flag blocks early payment." };

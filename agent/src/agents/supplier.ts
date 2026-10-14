@@ -90,6 +90,8 @@ export interface SupplierDeps {
   buyerAgent: Address;
   verifier: SignatureVerifier;
   rungSeconds: number;
+  /** How long this agent waits for the buyer's answer, in seconds (the transport timeout). An offer must outlive that wait plus a margin. Default 120. */
+  waitWindowSeconds?: number;
   /**
    * The supplier's own history with this buyer and its own credit limit. History sets where the ladder starts (the rates this buyer has
    * accepted before). The credit check is reported in the log with its on-chain evidence; it does not stop an early payment, because
@@ -231,12 +233,28 @@ export class SupplierAgent {
     return { kind: "hold_to_due", reason: "No rung was accepted, so the invoice stays on its normal terms." };
   }
 
+  /** rungExpiry = now + max(rung seconds, the wait for the buyer + 180): an offer must still be alive when the buyer's transaction lands. */
+  private rungExpiry(nowSec: number): number {
+    return nowSec + Math.max(this.d.rungSeconds, (this.d.waitWindowSeconds ?? 120) + 180);
+  }
+
+  /**
+   * Send one rung. If the buyer says the offer is too close to expiry to settle safely (EXPIRED), sign the SAME rung again with a new nonce and
+   * a fresh expiry and send it, at most twice. Settlement waits for the new signature; nothing is settled on the old one.
+   */
   private async sendRung(inv: SupplierInvoice, rung: number, rateBps: number): Promise<NegotiationResult | "continue"> {
+    for (let attempt = 0; ; attempt++) {
+      const r = await this.sendRungOnce(inv, rung, rateBps, attempt);
+      if (r !== "resign") return r;
+    }
+  }
+
+  private async sendRungOnce(inv: SupplierInvoice, rung: number, rateBps: number, attempt: number): Promise<NegotiationResult | "continue" | "resign"> {
     const nowSec = this.now();
     const payload: OfferPayload = {
       invoiceId: inv.id,
       rateBps,
-      expiry: String(nowSec + this.d.rungSeconds),
+      expiry: String(this.rungExpiry(nowSec)),
       nonce: BigInt("0x" + randomBytes(16).toString("hex")).toString(), // 128-bit, single-use on chain
     };
     const from = await this.d.wallet.address();
@@ -259,6 +277,10 @@ export class SupplierAgent {
       this.transcript.push({ rung, rateBps, outcome: "accepted" });
       this.log(inv, { rung, rateBps }, null, "auto_apply", `Rung ${rung} accepted at ${rateBps} bps.`);
       return { kind: "accepted", rung, rateBps, offerHash: reply.offerHash };
+    }
+    if (reply.reasonCode === "EXPIRED" && attempt < 2) {
+      this.log(inv, { rung, rateBps, attempt: attempt + 1 }, null, "rejected", `Rung ${rung} was too close to expiry to settle; signing it again with a fresh expiry.`, "EXPIRED");
+      return "resign";
     }
     this.transcript.push({ rung, rateBps, outcome: reply.reasonCode });
     this.log(inv, { rung, rateBps }, null, "rejected", `Rung ${rung} rejected: ${reply.reasonCode}.`);

@@ -68,6 +68,7 @@ const agentFor = (invoiceId: string) => {
     buyerAgent: cfg.BUYER_AGENT_WALLET_ADDRESS as Address,
     verifier,
     rungSeconds: cfg.LADDER_RUNG_SECONDS,
+    waitWindowSeconds: 120, // the same as httpTransport's timeout
     shouldStop: (id) => paused.has(id),
     exposure,
   });

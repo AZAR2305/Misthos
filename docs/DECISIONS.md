@@ -393,3 +393,15 @@ These closed spec Appendix A items and fixed three bugs that no scripted-CLI tes
   nearly due, are stored only as a SHA-256, are rate-limited and are never logged or echoed. Link codes remain 15 minutes.
 - **Git history scan (no key printed):** no Groq (`gsk_`), Anthropic (`sk-ant-`), relayer, deployer or store key found in any commit. The Groq key that was pasted into chat exists only in the git-ignored `agent/.env`.
   It must still be rotated, because it was exposed in a conversation.
+
+## T4 reputation-aware buyer and T5 offer life (14 Oct 2026)
+- **T4.** Before every accept the buyer reads the supplier agent's ERC-8004 feedback live and applies: read fails -> `needs_approval` `REGISTRY_UNAVAILABLE`; 2 or more disputed among the 5 most recent -> reject
+  `REPUTATION_FLAG`; no agent id or no feedback -> the payment is capped at `BUYER_NEW_ADDRESS_CAP` (unset means uncapped); otherwise the exposure limit is unchanged. `effectiveLimit = min(exposureLimit, cap)` so reputation can
+  only **lower**, never raise: today's ratings come from agents we run, and growth stays tied to verified settled volume.
+  `readFeedback` returns `(value, decimals, tag1, tag2, isRevoked)` and indices start at 1 (confirmed against testnet).
+  **VERIFY / limits:** ERC-8004 has no global time order across raters, so "most recent" means the highest feedback index per rater (up to 25 raters), newest first. A rating is "disputed" when its tag is `disputed` or its value is
+  negative. The supplier address maps to an agent id only through `SUPPLIER_ERC8004_ID` (a supplier we cannot map counts as no history). No dispute feedback has been written on chain, and none will be faked; the dispute path is
+  proven by tests against a registry stand-in shaped like the real return values, not by a live dispute.
+- **T5.** `rungExpiry = now + max(LADDER_RUNG_SECONDS, waitWindowSeconds + 180)`, with the wait window 120 s. The buyer refuses to settle an offer with under 60 s of life (`MIN_OFFER_LIFE_SEC`) and answers `EXPIRED`; the supplier signs
+  the same rung again with a new nonce and expiry, at most twice. The 60 seconds exists because a Circle transaction takes tens of seconds to confirm. The final check just before the wallet call is a second guard on the same
+  condition (the decision happens immediately before it, so the earlier check in the decision usually trips first).

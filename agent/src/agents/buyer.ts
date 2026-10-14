@@ -4,6 +4,7 @@ import {
   buyerCeiling,
   decideBuyerOffer,
   evaluateExposure,
+  MIN_OFFER_LIFE_SEC,
   exposureOf,
   priceOffer,
   type Allocation,
@@ -203,6 +204,12 @@ export class BuyerAgent {
       return this.reject(msg, "NEEDS_HUMAN_APPROVAL", nowSec);
     }
 
+    // Reading the treasury, the credit history and the registry takes real time. Check again, on the clock, right before settling: an offer that is
+    // about to expire is not settled (the transaction could land after expiry). The supplier is asked to sign that rung again.
+    if (BigInt(msg.offer.expiry) - BigInt(this.now()) < MIN_OFFER_LIFE_SEC) {
+      this.log(id, shown("EXPIRED"), null, "rejected", "The offer had too little life left to settle safely, so the supplier was asked to sign it again.", "EXPIRED", this.privateOf(input, verdict));
+      return this.remember(replyKey, await this.reject(msg, "EXPIRED", this.now()));
+    }
     const decision = this.log(id, shown("ACCEPT"), null, "auto_apply", `Accepted rung ${msg.rung} at ${msg.offer.rateBps} bps: eligible, inside the credit limit and above the liquidity floor.`, undefined, this.privateOf(input, verdict));
     try {
       await this.settle(msg, decision.hash);
