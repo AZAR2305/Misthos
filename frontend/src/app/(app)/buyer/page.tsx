@@ -16,7 +16,7 @@ import { readBuyerState, type BuyerChainState } from "@/lib/chain/invoices";
 import { CONFIG } from "@/lib/config";
 import { MoneyError, formatUsd, toMinor } from "@/lib/core";
 import { dateOnly, useNow } from "@/lib/format";
-import { useObligations } from "@/lib/storage";
+import { useDeclaredObligations } from "@/lib/obligations";
 import { useTx } from "@/lib/tx";
 
 interface PlanItem { id: string; rateBps: number; discount: string; net: string; fee: string; dueSec: string }
@@ -60,7 +60,8 @@ function Body({ me }: { me: `0x${string}` }) {
   const [allowOpen, setAllowOpen] = useState(false);
   const [allowAmount, setAllowAmount] = useState("10000");
   const [oblOpen, setOblOpen] = useState(false);
-  const [obligations, setObligations] = useObligations();
+  const declared = useDeclaredObligations();
+  const obligations = declared.items;
   const [plan, setPlan] = useState<PlanResponse | null>(null);
   const [planBusy, setPlanBusy] = useState(false);
   const [planError, setPlanError] = useState<string>();
@@ -218,8 +219,19 @@ function Body({ me }: { me: `0x${string}` }) {
           <ClaimLinksCard />
 
           <Card title="Upcoming payments" aside={<button type="button" className="btn btn-ghost btn-sm" onClick={() => setOblOpen(true)}>Add payment</button>}>
-            <p className="muted tiny">Payroll and bills the agent must keep cash for. Saved on this device and sent to your agent only when you ask for a plan.</p>
-            {obligations.length === 0 ? (
+            <p className="muted tiny">
+              {declared.source === "server"
+                ? "Payroll and bills the agent must keep cash for. Saved on your account, where your agent reads them before it accepts any early payment."
+                : "Payroll and bills the agent must keep cash for. Saved on this device and sent to your agent only when you ask for a plan. Sign in to save them on your account so your agent always sees them."}
+            </p>
+            {declared.source === "server" && declared.browserOnly.length > 0 && (
+              <Notice kind="warn" title={`${declared.browserOnly.length} payment${declared.browserOnly.length === 1 ? "" : "s"} saved only in this browser`} action={<button type="button" className="btn btn-ghost btn-sm" onClick={() => void declared.moveToAccount()}>Save to my account</button>}>
+                Your agent cannot see these, so it could spend cash they need.
+              </Notice>
+            )}
+            {declared.status === "unavailable" && <Notice kind="error" title="Unavailable">Your saved payments could not be read: {declared.error}. Your agent will accept nothing until it can read them.</Notice>}
+            {declared.error && declared.status !== "unavailable" && <Notice kind="error" title="Not saved">{declared.error}</Notice>}
+            {declared.status === "loading" ? <p className="muted">Loading…</p> : obligations.length === 0 ? (
               <p className="muted">None listed. Add payroll or large bills so the plan protects your cash.</p>
             ) : (
               <ul className="checklist">
@@ -227,7 +239,7 @@ function Body({ me }: { me: `0x${string}` }) {
                   <li key={o.id}>
                     <span style={{ flex: 1 }}>{o.label} <span className="muted tiny">({o.kind}, {dateOnly(BigInt(o.dueSec))})</span></span>
                     <Money minor={BigInt(o.amount)} />
-                    <button type="button" className="icon-btn" onClick={() => setObligations(obligations.filter((x) => x.id !== o.id))}>Remove</button>
+                    <button type="button" className="icon-btn" onClick={() => void declared.remove(o.id)}>Remove</button>
                   </li>
                 ))}
               </ul>
@@ -246,7 +258,7 @@ function Body({ me }: { me: `0x${string}` }) {
         </Field>
       </Modal>
 
-      <ObligationModal open={oblOpen} onClose={() => setOblOpen(false)} onAdd={(o) => { setObligations([...obligations, o]); setOblOpen(false); }} now={now} />
+      <ObligationModal open={oblOpen} onClose={() => setOblOpen(false)} onAdd={(o) => { void declared.add(o); setOblOpen(false); }} now={now} />
 
       <Modal open={confirmRun} onClose={() => setConfirmRun(false)} title="Pay these invoices early?" footer={<><button type="button" className="btn btn-ghost" onClick={() => setConfirmRun(false)}>Cancel</button><button type="button" className="btn btn-primary" disabled={planBusy} onClick={() => void callAgent("plan/execute")}>{planBusy ? "Sending…" : "Pay early"}</button></>}>
         <p>Your agent will settle the {plan?.allocation.items.length ?? 0} invoice(s) shown, for <Money minor={BigInt(plan?.allocation.totalOutflow ?? "0")} accent /> in total, using the offers it holds. Each payment is a transaction from your agent wallet and cannot be undone.</p>
