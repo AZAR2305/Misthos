@@ -191,6 +191,46 @@ wallet and one side.
 
 ---
 
+## 7c. Credit limits and linking your agents
+
+Your agents read your payment calendar and your credit limits from your account. They prove who they are by signing with their own
+wallets, so each agent has to be linked to its business once. Do this after step 7b, with the backend running and the agents started
+once already.
+
+1. **Set the limits.** Sign in as the buyer, open **Policy → Credit limits**; sign in as the supplier, open **Credit limits**. Choose a
+   starting limit for a business you have not dealt with (**0 means no credit until you raise it**), a maximum, the growth per settled
+   invoice and the look-back. Saving a change makes a new version (`exposure-1`, `exposure-2`, ...); decisions already made stay tied to
+   the version they ran under. Until you save limits, the buyer agent makes no credit check and says so in its log.
+2. **List the buyer's payments.** On the buyer dashboard, add payroll and big bills under **Upcoming payments**. Signed in, they are
+   saved on the account, which is where the buyer agent reads them. (If the page warns that some are saved only in this browser, press
+   **Save to my account**.) If the buyer has no obligations at all and no `BACKEND_URL`, set `BUYER_OBLIGATIONS_DECLARED_NONE=true` in
+   `agent/.env`; otherwise an unreadable calendar makes the agent accept nothing, on purpose.
+3. **Link each agent.** On the same page press **Make a link code**. Put it in that agent's `agent/.env` as `MISTHOS_LINK_CODE=XXXX-XXXX-XXXX`,
+   start the agent once, and watch its console for `linked to your business`. Then remove the line. The code works once and expires in
+   15 minutes; the agent redeems it with a request signed by its own wallet, so only the agent you start can use it. Do this for the buyer
+   agent and the supplier agent, each from its own account. The backend's `AGENT_WALLETS` must already list both agent wallet addresses.
+4. **Check it.** Open an invoice: the **Credit limit for this business** card shows the allowed limit, what is outstanding and the
+   settlements behind it, each with its transaction link. Your agent's own range appears above it while the agent is running.
+
+**Private files.** Each agent keeps its private policy and the inputs of its decisions in its data directory (`AGENT_DATA_DIR`, default
+`.agent-data`): `<name>-decisions.jsonl` and `<name>-policy.jsonl`. They hold your hurdle, reserve and limits and the salt that makes the
+public commitments unguessable. They are gitignored; do not share them except with an auditor.
+
+**Replay a decision** (for you or an auditor, from the agent's own files):
+
+```powershell
+pnpm --filter @misthos/agent audit-decision <hash or its first 10+ characters> .agent-data buyer
+```
+
+It checks the entry's hash, the policy version and its commitment, and the inputs commitment, then runs the same decision code on the
+kept inputs and compares the result. It prints `VERIFIED` or `FAILED` with the reason.
+
+**Old logs.** An agent log written before 14 Oct can contain the supplier's private settings (finding F-0 in
+`docs/SRS_IMPLEMENTATION_SPEC.md`). It cannot be edited, and the API now refuses such entries. Move the old data directory aside
+(`.agent-data` to `.agent-data-old`) before connecting that agent to a backend.
+
+---
+
 ## 8. Before you submit
 
 - **Make the GitHub repo public**: https://github.com/AZAR2305/Misthos → **Settings → General → Danger Zone → Change

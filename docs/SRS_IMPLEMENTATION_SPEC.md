@@ -1,10 +1,57 @@
 # SRS implementation spec: the four work items, in detail
 
 Written 14 Oct 2026, from a read of `agent/src`, `contract/src/InvoiceBook.sol`, `backend/src/api.ts` and `frontend/src`.
-Companion to `docs/SRS_GAP_PLAN.md` (audit and order of work). **Nothing in this file is implemented yet.** Every file name, type
-and function named below exists today unless it is marked *new*. Statements that need a real run to confirm are marked `VERIFY:`.
-Worked numbers are hand-computed from the repo's own formulas; the tests in section 8 must reproduce them exactly, and if a test
-disagrees, the test result wins and this file is corrected.
+Companion to `docs/SRS_GAP_PLAN.md` (audit and order of work).
+
+**Status, 14 Oct 2026: F-0, A, B, C and D are built and tested locally (not yet run on Arc).** The section "Status and where the
+build differs from the text below" comes first; the rest is the original design, kept as written except where a line was wrong and is
+now corrected in place. Statements that need a real run to confirm are marked `VERIFY:`. Worked numbers were hand-computed from the
+repo's own formulas and then reproduced exactly by tests (`agent/test/decision.test.ts`, `exposure.test.ts`); where a test disagreed, the
+test won and the text was corrected.
+
+---
+
+## Status and where the build differs from the text below
+
+| Item | Status | Where |
+|---|---|---|
+| F-0 private values out of the public log | **Done** | `core/hash.ts` (`PRIVATE_KEYS`, `findPrivateKey`); `agents/store.ts` refuses them; `backend/src/api.ts` ingest refuses them (422 `PRIVATE_VALUE`) |
+| A supplier floor, buyer ceiling, deal range | **Done** | `core/decision.ts`; 600 random cases agree with `fitsCashPath`; `core/ladder.ts` fixed so the last rung is always the ceiling |
+| B credit and exposure | **Done** | `core/exposure.ts`, `GET /api/exposure`, versioned policy (`exposure_policies`, migration 005), `BuyerAgent.checkExposure` |
+| C policy version and evidence in the log | **Done** | `core/decide.ts` (`decideBuyerOffer`, `planLadder`), `core/commit.ts`, `agents/policybook.ts`, `agents/store.ts`, `audit.ts` |
+| D negotiation trace, credit basis, states | **Done** | `NegotiationTrace`, `YourRange`, `CreditBasis`, `ExposurePolicyCard`, `LinkAgentCard`, `PayStateChip`, `TreasuryCard`; in-app doc `credit-limits` |
+| Supplier-side exposure *enforced by the agent* | **Not built** | The supplier side is shown on the invoice page (`CreditBasis`) and edited on `/supplier/policy`. The supplier agent does not refuse to accelerate on it: early payment reduces exposure, so there is nothing to gate. Gating invoice creation is a possible next step |
+| Urgency input for the supplier | **Skipped** (decision 3) | Cost of waiting stays the only economic input |
+| Verified obligation source | **None** (decision 4) | Every obligation is `declared` and can only lower what the buyer pays |
+| Run on Arc with real Circle wallets | **No** | needs the owner's deploy and logins |
+
+**Differences from the original text** (corrected lines are marked in place):
+
+1. **All obligations in the calendar are subtracted**, not only those due before the invoice's due date, and there is no `declaredInReserve`
+   flag. The allocator's cash path has no income model, so it needs the whole calendar covered; `buyerCeiling` matches it exactly. The reserve and
+   the obligations are separate inputs, each used once.
+2. **Reserve 1,000 USDC in the worked example** gives `BUYER_CANNOT_PAY`, not `NO_OVERLAP`: at even 5000 bps the price is 9,630,136,986, above the
+   9,200 USDC of room, so there is no rate at which the buyer can pay. `NO_OVERLAP` is for "the buyer could pay, but only above what the supplier will sign".
+3. **The ladder always ends at the supplier's ceiling.** A widened step used to stop short (ceiling 1234 ended at 988), so a deal that existed
+   between 988 and 1234 could never be offered. Fixed and tested.
+4. **The credit limit is part of the buyer's range** (`exposureRoom` in `buyerCeiling`), so `NO_OVERLAP` and `BUYER_CANNOT_PAY` cover it.
+5. **An early payment that cannot yet be proven** (not indexed) still counts as outstanding, but never grows the limit. The buyer agent also remembers
+   its own recent payments, so two offers in a row cannot pass the limit while the indexer catches up.
+6. **The exposure policy lives on the server**, owner-edited and versioned (`exposure-N`), not in environment variables. Agents read it with a signed request.
+7. **Linking an agent to a business** is new (not in the original text): the owner makes a one-time code, and the agent redeems it signed by its own wallet
+   (`agent_link_codes`, migration 006). Without it the signed reads cannot work, because nothing else links an agent wallet to a business.
+8. **Declared obligations are stored on the account** when signed in (they were browser-only). The buyer agent reads them with a signed request and
+   treats an unreadable calendar as "needs a person". With no API configured, an empty calendar must be declared (`BUYER_OBLIGATIONS_DECLARED_NONE=true`).
+9. **Reason codes added:** `NO_OVERLAP`, `EXPOSURE_LIMIT`, `EVIDENCE_UNAVAILABLE`, `TREASURY_UNAVAILABLE`, `BUYER_CANNOT_PAY`; fixed text in `REASON_TEXT` (core/policy.ts).
+10. **Policy versions:** each agent records `buyer-policy-N` / `supplier-policy-N` in a local file (`<name>-policy.jsonl`, private, with a fresh salt per version); the
+    exposure policy's label comes from the server. The audit command is `pnpm --filter @misthos/agent audit-decision <hash> [data dir] [buyer|supplier]`.
+11. **Own-side range routes:** `GET /range/:invoiceId` on each agent (control routes), read by the invoice page for the owner only.
+12. **The invoice trace reads the public API log** (verified) and adds entries from an agent on the owner's machine that are not delivered yet.
+13. **Entries logged before F-0** (the supplier's prefs) cannot be edited (the chain is hash-linked) and are refused by the new ingest check. Start a new log
+    (move the agent data directory aside) before connecting an agent that has old entries. This answers open decision 5: yes, rotate.
+
+---
+
 
 Order of work: **F-0** (privacy fix) first, then **A**, **B**, **C**, **D**, then the tests in section 8.
 
@@ -58,8 +105,8 @@ Per invoice with face `F` (minor units, bigint), `t` seconds to the due date, fe
 already how `maxRate` clamps the ladder, so the new function exposes it as an amount and a reason code instead of a bare number.
 
 **Buyer ceiling.** The buyer's largest affordable payment is `B_max = min(L_available, B_econ)` where
-- `L_available = max(0, W - R - O_due)`; `W` the real USDC balance, `R` the liquidity floor, `O_due` obligations due before the
-  invoice's due date and **not already inside `R`** (the SRS asks that obligations are not double-counted; rule below);
+- `L_available = max(0, W - R - O)`; `W` the real USDC balance, `R` the liquidity floor, `O` **every obligation in the buyer's calendar**
+  (corrected 14 Oct: the allocator has no income model, so the whole calendar must be covered; `R` and `O` are separate and each is used once);
 - `B_econ = Out(r_hurdle)`: the payment at which the buyer earns exactly its hurdle. A higher hurdle means a lower `B_econ`.
 
 Because `Out` is decreasing, "`Out(r) <= B_max`" is the same as "`r >= r_buy`" where `r_buy` is the **smallest integer rate
@@ -69,8 +116,8 @@ with `Out(r) <= L_available`. Found by binary search over `0..5000` (monotone), 
 **Deal discovery (SRS 6.3).** The feasible interval is `[r_buy, r_sup]`. A deal exists iff `r_buy <= r_sup`
 (equivalently `S_min <= B_max` in money terms). If not, the result is `NO_OVERLAP` and the agents stop; no deal is fabricated.
 
-**Double counting rule for `O`.** `R` is a standing floor that must remain after every payment. `O_due` is the sum of obligations
-whose `dueSec` is on or before the invoice's due date and which are flagged `declaredInReserve = false`. Obligations the owner
+**Double counting rule for `O`.** `R` is a standing floor that must remain after every payment. `O` is the sum of every obligation in the
+calendar (no `declaredInReserve` flag was built: the owner lists payments or raises the reserve, not both for the same money). Obligations the owner
 marks as already covered by `R` are shown but not subtracted again. (Existing `fitsCashPath` already walks the calendar day by day;
 the new function must agree with it, and a test asserts that for any input where the new `L_available` is positive, `fitsCashPath`
 and the new `Out(r) <= L_available` check give the same answer on a single-invoice plan. `VERIFY:` the two cases where they could
@@ -155,7 +202,7 @@ Feasible interval `[1352, 2000]`: **deal**. The supplier ladder (`ceiling 2000`,
 `0, 400, 800, 1200, 1600, 2000`; rungs 0 to 1200 are rejected `LIQUIDITY_FLOOR`, rung 1600 is accepted.
 
 Policy change for the demo (SRS demo step 5): raise `R` to 1_000 USDC. `L_available = 9_200 USDC`; even at 2000 bps the outflow is
-9_852_054_795 > 9_200_000_000, so `r_buy = null`, `dealRange = none / NO_OVERLAP`, every rung is rejected, no transaction. Lower `R`
+9_852_054_795 > 9_200_000_000 (and 9_630_136_986 even at 5000 bps), so `r_buy = null`, `dealRange = none / BUYER_CANNOT_PAY`, every rung is rejected, no transaction. Lower `R`
 back to 300 and the same invoice settles at 1600.
 
 ---

@@ -80,7 +80,24 @@ nonce is still rejected.
   `/api/log/verify` recomputes every chain and every signature from the stored rows; `/api/log` lists entries with the settlement
   transaction that carries the same hash. Tested: 3 agent tests, 6 API tests. Not yet run with a real Circle wallet: a contract
   wallet's signature is checked through the chain RPC.
-- Supplier history (`pastAcceptedBps`) and the buyer's obligation calendar are not read from the backend in a real run.
+- **The buyer's obligation calendar is now read from the backend** (signed read, 14 Oct); an unreadable calendar fails closed. Supplier history (`pastAcceptedBps`) is still not read in a real run: the supplier runner passes an empty list.
 - ERC-8004 identity and feedback, MCP server, A2A cards, compliance screening: Tier 2, not built.
 - Circle Agent Wallet adapter has never run against a real login (Appendix A items 5 to 8). First real run will likely need fixes.
-- Contract tests (`forge test`) and the two Anvil backend suites were not run in this session (no Foundry here).
+- Contract tests and the two Anvil backend suites **were run on 14 Oct and pass** (Foundry is installed on this machine).
+
+## SRS v1.0 layer (14 Oct 2026): credit, ranges, policy versions and audit
+
+Requirement-by-requirement status is in `docs/SRS_GAP_PLAN.md`; how it works is in `docs/SRS_IMPLEMENTATION_SPEC.md`. Summary against the safety rules above:
+
+| Rule | How the new layer keeps it |
+|---|---|
+| Model proposes, code decides | The buyer's decision is one pure function (`decideBuyerOffer`) and the ladder another (`planLadder`). The model never feeds either; its numbers are clamped into the supplier's own bounds. No model output reaches a signer or a contract call |
+| Untrusted text never in a prompt | Unchanged. The exposure feed and the calendar carry numbers, hashes and enums only, and the calendar's free-text label is not sent to the agent |
+| Fail closed | An unreadable balance, calendar, credit policy or credit history gives `needs_approval` (`TREASURY_UNAVAILABLE` or `EVIDENCE_UNAVAILABLE`) and nothing is signed. Unknown counterparties get a starting limit of 0 |
+| Peer messages are untrusted | The reject on the wire still carries one code only; no limit, hurdle or floor can be inferred from it beyond the fact that the check failed |
+| Private stays private | Hurdle, reserve, caps and limits are never in the public log. The store and the API both refuse a private key name in a snapshot or proposal, and the public entry carries only a salted commitment to the inputs |
+| Real data only | History comes from indexed chain events with a transaction hash and log index; with none, the page says so. Declared obligations are labelled declared |
+
+**Tested:** 168 agent tests, 64 backend tests (including `pipeline.test.ts`, which runs both agents against the real API in one process), 45 frontend tests, both real-browser end-to-end suites.
+**Not tested on Arc:** nothing in this layer has run against a deployed contract or a real Circle wallet.
+**Known limits:** the supplier agent does not gate on credit (it only reports it); `/plan` (the allocator) is not exposure-aware, but `/plan/execute` skips any payment the credit limit forbids; the supplier's adaptive start from past deals is still unwired.

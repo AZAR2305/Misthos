@@ -9,10 +9,11 @@ is unconfirmed, ask in the Canteen Discord). Companion files: `docs/SETUP.md` (t
 
 | Part | State | Checked today |
 |---|---|---|
-| `contract/` InvoiceBook | Written, 40 Foundry tests, deploy scripts | **Not run** (no `forge` in this session). Run `forge test` locally before deploying. |
-| `agent/` core, protocol, allocator, decision log, wallet adapters, two agent processes | Built | `tsc` clean, **73/73 tests pass** |
-| `backend/` API, indexer, job outbox, Google and wallet sign-in, claim links, ledger exports | Built | `tsc` clean, **25/25 tests pass** (schema, auth, outbox). The two suites that need a real Anvil chain (`chain.test.ts`, `claims.test.ts`) were **not run** here. |
-| `frontend/` landing, app pages, docs | Built | `tsc` clean, 12/12 tests pass, pages screenshotted in light and dark |
+| `contract/` InvoiceBook | Written, 40 Foundry tests, deploy scripts | **40/40 pass** (run 14 Oct; Foundry is installed in `C:\Users\thame\dev-tools\bin`) |
+| `agent/` core, protocol, allocator, decision log, wallet adapters, two agent processes | Built | `tsc` clean, **168/168 tests pass** (14 Oct), including the credit and exposure layer, replayable decisions and the audit tool |
+| `backend/` API, indexer, job outbox, Google and wallet sign-in, claim links, ledger exports | Built | `tsc` clean, **64/64 tests pass** (14 Oct), including both Anvil suites and `pipeline.test.ts`, which runs both agents against the real API in one process |
+| `frontend/` landing, app pages, docs | Built | `tsc` clean, 45/45 tests pass; `next build` passes; `e2e:local` and `e2e:accounts` both pass in a real browser (14 Oct) |
+| SRS v1.0 layer: credit limits, ranges, policy versions, audit | **Built, local only** | `docs/SRS_GAP_PLAN.md` (status per requirement) and `docs/SRS_IMPLEMENTATION_SPEC.md` (how it works, and where it differs from the plan) |
 | Deployed contract on Arc testnet | **No** | The app says "unavailable" wherever it would read the chain |
 | Real Circle Agent Wallets | **No** | Adapter written against a scripted CLI; never run against a real login |
 | A real business using it | **No** | The one thing the judges weigh most (30%) |
@@ -56,6 +57,9 @@ What to fix or decide before the public link goes out:
       record the address in `contract/DEPLOYMENTS.md`). Set `NEXT_PUBLIC_INVOICE_BOOK_ADDRESS`, `INVOICE_BOOK_ADDRESS`, `DEPLOY_BLOCK`.
 - [ ] **Today.** Start the backend with a real Postgres (`DATABASE_URL`), Google client id, and a funded relayer key. Open
       `/api/health`: every line should be green.
+- [ ] **After the agents run once (`docs/SETUP.md` 7c).** Each owner signs in, sets **Credit limits**, lists the buyer's payments, makes a
+      **link code** and starts the agent once with `MISTHOS_LINK_CODE`. Without the link, the agents cannot read the calendar or the limits and
+      the buyer accepts nothing (on purpose). Decide the real numbers (starting limit, maximum, growth); the defaults in the docs are placeholders.
 - [ ] **By Fri 9 Oct.** Find **one real business** (even a friendly supplier with a real approved invoice and a buyer who will pay
       it in test USDC). Send them a claim link. Their usage is the traction score; synthetic data does not count.
 - [ ] **By Sat 10 Oct.** Submit the **checkpoint**: public repo, live link, a first demo video, and the traction answers so far.
@@ -64,8 +68,8 @@ What to fix or decide before the public link goes out:
 
 ### Me (once the contract address and wallets exist)
 - [ ] Run the first real testnet settlement end to end (`e2e-testnet`) and fix whatever the real Circle CLI output breaks.
-- [ ] Run the two Anvil suites here or in CI (needs Foundry installed) and the full injected-attack list as one suite
-      (forged agent message, replayed claim, forwarded claim link, retry after timeout, wrong vendor, fake invoice).
+- [x] Run the two Anvil suites (done 14 Oct, they pass). Still to do: the full injected-attack list as one suite
+      (forged agent message, replayed claim, forwarded claim link, retry after timeout, wrong vendor, fake invoice), and CI.
 - [ ] Add the `bean-check` job to CI for the Beancount export.
 - [ ] Tier 2, in spec order: ERC-8004 identity and bilateral feedback (verify the ABI on testnet first), MCP read tools, then
       A2A cards and compliance screening only if time allows.
