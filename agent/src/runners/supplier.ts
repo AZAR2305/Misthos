@@ -4,6 +4,7 @@ import { domain } from "../core/index.js";
 import { AnthropicModel } from "../agents/model.js";
 import { SupplierAgent, httpTransport } from "../agents/supplier.js";
 import { viemChainReader } from "../agents/chain.js";
+import { linkAgent } from "../agents/backend.js";
 import { openDecisionStore } from "../agents/log.js";
 import { loadConfig, loadEnvFile, supplierPrefsFromEnv } from "../config.js";
 import { CircleCliAdapter } from "../wallets/circleCli.js";
@@ -104,6 +105,14 @@ serve(
   "supplier-agent",
   serveOptions,
 );
+
+// One-time link: the owner makes a code on the website (Credit limits page) and starts this agent once with MISTHOS_LINK_CODE set.
+// The agent redeems it with a request signed by its own wallet, which links this wallet to the business so it can read its own data.
+if (process.env.MISTHOS_LINK_CODE && cfg.BACKEND_URL) {
+  void linkAgent({ backendUrl: cfg.BACKEND_URL, wallet, domain: domain(cfg.ARC_CHAIN_ID, book), code: process.env.MISTHOS_LINK_CODE }).then((r) =>
+    console.log(r.ok ? "[supplier-agent] linked to your business. You can remove MISTHOS_LINK_CODE now." : `[supplier-agent] could not link: ${r.message}`),
+  );
+}
 
 process.on("unhandledRejection", (e) => {
   if (e instanceof WalletError) console.error(`[supplier-agent] ${e.code}: ${e.message}`);

@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
+import { ExposurePolicyCard } from "@/components/app/ExposurePolicyCard";
+import { LinkAgentCard } from "@/components/app/LinkAgentCard";
 import { RequireWallet } from "@/components/app/RequireWallet";
 import { Card, Field, Money, Notice, PageHeader, Tag, Term } from "@/components/ui/kit";
 import { INVOICE_BOOK_ABI } from "@/lib/chain/abi";
@@ -75,6 +77,7 @@ function Body({ me }: { me: `0x${string}` }) {
   };
 
   return (
+    <>
     <div className="split">
       <Card title="Limits enforced by the contract" aside={<Tag>on-chain</Tag>}>
         <p className="muted">These apply to every early payment from your wallet, whoever or whatever triggers it. Set 0 for no cap.</p>
@@ -119,5 +122,8 @@ function Body({ me }: { me: `0x${string}` }) {
         <p className="muted tiny">These stay in your agent&apos;s process. They are the reason a reject only ever says &quot;below hurdle&quot; and never what the hurdle is.</p>
       </Card>
     </div>
+    <ExposurePolicyCard side="buyer" />
+    <LinkAgentCard side="buyer" />
+    </>
   );
 }

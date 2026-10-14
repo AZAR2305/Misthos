@@ -130,3 +130,29 @@ describe("pay state: only the chain can say settled", () => {
     expect(payState({ chainStatus: "approved", entries: [accept] }).state).not.toBe("settled");
   });
 });
+
+import { fromAgentEntry, fromApiEntry, mergeEntries } from "../src/lib/trace";
+
+describe("log sources", () => {
+  const api = { seq: 3, actor: "buyer_agent", hash: h(5), prevHash: h(4), outcome: "rejected", reasonCode: "LIQUIDITY_FLOOR", reason: "LIQUIDITY_FLOOR: x", at: 150, snapshot: { invoiceId: INV, rung: 1, rateBps: 400, result: { code: "LIQUIDITY_FLOOR" } }, proposal: null, policyVersion: "buyer-policy-2", result: "LIQUIDITY_FLOOR", settlement: { txHash: h(9) } };
+  it("reads an API entry as verified, with its settlement link", () => {
+    expect(fromApiEntry(api)).toMatchObject({ actor: "buyer_agent", hash: h(5), signed: true, policyVersion: "buyer-policy-2", settlement: { txHash: h(9) } });
+  });
+  it("ignores anything that is not an entry", () => {
+    expect(fromApiEntry(null)).toBeUndefined();
+    expect(fromApiEntry({ ...api, actor: "someone" })).toBeUndefined();
+    expect(fromApiEntry({ ...api, outcome: "maybe" })).toBeUndefined();
+    expect(fromApiEntry({ hash: 5 })).toBeUndefined();
+  });
+  it("an agent's own entry is signed only once it has a signature, and the version comes from its snapshot", () => {
+    const own = { ...api, policyVersion: undefined, snapshot: { ...api.snapshot, policyVersion: "buyer-policy-2" } };
+    expect(fromAgentEntry(own)).toMatchObject({ signed: false, policyVersion: "buyer-policy-2" });
+    expect(fromAgentEntry({ ...own, signature: "0x" + "ab".repeat(65) })?.signed).toBe(true);
+  });
+  it("merges two sources by hash, and the verified API copy wins", () => {
+    const fromAgent = fromAgentEntry({ ...api, signature: undefined })!;
+    const merged = mergeEntries([fromApiEntry(api)!], [fromAgent, fromAgentEntry({ ...api, hash: h(6) })!]);
+    expect(merged).toHaveLength(2);
+    expect(merged.find((e) => e.hash === h(5))!.signed).toBe(true);
+  });
+});

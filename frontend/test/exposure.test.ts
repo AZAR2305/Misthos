@@ -55,3 +55,37 @@ describe("obligations reply", () => {
     expect(parseObligations(null)).toBeUndefined();
   });
 });
+
+import { bpsToPercent, percentToBps } from "../src/lib/exposure";
+
+describe("growth percentage", () => {
+  it("converts to basis points exactly and back", () => {
+    expect(percentToBps("20")).toBe(2000);
+    expect(percentToBps("12.5")).toBe(1250);
+    expect(percentToBps("0.05")).toBe(5);
+    expect(percentToBps("100")).toBe(10_000);
+    expect(bpsToPercent(2000)).toBe("20");
+    expect(bpsToPercent(1250)).toBe("12.5");
+    expect(bpsToPercent(5)).toBe("0.05");
+  });
+  it("refuses anything else", () => {
+    for (const bad of ["", "-1", "100.01", "101", "1e2", "1.234", "abc", "1,5"]) expect(percentToBps(bad), bad).toBeUndefined();
+  });
+});
+
+import { newExposureFor } from "../src/lib/exposure";
+
+describe("the commitment tested against the limit for one invoice", () => {
+  const ev = (id: string, state: "approved" | "disputed" | "settled_early") => ({ invoiceId: id, state, face: 5n, dueSec: 9n });
+  it("a supplier's approved or disputed invoice is already outstanding, so it is not a second commitment", () => {
+    expect(newExposureFor("supplier", "0xAA", 100n, [ev("0xaa", "approved")])).toBe(0n);
+    expect(newExposureFor("supplier", "0xaa", 100n, [ev("0xaa", "disputed")])).toBe(0n);
+  });
+  it("a supplier's invoice that is not outstanding yet counts at its face", () => {
+    expect(newExposureFor("supplier", "0xaa", 100n, [])).toBe(100n);
+    expect(newExposureFor("supplier", "0xaa", 100n, [ev("0xbb", "approved")])).toBe(100n);
+  });
+  it("a buyer's worst case is the full price", () => {
+    expect(newExposureFor("buyer", "0xaa", 100n, [ev("0xaa", "approved")])).toBe(100n);
+  });
+});

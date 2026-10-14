@@ -118,3 +118,42 @@ export function axisMax(rates: readonly number[]): number {
   const top = Math.max(1000, ...rates);
   return Math.ceil((top * 1.1) / 500) * 500;
 }
+
+/** One entry as GET /api/log returns it (already verified by the server: hash, signature and chain). */
+export function fromApiEntry(raw: unknown): LogEntry | undefined {
+  const r = raw as Record<string, unknown> | null;
+  if (!r || typeof r.hash !== "string" || (r.actor !== "supplier_agent" && r.actor !== "buyer_agent")) return undefined;
+  if (r.outcome !== "auto_apply" && r.outcome !== "needs_approval" && r.outcome !== "rejected") return undefined;
+  const snapshot = r.snapshot && typeof r.snapshot === "object" && !Array.isArray(r.snapshot) ? (r.snapshot as Record<string, unknown>) : {};
+  const settlement = r.settlement as { txHash?: unknown } | null | undefined;
+  return {
+    actor: r.actor,
+    hash: r.hash,
+    prevHash: typeof r.prevHash === "string" ? r.prevHash : undefined,
+    outcome: r.outcome,
+    reason: typeof r.reason === "string" ? r.reason : "",
+    reasonCode: typeof r.reasonCode === "string" ? r.reasonCode : null,
+    at: typeof r.at === "number" ? r.at : undefined,
+    snapshot,
+    proposal: r.proposal,
+    policyVersion: typeof r.policyVersion === "string" ? r.policyVersion : null,
+    signed: true,
+    settlement: settlement && typeof settlement.txHash === "string" ? { txHash: settlement.txHash } : null,
+  };
+}
+
+/** One entry as an agent's own /decisions returns it. Signed only if the agent has already signed it. */
+export function fromAgentEntry(raw: unknown): LogEntry | undefined {
+  const r = raw as Record<string, unknown> | null;
+  const e = fromApiEntry(r);
+  if (!e) return undefined;
+  return { ...e, signed: typeof r?.signature === "string", policyVersion: e.policyVersion ?? (typeof e.snapshot.policyVersion === "string" ? e.snapshot.policyVersion : null) };
+}
+
+/** Merge two sources. The API's copy (verified) wins over an agent's copy of the same entry. */
+export function mergeEntries(fromApi: readonly LogEntry[], fromAgents: readonly LogEntry[]): LogEntry[] {
+  const byHash = new Map<string, LogEntry>();
+  for (const e of fromAgents) byHash.set(e.hash, e);
+  for (const e of fromApi) byHash.set(e.hash, e);
+  return [...byHash.values()];
+}

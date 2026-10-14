@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import { decisionTypedData, type Domain } from "../core/index.js";
 import type { WalletAdapter } from "../wallets/types.js";
+import type { FetchLike } from "./backend.js";
 import { PolicyBook } from "./policybook.js";
 import { DecisionStore, type LoggedDecision } from "./store.js";
 
@@ -17,6 +18,8 @@ export function openDecisionStore(args: {
   backendUrl?: string;
   /** This agent's private parameters. They are versioned in a local file; the log carries only the version and a salted commitment. */
   policy?: { label: string; params: unknown };
+  /** Replaceable network call, for tests that run the API in the same process. */
+  fetch?: FetchLike;
 }): DecisionStore {
   const { name, dataDir, wallet, domain, backendUrl } = args;
   const stamp = args.policy ? new PolicyBook(join(dataDir, `${name}-policy.jsonl`)).use(args.policy.label, args.policy.params, Math.floor(Date.now() / 1000)) : undefined;
@@ -28,12 +31,12 @@ export function openDecisionStore(args: {
       const signature = await wallet.signTypedData(decisionTypedData(domain, e) as never);
       return { signer, signature };
     },
-    push: backendUrl ? (entries) => deliver(backendUrl, entries) : undefined,
+    push: backendUrl ? (entries) => deliver(backendUrl, entries, args.fetch) : undefined,
   });
 }
 
-async function deliver(backendUrl: string, entries: readonly LoggedDecision[]) {
-  const res = await fetch(`${backendUrl.replace(/\/$/, "")}/api/log/ingest`, {
+async function deliver(backendUrl: string, entries: readonly LoggedDecision[], doFetch: FetchLike | typeof fetch = fetch) {
+  const res = await (doFetch as typeof fetch)(`${backendUrl.replace(/\/$/, "")}/api/log/ingest`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({

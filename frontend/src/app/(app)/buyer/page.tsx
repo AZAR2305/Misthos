@@ -8,6 +8,7 @@ import { useChainData } from "@/components/app/ChainData";
 import { InvoiceTable } from "@/components/app/InvoiceTable";
 import { PayEarlyButton } from "@/components/app/OfferFlows";
 import { RequireWallet } from "@/components/app/RequireWallet";
+import { TreasuryCard } from "@/components/app/TreasuryCard";
 import { AgentNote, Card, Empty, Field, Modal, Money, Notice, PageHeader, Stat, Term } from "@/components/ui/kit";
 import { useToast } from "@/components/ui/toast";
 import { ERC20_ABI } from "@/lib/chain/abi";
@@ -211,6 +212,7 @@ function Body({ me }: { me: `0x${string}` }) {
         </div>
 
         <div className="stack">
+          <TreasuryCard balance={state ? state.balance : null} obligations={obligations} source={declared.source} />
           <Card title="Allowance">
             <p className="muted">The contract can only move the USDC you allow. You can raise or lower this whenever you like.</p>
             <button type="button" className="btn btn-ghost" onClick={() => setAllowOpen(true)}>Set allowance</button>

@@ -113,3 +113,28 @@ export const EVIDENCE_LABEL: Record<string, string> = {
   disputed: "Disputed (listed apart, not a default)",
   unverified: "Not provable yet (not counted)",
 };
+
+/** "20" or "12.5" percent into basis points, or undefined. Integer arithmetic: no floats near a limit. */
+export function percentToBps(input: string): number | undefined {
+  const m = /^(\d{1,3})(?:\.(\d{1,2}))?$/.exec(input.trim());
+  if (!m) return undefined;
+  const bps = Number(m[1]) * 100 + Number((m[2] ?? "").padEnd(2, "0") || "0");
+  return bps <= 10_000 ? bps : undefined;
+}
+
+export function bpsToPercent(bps: number): string {
+  const whole = Math.floor(bps / 100);
+  const frac = String(bps % 100).padStart(2, "0").replace(/0+$/, "");
+  return frac ? `${whole}.${frac}` : String(whole);
+}
+
+/**
+ * The commitment a page should test against the limit for one invoice. A supplier's approved invoice is already part of what is
+ * outstanding, so counting it again as "new" would show a false over-limit; one that is only registered is not counted yet, so
+ * its face is the new commitment. A buyer's worst case is the full price (the price at a 0% rate).
+ */
+export function newExposureFor(side: "supplier" | "buyer", invoiceId: string, face: bigint, events: readonly InvoiceEvent[]): bigint {
+  if (side === "buyer") return face;
+  const id = invoiceId.toLowerCase();
+  return events.some((e) => e.invoiceId.toLowerCase() === id && (e.state === "approved" || e.state === "disputed")) ? 0n : face;
+}

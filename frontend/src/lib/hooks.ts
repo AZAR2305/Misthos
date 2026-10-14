@@ -98,3 +98,31 @@ export function useAgentDecisions(url: string) {
   }, [url]);
   return state;
 }
+
+export type AgentRange<T> = { status: "checking" } | { status: "offline" } | { status: "error"; error: string } | { status: "ready"; data: T };
+
+/** One side's own range for an invoice, asked of that owner's agent on this machine. Offline when the agent is not running. */
+export function useAgentRange<T>(url: string, invoiceId: string): AgentRange<T> {
+  const [state, setState] = useState<AgentRange<T>>({ status: "checking" });
+  useEffect(() => {
+    if (!url) return setState({ status: "offline" });
+    let live = true;
+    const load = async () => {
+      try {
+        const r = await fetch(`${url}/range/${invoiceId.toLowerCase()}`, { signal: AbortSignal.timeout(4000) });
+        const body = (await r.json()) as { ok: boolean; data?: T; error?: { message?: string } };
+        if (!live) return;
+        setState(r.ok && body.ok && body.data ? { status: "ready", data: body.data } : { status: "error", error: body.error?.message ?? "The agent refused." });
+      } catch {
+        if (live) setState({ status: "offline" });
+      }
+    };
+    void load();
+    const t = window.setInterval(() => !document.hidden && void load(), 10_000);
+    return () => {
+      live = false;
+      window.clearInterval(t);
+    };
+  }, [url, invoiceId]);
+  return state;
+}

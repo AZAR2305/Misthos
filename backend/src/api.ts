@@ -512,7 +512,7 @@ export function createApp(d: AppDeps) {
    * without a browser session. Every value here is declared by the owner, so it is labelled declared.
    */
   const READ_WINDOW_SEC = 120;
-  const agentCaller = async (c: Context, resource: string): Promise<{ orgId: string; wallet: Address } | Response> => {
+  const agentCaller = async (c: Context, resource: string, opts: { linked?: boolean } = {}): Promise<{ orgId: string; wallet: Address } | Response> => {
     if (config.AGENTS.length === 0 || !config.INVOICE_BOOK) return unavailable(c, "agent reads are not switched on", "Set AGENT_WALLETS and INVOICE_BOOK_ADDRESS.");
     const wallet = (c.req.header("x-agent-wallet") ?? "").toLowerCase() as Address;
     const ts = Number(c.req.header("x-agent-ts"));
@@ -528,10 +528,64 @@ export function createApp(d: AppDeps) {
     }
     if (!signedByAgent && d.client) signedByAgent = await d.client.verifyTypedData({ address: wallet, ...td, signature }).catch(() => false);
     if (!signedByAgent) return fail(c, "BAD_SIGNATURE", "The request is not signed by that agent.", 401);
+    // Linking is the one call an agent may make before it is linked: it is how it becomes linked.
+    if (opts.linked === false) return { orgId: "", wallet };
     const org = await db.query<{ org_id: string }>("select org_id::text as org_id from wallets where address = $1 and purpose = 'agent'", [wallet]);
     if (!org.length) return fail(c, "NOT_LINKED", "That agent wallet is not linked to a business.", 403);
     return { orgId: org[0].org_id, wallet };
   };
+
+  // ------------------------------------------------------------------------------------------------ linking an agent wallet to a business
+
+  const LINK_MINUTES = 15;
+  const codeHash = (code: string) => createHash("sha256").update(code.toUpperCase().replace(/[^A-Z2-7]/g, "")).digest("hex");
+
+  /** The owner asks for a one-time code. It is shown once, works once, and expires in minutes. */
+  app.post("/api/me/agent-link", async (c) => {
+    const a = need(c);
+    if (!a.side || !a.orgId) return fail(c, "SIDE_REQUIRED", "Choose supplier or buyer first.", 409);
+    // Base32 letters only, so it is easy to read out and type: three groups of four.
+    const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+    const bytes = randomBytes(12);
+    const code = [0, 4, 8].map((i) => [...bytes.subarray(i, i + 4)].map((b) => alphabet[b % 32]).join("")).join("-");
+    const expires = new Date((d.now?.() ?? new Date()).getTime() + LINK_MINUTES * 60_000);
+    await db.query("insert into agent_link_codes (code_hash, org_id, expires_at) values ($1, $2, $3)", [codeHash(code), a.orgId, expires]);
+    return ok(c, { code, expiresAt: expires.toISOString(), minutes: LINK_MINUTES });
+  });
+
+  /** The agent wallets linked to the signed-in business. */
+  app.get("/api/me/agent", async (c) => {
+    const a = need(c);
+    if (!a.orgId) return ok(c, { linked: [] });
+    const r = await db.query<{ address: string }>("select address from wallets where org_id = $1 and purpose = 'agent' order by created_at", [a.orgId]);
+    return ok(c, { linked: r.map((x) => x.address) });
+  });
+
+  /**
+   * The agent redeems the code. The request is signed by the agent wallet over this exact path, which includes the code, so the
+   * signature cannot be replayed for another code or route. The wallet must be one of this deployment's configured agents.
+   */
+  app.use("/api/agent/link/*", limited(20));
+  app.post("/api/agent/link/:code", async (c) => {
+    const code = c.req.param("code");
+    const who = await agentCaller(c, `/api/agent/link/${code}`, { linked: false });
+    if (who instanceof Response) return who;
+    const used = await db.tx(async (t) => {
+      const row = await t.query<{ org_id: string }>(
+        "update agent_link_codes set used_at = now() where code_hash = $1 and used_at is null and expires_at > $2 returning org_id::text as org_id",
+        [codeHash(code), d.now?.() ?? new Date()],
+      );
+      if (!row.length) return "bad" as const;
+      const existing = await t.query<{ org_id: string }>("select org_id::text as org_id from wallets where address = $1", [who.wallet]);
+      if (existing.length) return existing[0]!.org_id === row[0]!.org_id ? ("ok" as const) : ("taken" as const);
+      await t.query("insert into wallets (org_id, address, purpose, mode) values ($1, $2, 'agent', 'agent')", [row[0]!.org_id, who.wallet]);
+      return "ok" as const;
+    });
+    if (used === "bad") return fail(c, "BAD_CODE", "That link code is wrong, already used, or has expired. Make a new one.", 400);
+    if (used === "taken") return fail(c, "ALREADY_LINKED", "This agent wallet is already linked to another business.", 409);
+    return ok(c, { linked: true });
+  });
+
   app.use("/api/agent/*", limited(120));
   app.get("/api/agent/obligations", async (c) => {
     const who = await agentCaller(c, "/api/agent/obligations");

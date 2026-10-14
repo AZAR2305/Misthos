@@ -3,18 +3,23 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useState } from "react";
-import { AgentNote, AddressChip, Card, Empty, Modal, Money, Notice, PageHeader, Skeleton, Stepper, StatusChip, Tag, TxLink, Term } from "@/components/ui/kit";
+import { AddressChip, Card, Empty, Modal, Money, Notice, PageHeader, Skeleton, Stepper, StatusChip, Tag, TxLink, Term } from "@/components/ui/kit";
 import { useChainData } from "@/components/app/ChainData";
 import { DiscountCurve } from "@/components/app/DiscountCurve";
 import { OfferButton, PayEarlyButton } from "@/components/app/OfferFlows";
 import { InviteSupplier } from "@/components/app/ClaimLinks";
+import { CreditBasis } from "@/components/app/CreditBasis";
+import { NegotiationTrace } from "@/components/app/NegotiationTrace";
+import { PayStateChip } from "@/components/app/PayStateChip";
+import { YourRange } from "@/components/app/YourRange";
 import { useWallet } from "@/components/wallet/WalletProvider";
 import { ERC20_ABI, INVOICE_BOOK_ABI } from "@/lib/chain/abi";
 import { appChain, publicClient } from "@/lib/chain/client";
 import { CONFIG } from "@/lib/config";
 import { discountOf, effectiveAprBps } from "@/lib/core";
 import { dateOnly, dateTime, dueText, invoiceName, shortId, useNow } from "@/lib/format";
-import { useAgentDecisions } from "@/lib/hooks";
+import { useInvoiceLog } from "@/lib/invoicelog";
+import { payState } from "@/lib/paystate";
 import { useInvoiceMeta, useIssuedOffers } from "@/lib/storage";
 import { useTx } from "@/lib/tx";
 
@@ -27,8 +32,7 @@ export default function InvoicePage() {
   const [meta] = useInvoiceMeta();
   const [issued] = useIssuedOffers();
   const tx = useTx();
-  const supplierLog = useAgentDecisions(CONFIG.supplierAgentUrl);
-  const buyerLog = useAgentDecisions(CONFIG.buyerAgentUrl);
+  const log = useInvoiceLog(id);
   const [confirmDispute, setConfirmDispute] = useState(false);
   const [previewPct, setPreviewPct] = useState(0);
   const [agentBusy, setAgentBusy] = useState(false);
@@ -59,7 +63,7 @@ export default function InvoicePage() {
   const registeredAt = chain.time(inv.registered.block);
   const startSec = registeredAt ?? now - 30 * 86_400;
   const issuedHere = issued[inv.id] ?? [];
-  const decisions = [...supplierLog.entries, ...buyerLog.entries].filter((d) => d.snapshot.invoiceId?.toLowerCase() === inv.id);
+  const pay = payState({ chainStatus: inv.status, entries: log.entries });
 
   const approve = () => tx.run({ pending: "Approving invoice", done: "Invoice approved" }, (wc, account) => wc.writeContract({ address: CONFIG.book!, abi: INVOICE_BOOK_ABI, functionName: "approveInvoice", args: [inv.id], account, chain: appChain }));
   const dispute = async () => {
@@ -101,7 +105,7 @@ export default function InvoicePage() {
             <Money minor={inv.amount} /> from <AddressChip address={inv.supplier} you={isSupplier} /> to <AddressChip address={inv.buyer} you={isBuyer} />
           </>
         }
-        actions={<StatusChip status={inv.status} />}
+        actions={<><StatusChip status={inv.status} /> <PayStateChip state={pay} /></>}
         help={
           <>
             <p><b>This page follows one invoice from signature to payment.</b> Everything marked On-chain can be checked on the explorer by anyone.</p>
@@ -120,19 +124,7 @@ export default function InvoicePage() {
           <DiscountCurve face={inv.amount} dueSec={Number(inv.dueDate)} startSec={Math.min(startSec, Number(inv.dueDate) - 86_400)} nowSec={now} rates={rates} settled={settled?.kind === "early" && chain.time(settled.block) ? { rateBps: settled.rateBps, paidSec: chain.time(settled.block)!, discount: settled.discount } : undefined} />
 
           <Card title="Negotiation and decisions" aside={<Tag tone="agent">agent</Tag>}>
-            {decisions.length === 0 ? (
-              <p className="muted">
-                {supplierLog.status === "offline" && buyerLog.status === "offline"
-                  ? "Neither agent is running, so there is no negotiation to show. When agents negotiate, each rung and the reason it was accepted or rejected appears here."
-                  : "The agents have not made any decision about this invoice yet."}
-              </p>
-            ) : (
-              decisions.map((d) => (
-                <AgentNote key={d.hash} who={d.actor === "buyer_agent" ? "Buyer agent" : "Supplier agent"} evidence={[`outcome: ${d.outcome}`, `log ${d.hash.slice(0, 10)}…`]}>
-                  <p>{d.reason}</p>
-                </AgentNote>
-              ))
-            )}
+            <NegotiationTrace log={log} settledTx={settled?.kind === "early" ? settled.tx : undefined} />
             {issuedHere.length > 0 && (
               <>
                 <p className="muted tiny">Offers signed from this browser</p>
@@ -216,6 +208,11 @@ export default function InvoicePage() {
               <p className="muted">Only an approved invoice can be paid early. The buyer approves it once the work is accepted. {dueText(inv.dueDate, now)}.</p>
               {note && isSupplier && <p className="muted tiny">Your note: {note}</p>}
             </Card>
+          )}
+
+          {(isBuyer || isSupplier) && inv.status === "approved" && <YourRange side={isBuyer ? "buyer" : "supplier"} invoiceId={inv.id} />}
+          {(isBuyer || isSupplier) && (
+            <CreditBasis side={isBuyer ? "buyer" : "supplier"} owner={me} counterparty={isBuyer ? inv.supplier : inv.buyer} invoiceId={inv.id} face={inv.amount} />
           )}
 
           <Card title="What you can do">

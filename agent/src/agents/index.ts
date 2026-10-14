@@ -5,3 +5,4 @@ export * from "./supplier.js";
 export * from "./buyer.js";
 export * from "./backend.js";
 export * from "./policybook.js";
+export * from "./log.js";

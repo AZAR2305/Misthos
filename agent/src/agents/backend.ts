@@ -12,7 +12,10 @@ export interface SignedReader {
   get(path: string): Promise<unknown>;
 }
 
-export function signedReader(args: { backendUrl: string; wallet: WalletAdapter; domain: Domain; now?: () => number; timeoutMs?: number }): SignedReader {
+/** The network call, replaceable so a test can talk to an API running in the same process. */
+export type FetchLike = (url: string, init?: { method?: string; headers?: Record<string, string>; body?: string; signal?: AbortSignal }) => Promise<{ ok: boolean; status: number; json(): Promise<unknown> }>;
+
+export function signedReader(args: { backendUrl: string; wallet: WalletAdapter; domain: Domain; now?: () => number; timeoutMs?: number; fetch?: FetchLike }): SignedReader {
   const base = args.backendUrl.replace(/\/$/, "");
   const now = args.now ?? (() => Math.floor(Date.now() / 1000));
   return {
@@ -20,7 +23,7 @@ export function signedReader(args: { backendUrl: string; wallet: WalletAdapter; 
       const ts = now();
       const wallet = await args.wallet.address();
       const signature = await args.wallet.signTypedData(agentReadTypedData(args.domain, { resource: path, ts }) as never);
-      const res = await fetch(`${base}${path}`, {
+      const res = await (args.fetch ?? fetch)(`${base}${path}`, {
         headers: { "x-agent-wallet": wallet, "x-agent-ts": String(ts), "x-agent-sig": signature },
         signal: AbortSignal.timeout(args.timeoutMs ?? 15_000),
       });
@@ -82,9 +85,9 @@ const eventRows = z.array(
 );
 
 /** The invoices between this business and one counterparty, from indexed chain events (public data, no sign-in). Throws if unreadable. */
-export async function fetchExposureEvents(args: { backendUrl: string; side: "supplier" | "buyer"; owner: string; counterparty: string; timeoutMs?: number }): Promise<InvoiceEvent[]> {
+export async function fetchExposureEvents(args: { backendUrl: string; side: "supplier" | "buyer"; owner: string; counterparty: string; timeoutMs?: number; fetch?: FetchLike }): Promise<InvoiceEvent[]> {
   const q = new URLSearchParams({ side: args.side, owner: args.owner.toLowerCase(), counterparty: args.counterparty.toLowerCase() });
-  const res = await fetch(`${args.backendUrl.replace(/\/$/, "")}/api/exposure?${q}`, { signal: AbortSignal.timeout(args.timeoutMs ?? 15_000) });
+  const res = await (args.fetch ?? fetch)(`${args.backendUrl.replace(/\/$/, "")}/api/exposure?${q}`, { signal: AbortSignal.timeout(args.timeoutMs ?? 15_000) });
   const body = (await res.json().catch(() => ({}))) as { ok?: boolean; data?: { events?: unknown }; error?: { message?: string } };
   if (!res.ok || !body.ok) throw new Error(body.error?.message ?? `The API answered ${res.status}.`);
   return eventRows.parse(body.data?.events).map((e) => ({
@@ -97,4 +100,27 @@ export async function fetchExposureEvents(args: { backendUrl: string; side: "sup
     ...(e.txHash !== undefined ? { txHash: e.txHash } : {}),
     ...(e.logIndex !== undefined ? { logIndex: e.logIndex } : {}),
   }));
+}
+
+/**
+ * Redeem a one-time link code made by the signed-in owner on the website. The request is signed by this agent's wallet over the
+ * exact path (which contains the code), so it proves the agent is the wallet it names and cannot be replayed for another code.
+ * Both halves are needed to link: the owner's session made the code, this wallet redeems it.
+ */
+export async function linkAgent(args: { backendUrl: string; wallet: WalletAdapter; domain: Domain; code: string; now?: () => number; timeoutMs?: number; fetch?: FetchLike }): Promise<{ ok: true } | { ok: false; message: string }> {
+  const path = `/api/agent/link/${encodeURIComponent(args.code.trim())}`;
+  const ts = (args.now ?? (() => Math.floor(Date.now() / 1000)))();
+  try {
+    const wallet = await args.wallet.address();
+    const signature = await args.wallet.signTypedData(agentReadTypedData(args.domain, { resource: path, ts }) as never);
+    const res = await (args.fetch ?? fetch)(`${args.backendUrl.replace(/\/$/, "")}${path}`, {
+      method: "POST",
+      headers: { "x-agent-wallet": wallet, "x-agent-ts": String(ts), "x-agent-sig": signature },
+      signal: AbortSignal.timeout(args.timeoutMs ?? 15_000),
+    });
+    const body = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: { message?: string } };
+    return res.ok && body.ok ? { ok: true } : { ok: false, message: body.error?.message ?? `The API answered ${res.status}.` };
+  } catch (e) {
+    return { ok: false, message: `Could not reach the API: ${(e as Error).message}` };
+  }
 }

@@ -236,3 +236,19 @@
 @media (max-width: 520px) { .stats { grid-template-columns: 1fr; } }
 .stat { display: grid; align-content: start; min-height: 104px; }
 .health { display: inline-flex; align-items: center; gap: 8px; }
+
+/* ---------- negotiation trace, range bar and credit basis (SRS views B and C) ---------- */
+.trace { display: grid; gap: 14px; }
+.range { display: grid; gap: 6px; padding: 4px 8px 0; }
+.range-track { position: relative; height: 22px; }
+.range-track::before { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 2px; margin-top: -1px; border-radius: 2px; background: var(--color-border); }
+.range-mark { position: absolute; top: 50%; width: 14px; height: 14px; margin: -7px 0 0 -7px; border-radius: 50%; background: var(--color-agent-bg); border: 2px solid var(--color-agent-border); }
+.range-mark[data-accepted="true"] { background: var(--color-ok); border-color: var(--color-ok); }
+.range-axis { display: flex; justify-content: space-between; font-family: var(--font-mono); font-size: 0.72rem; color: var(--color-text-muted); }
+.trace-rows li[data-accepted="true"] .rung { color: var(--color-ok); }
+.trace-reply[data-accepted="true"] { color: var(--color-ok); font-weight: 600; }
+.trace-credit { display: block; margin-top: 2px; }
+.trace-proof { display: grid; justify-items: end; gap: 2px; text-align: right; }
+.trace-wait { margin: 0; padding-left: 18px; }
+.credit-evidence li { gap: 12px; }
+@media (max-width: 560px) { .trace-rows li { grid-template-columns: 46px minmax(0, 1fr); } .trace-proof { grid-column: 1 / -1; justify-items: start; text-align: left; } }

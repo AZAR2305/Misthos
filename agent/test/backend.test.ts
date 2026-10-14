@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { recoverTypedDataAddress } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { agentReadTypedData, domain } from "../src/core/index.js";
-import { fetchExposureEvents, fetchExposurePolicy, fetchObligations, signedReader } from "../src/agents/backend.js";
+import { fetchExposureEvents, fetchExposurePolicy, fetchObligations, linkAgent, signedReader } from "../src/agents/backend.js";
 import type { WalletAdapter } from "../src/wallets/types.js";
 
 const D = domain(5042002, "0x00000000000000000000000000000000000000aa");
@@ -86,5 +86,22 @@ describe("the exposure policy and history reads", () => {
     expect(a.seen.path).toContain("owner=0xabc");
     await new Promise<void>((r) => server!.close(() => r()));
     await expect(fetchExposureEvents({ backendUrl: a.url, side: "buyer", owner: "0xa", counterparty: "0xb", timeoutMs: 500 })).rejects.toThrow();
+  });
+});
+
+describe("redeeming a link code", () => {
+  it("signs the exact path, which contains the code, with the agent wallet", async () => {
+    const a = await api({ linked: true });
+    expect(await linkAgent({ backendUrl: a.url, wallet, domain: D, code: "ABCD-EFGH-JKLM", now: () => NOW })).toEqual({ ok: true });
+    expect(a.seen.path).toBe("/api/agent/link/ABCD-EFGH-JKLM");
+    expect(a.seen.signer).toBe(account.address);
+  });
+  it("reports why it failed, and never throws", async () => {
+    const refused = await api(null, 403);
+    expect(await linkAgent({ backendUrl: refused.url, wallet, domain: D, code: "X" })).toEqual({ ok: false, message: "nope" });
+    await new Promise<void>((r) => server!.close(() => r()));
+    const down = await linkAgent({ backendUrl: refused.url, wallet, domain: D, code: "X", timeoutMs: 500 });
+    expect(down.ok).toBe(false);
+    expect(down.ok === false && down.message).toMatch(/Could not reach the API/);
   });
 });

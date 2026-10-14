@@ -5,7 +5,7 @@ import { BuyerAgent } from "../agents/buyer.js";
 import { AnthropicModel } from "../agents/model.js";
 import { viemChainReader } from "../agents/chain.js";
 import { openDecisionStore } from "../agents/log.js";
-import { fetchExposureEvents, fetchExposurePolicy, fetchObligations, signedReader } from "../agents/backend.js";
+import { fetchExposureEvents, fetchExposurePolicy, fetchObligations, linkAgent, signedReader } from "../agents/backend.js";
 import { offerMsgSchema } from "../protocol/index.js";
 import { buyerPolicyFromEnv, loadConfig, loadEnvFile } from "../config.js";
 import { CircleCliAdapter } from "../wallets/circleCli.js";
@@ -110,3 +110,11 @@ serve(
   "buyer-agent",
   serveOptions,
 );
+
+// One-time link: the owner makes a code on the website (Credit limits page) and starts this agent once with MISTHOS_LINK_CODE set.
+// The agent redeems it with a request signed by its own wallet, which links this wallet to the business so it can read its own data.
+if (process.env.MISTHOS_LINK_CODE && cfg.BACKEND_URL) {
+  void linkAgent({ backendUrl: cfg.BACKEND_URL, wallet, domain: domain(cfg.ARC_CHAIN_ID, book), code: process.env.MISTHOS_LINK_CODE }).then((r) =>
+    console.log(r.ok ? "[buyer-agent] linked to your business. You can remove MISTHOS_LINK_CODE now." : `[buyer-agent] could not link: ${r.message}`),
+  );
+}

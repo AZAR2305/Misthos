@@ -30,6 +30,9 @@ interface LogItem {
   hash: string;
   prevHash: string;
   signature: string;
+  /** From the entry's snapshot: the policy it ran under and what it decided. Null for entries written before policies were versioned. */
+  policyVersion?: string | null;
+  result?: string | null;
   snapshot: unknown;
   settlement: { txHash: string; block: string } | null;
 }
@@ -217,6 +220,11 @@ function Verification({ data }: { data: VerifyData }) {
 function Row({ e }: { e: LogItem }) {
   const [open, setOpen] = useState(false);
   const o = OUTCOME[e.outcome];
+  // Salted commitments to the agent's private policy and inputs. They prove which policy and inputs a decision used, to anyone the owner shows the values to, and reveal nothing otherwise.
+  const snap = (e.snapshot && typeof e.snapshot === "object" ? e.snapshot : {}) as Record<string, unknown>;
+  const commitments: Array<[string, string]> = [];
+  if (typeof snap.policyCommitment === "string") commitments.push(["Policy commitment", snap.policyCommitment]);
+  if (typeof snap.inputsCommitment === "string") commitments.push(["Inputs commitment", snap.inputsCommitment]);
   return (
     <>
       <tr>
@@ -234,6 +242,7 @@ function Row({ e }: { e: LogItem }) {
             <span aria-hidden="true">{o.tone === "ok" ? "✓" : o.tone === "warn" ? "!" : "✕"}</span> {o.label}
           </span>
           <span className="log-text">{e.reason}</span>
+          {e.policyVersion && <span className="muted tiny">Policy {e.policyVersion}</span>}
         </td>
         <td className="log-proof">
           <span className="mono-link">
@@ -257,6 +266,8 @@ function Row({ e }: { e: LogItem }) {
               <div><dt>This hash</dt><dd className="mono tiny">{e.hash}</dd></div>
               <div><dt>Signed by</dt><dd><AddressChip address={e.signer} /></dd></div>
               <div><dt>Signature</dt><dd className="mono tiny">{short(e.signature, 18, 10)}</dd></div>
+              <div><dt>Policy in force</dt><dd>{e.policyVersion ?? "Not recorded (written before policies were versioned)"}</dd></div>
+              {commitments.map(([k, v]) => <div key={k}><dt>{k}</dt><dd className="mono tiny">{short(v, 18, 10)}</dd></div>)}
               <div><dt>Inputs it saw</dt><dd><pre className="log-json">{JSON.stringify(e.snapshot, null, 2)}</pre></dd></div>
             </dl>
           </td>

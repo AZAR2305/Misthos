@@ -43,7 +43,7 @@ const EXPLORE = PUBLIC.slice(0, -1);
  * never has to squeeze. Without a side there is nothing private to show, so every public page stands on its own.
  */
 function tabsFor(role: Role | null): { primary: Tab[]; more: Tab[] } {
-  if (role === "supplier") return { primary: [HOME, { href: "/supplier", label: "My invoices", exact: true }, { href: "/supplier/invoices/new", label: "New invoice" }, DOCS], more: EXPLORE };
+  if (role === "supplier") return { primary: [HOME, { href: "/supplier", label: "My invoices", exact: true }, { href: "/supplier/invoices/new", label: "New invoice" }, { href: "/supplier/policy", label: "Credit limits" }, DOCS], more: EXPLORE };
   if (role === "buyer") return { primary: [HOME, { href: "/buyer", label: "Treasury", exact: true }, { href: "/buyer/approvals", label: "Approvals" }, { href: "/buyer/policy", label: "Policy" }, DOCS], more: EXPLORE };
   return { primary: [HOME, ...PUBLIC], more: [] };
 }

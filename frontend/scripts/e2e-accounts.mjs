@@ -96,7 +96,7 @@ async function main() {
   const be = spawn(process.execPath, [tsx, "src/server.ts"], {
     cwd: path.join(root, "backend"),
     env: { ...process.env, DATABASE_URL: "pglite://memory", PORT: String(API), ARC_RPC_URL: RPC, ARC_CHAIN_ID: "31337", INVOICE_BOOK_ADDRESS: dep.invoiceBook, USDC_ADDRESS: dep.usdc, DEPLOY_BLOCK: String(dep.deployBlock),
-      GOOGLE_CLIENT_ID: CLIENT_ID, GOOGLE_JWKS_URL: `http://127.0.0.1:${JWKS}/certs`, FRONTEND_ORIGINS: BASE, RELAYER_PRIVATE_KEY: "0x" + Buffer.from(acct(3).getHdKey().privateKey).toString("hex") },
+      GOOGLE_CLIENT_ID: CLIENT_ID, GOOGLE_JWKS_URL: `http://127.0.0.1:${JWKS}/certs`, FRONTEND_ORIGINS: BASE, AGENT_WALLETS: acct(5).address, RELAYER_PRIVATE_KEY: "0x" + Buffer.from(acct(3).getHdKey().privateKey).toString("hex") },
     stdio: "ignore",
   });
   procs.push(be);
@@ -200,6 +200,56 @@ async function main() {
   await sleep(1200);
   check((await page.getByText("Wrong wallet").count()) > 0 || (await page.getByText("is not the one linked").count()) > 0, "a different wallet cannot sign: the app explains why");
   await page.evaluate((a) => window.__switchTo(a), supplier);
+
+  log("6d. credit limits: set them, see them versioned, link an agent, and read the credit basis on an invoice");
+  await page.goto(`${BASE}/supplier/policy`, { waitUntil: "networkidle" });
+  await text("No limits set yet").waitFor();
+  check(true, "with no limits saved the page says nobody is given credit by default");
+  await page.fill("#xp-start", "5000");
+  await page.fill("#xp-max", "20000");
+  await page.getByRole("button", { name: "Save limits" }).click();
+  await text("In force: exposure-1").waitFor();
+  const pol1 = await page.evaluate(async (u) => (await (await fetch(`${u}/api/exposure-policy`, { credentials: "include" })).json()).data, API_URL);
+  check(pol1.version === "exposure-1" && pol1.newCounterpartyLimit === "5000000000" && pol1.maxLimit === "20000000000" && pol1.growthBps === 2000, "saved on the server as version exposure-1, in integer minor units");
+  await page.fill("#xp-start", "6000");
+  await page.getByRole("button", { name: "Save limits" }).click();
+  await text("In force: exposure-2").waitFor();
+  check(true, "changing a number makes a new version (exposure-2)");
+  await page.fill("#xp-max", "1");
+  await page.getByRole("button", { name: "Save limits" }).click();
+  await text("cannot be lower than the starting limit").waitFor();
+  check(true, "a maximum below the starting limit is refused with a plain message");
+  await page.fill("#xp-max", "20000");
+  await shot("04c-credit-limits");
+
+  await text("Not linked yet").waitFor();
+  await page.getByRole("button", { name: "Make a link code" }).click();
+  await text("MISTHOS_LINK_CODE=").waitFor();
+  const linkCode = /MISTHOS_LINK_CODE=([A-Z2-7]{4}-[A-Z2-7]{4}-[A-Z2-7]{4})/.exec(await page.locator("body").innerText())?.[1];
+  check(!!linkCode, "the owner got a one-time link code");
+  const agentAcct = acct(5);
+  const readSig = async (resource, ts) => agentAcct.signTypedData({ domain: { name: "Misthos", version: "1", chainId: 31337, verifyingContract: dep.invoiceBook }, types: { AgentRead: [{ name: "resource", type: "string" }, { name: "ts", type: "uint64" }] }, primaryType: "AgentRead", message: { resource, ts: BigInt(ts) } });
+  const ts0 = Math.floor(Date.now() / 1000);
+  const wrongSig = await readSig("/api/agent/link/SOMEONE-ELSES-CODE", ts0);
+  const bad = await fetch(`${API_URL}/api/agent/link/${linkCode}`, { method: "POST", headers: { "x-agent-wallet": agentAcct.address, "x-agent-ts": String(ts0), "x-agent-sig": wrongSig } });
+  check(bad.status === 401, "a request signed for a different code is refused");
+  const okRes = await fetch(`${API_URL}/api/agent/link/${linkCode}`, { method: "POST", headers: { "x-agent-wallet": agentAcct.address, "x-agent-ts": String(ts0), "x-agent-sig": await readSig(`/api/agent/link/${linkCode}`, ts0) } });
+  check(okRes.status === 200, "the agent wallet redeemed the code with a signature of its own");
+  const again = await fetch(`${API_URL}/api/agent/link/${linkCode}`, { method: "POST", headers: { "x-agent-wallet": agentAcct.address, "x-agent-ts": String(ts0), "x-agent-sig": await readSig(`/api/agent/link/${linkCode}`, ts0) } });
+  check(again.status === 400, "the code works once");
+  await page.reload({ waitUntil: "networkidle" });
+  await text("Your agent is linked").waitFor();
+  check(true, "the page now shows the agent as linked");
+  await shot("04d-agent-linked");
+
+  await page.goto(`${BASE}/invoices/${relayedId}`, { waitUntil: "networkidle" });
+  await text("Credit limit for this business").waitFor();
+  await text("Allowed limit").waitFor();
+  await text("Fits the limit").waitFor();
+  check(true, "the invoice page shows the credit basis: allowed limit, and the 2,500 USDC invoice fits inside 6,000");
+  await text("No settled invoices with this business yet").waitFor();
+  check(true, "with no history it says the limit is the starting limit, and settlements raise it");
+  await shot("04e-credit-basis");
 
   log("7. the guards");
   await page.goto(`${BASE}/buyer`);
