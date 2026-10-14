@@ -3,6 +3,7 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { canonicalJson, commitTo } from "../core/index.js";
 import type { PolicyStamp } from "./store.js";
+import { SEALED_PREFIX, VaultError, type Vault } from "./vault.js";
 
 /**
  * The agent's private policy, versioned (SRS FR-10: "policy version used for the decision"). Each time the parameters change a
@@ -29,13 +30,19 @@ export class PolicyBook {
   constructor(
     private readonly file: string | undefined,
     private readonly salt: () => `0x${string}` = newSalt,
+    /** Encrypts each record at rest (the parameters and the salt are private). */
+    private readonly vault?: Vault,
   ) {
     if (file && existsSync(file)) {
       for (const [i, raw] of readFileSync(file, "utf8").split("\n").entries()) {
         if (!raw.trim()) continue;
         try {
-          this.records.push(JSON.parse(raw) as PolicyRecord);
-        } catch {
+          if (raw.startsWith(SEALED_PREFIX)) {
+            if (!this.vault) throw new VaultError("NO_KEY", `The policy file ${file} is sealed. Set AGENT_STORE_KEY to read it.`);
+            this.records.push(JSON.parse(this.vault.open(raw.trim())) as PolicyRecord);
+          } else this.records.push(JSON.parse(raw) as PolicyRecord); // older plaintext line, still readable
+        } catch (e) {
+          if (e instanceof VaultError) throw e;
           throw new Error(`The policy file ${file} is damaged at line ${i + 1}. Move it aside to start a new one; older decisions then cannot be replayed.`);
         }
       }
@@ -54,7 +61,7 @@ export class PolicyBook {
     this.records.push(rec);
     if (this.file) {
       mkdirSync(dirname(this.file), { recursive: true });
-      appendFileSync(this.file, JSON.stringify(rec) + "\n");
+      appendFileSync(this.file, (this.vault ? this.vault.seal(JSON.stringify(rec)) : JSON.stringify(rec)) + "\n");
     }
     return stamp(rec);
   }

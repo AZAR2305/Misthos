@@ -24,7 +24,7 @@ describe("ERC-8004 calls", () => {
     const abi = parseAbi([f.abi]);
     // encode through the ABI the way viem would, then decode: proves the argument list matches the signature
     
-    const data = encodeFunctionData({ abi, functionName: "giveFeedback", args: f.args as never });
+    const data = encodeFunctionData({ abi, functionName: "giveFeedback", args: f.args } as never);
     expect(decodeFunctionData({ abi, data }).args?.[0]).toBe(7n);
     expect(data.slice(0, 10)).toBe("0x3c036a7e"); // the selector present in the deployed bytecode
   });

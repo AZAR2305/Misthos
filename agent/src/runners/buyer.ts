@@ -5,12 +5,14 @@ import { BuyerAgent } from "../agents/buyer.js";
 import { createModel, modelKeyOf } from "../agents/modelFactory.js";
 import { viemChainReader } from "../agents/chain.js";
 import { openDecisionStore } from "../agents/log.js";
-import { fetchExposureEvents, fetchExposurePolicy, fetchObligations, fetchPayables, linkAgent, signedReader } from "../agents/backend.js";
+import { fetchExposureEvents, fetchExposurePolicy, fetchPayables, linkAgent, signedReader } from "../agents/backend.js";
 import { offerMsgSchema } from "../protocol/index.js";
 import { buyerPolicyFromEnv, loadConfig, loadEnvFile } from "../config.js";
 import { CircleCliAdapter } from "../wallets/circleCli.js";
 import { readReputation, reputationClient, writeSettlementFeedback } from "../identity/erc8004.js";
 import { chainVerifier, type Address } from "../wallets/types.js";
+import { ObligationStore, obligationInput } from "../agents/obligations.js";
+import { vaultFromEnv } from "../agents/vault.js";
 import { serve, type ServeOptions } from "./http.js";
 
 /**
@@ -41,19 +43,22 @@ const wallet = new CircleCliAdapter({
   verifier,
 });
 const reader = cfg.BACKEND_URL ? signedReader({ backendUrl: cfg.BACKEND_URL, wallet, domain: domain(cfg.ARC_CHAIN_ID, book) }) : undefined;
-/** Only an explicit declaration that there are no obligations allows an empty calendar without the API. */
-const declaredNone = process.env.BUYER_OBLIGATIONS_DECLARED_NONE === "true";
-const obligations = async () => {
-  if (reader) return fetchObligations(reader);
-  if (declaredNone) return [];
-  throw new Error("The payment calendar is unavailable: set BACKEND_URL, or set BUYER_OBLIGATIONS_DECLARED_NONE=true if you have no obligations.");
-};
+/**
+ * The payment calendar is private, so it lives only here: an encrypted file on this machine, managed through this agent's own routes
+ * (GET/POST /obligations) and never sent to the shared Misthos server. A calendar nobody declared is unavailable and nothing is accepted.
+ * Setting BUYER_OBLIGATIONS_DECLARED_NONE=true is the explicit way to say "I have no upcoming payments".
+ */
+const vault = vaultFromEnv(cfg.AGENT_STORE_KEY);
+const obligationStore = new ObligationStore(cfg.AGENT_DATA_DIR, vault);
+if (process.env.BUYER_OBLIGATIONS_DECLARED_NONE === "true") obligationStore.declareNone();
+const obligations = async () =>
+  obligationStore.list().map((o) => ({ id: o.id, dueSec: BigInt(o.dueSec), amount: BigInt(o.amount), provenance: "declared" as const }));
 /**
  * What the chain says this buyer owes on approved, unpaid invoices (verified, unlike the calendar the owner typed). Read from the API's
  * indexed events. Without BACKEND_URL there is no verified source, so none is added (and the declared calendar still applies).
  */
 const payables = async () => (cfg.BACKEND_URL ? fetchPayables({ backendUrl: cfg.BACKEND_URL, buyer: cfg.BUYER_AGENT_WALLET_ADDRESS! }) : []);
-const store = openDecisionStore({ name: "buyer", dataDir: cfg.AGENT_DATA_DIR, wallet, domain: domain(cfg.ARC_CHAIN_ID, book), backendUrl: cfg.BACKEND_URL, policy: { label: "buyer-policy", params: buyerPolicyFromEnv() } });
+const store = openDecisionStore({ name: "buyer", dataDir: cfg.AGENT_DATA_DIR, wallet, domain: domain(cfg.ARC_CHAIN_ID, book), backendUrl: cfg.BACKEND_URL, policy: { label: "buyer-policy", params: buyerPolicyFromEnv() }, vault });
 const buyer = new BuyerAgent({
   wallet,
   domain: domain(cfg.ARC_CHAIN_ID, book),
@@ -113,6 +118,10 @@ serve(
     },
     "GET /range/:invoiceId": async ({ params }) => buyer.range(z.string().regex(/^0x[0-9a-fA-F]{64}$/).parse(params.invoiceId).toLowerCase() as `0x${string}`),
     "GET /reputation": async () => ({ supplierAgentId: cfg.SUPPLIER_ERC8004_ID ?? null, summary: cfg.SUPPLIER_ERC8004_ID ? await readReputation(reputationClient(cfg.ARC_RPC_URL), cfg.ERC8004_REPUTATION as Address, BigInt(cfg.SUPPLIER_ERC8004_ID), [cfg.BUYER_AGENT_WALLET_ADDRESS as Address]) ?? null : null }),
+    "GET /obligations": async () => ({ declared: obligationStore.declared(), items: obligationStore.declared() ? obligationStore.list().map((o) => ({ ...o, provenance: "declared" })) : [] }),
+    "POST /obligations": async ({ body }) => obligationStore.add(obligationInput.parse(body)),
+    "POST /obligations/declare-none": async () => (obligationStore.declareNone(), { declared: true }),
+    "POST /obligations/:id/remove": async ({ params }) => ({ removed: obligationStore.remove(params.id!) }),
     "GET /policy": async () => buyerPolicyFromEnv(), // private to this machine: the hurdle is shown only to its owner
     "GET /needs-approval": async () => [...buyer.needsApproval].map(([invoiceId, v]) => ({ invoiceId, ...v })),
     "GET /decisions": async () => ({ entries: store.all(), verify: store.verify(), delivery: { ...store.status(), backend: !!cfg.BACKEND_URL } }),

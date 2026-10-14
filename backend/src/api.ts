@@ -458,56 +458,6 @@ export function createApp(d: AppDeps) {
     return ok(c, { id: job.id, kind: job.kind, status: job.status, attempts: job.attempts, error: job.lastError, result: job.result });
   });
 
-  // ------------------------------------------------------------------------------------------------ private settings (per account)
-
-  const bps = z.number().int().min(0).max(5000);
-  const policyBody = z.object({ hurdleAprBps: bps, liquidityFloor: minor, perInvoiceCap: minor, dailyCap: minor, humanAbove: minor });
-
-  app.get("/api/policy", async (c) => {
-    const a = need(c, "buyer");
-    const r = await db.query<Record<string, string | number>>(
-      `select hurdle_apr_bps, liquidity_floor::text as liquidity_floor, per_invoice_cap::text as per_invoice_cap, daily_cap::text as daily_cap, human_above::text as human_above
-       from policies where buyer_org = $1`,
-      [a.orgId],
-    );
-    const p = r[0];
-    return ok(c, p ? { hurdleAprBps: p.hurdle_apr_bps, liquidityFloor: fromNumeric(String(p.liquidity_floor)), perInvoiceCap: fromNumeric(String(p.per_invoice_cap)), dailyCap: fromNumeric(String(p.daily_cap)), humanAbove: fromNumeric(String(p.human_above)) } : null);
-  });
-
-  /** Stores the private policy. The on-chain caps are set by the buyer's own wallet (setLimits); this never sends a transaction. */
-  app.put("/api/policy", async (c) => {
-    const a = need(c, "buyer");
-    const p = await body(c, policyBody);
-    await db.query(
-      `insert into policies (buyer_org, hurdle_apr_bps, liquidity_floor, per_invoice_cap, daily_cap, human_above) values ($1,$2,$3,$4,$5,$6)
-       on conflict (buyer_org) do update set hurdle_apr_bps = excluded.hurdle_apr_bps, liquidity_floor = excluded.liquidity_floor,
-         per_invoice_cap = excluded.per_invoice_cap, daily_cap = excluded.daily_cap, human_above = excluded.human_above`,
-      [a.orgId, p.hurdleAprBps, toNumeric(BigInt(p.liquidityFloor)), toNumeric(BigInt(p.perInvoiceCap)), toNumeric(BigInt(p.dailyCap)), toNumeric(BigInt(p.humanAbove))],
-    );
-    return ok(c, p);
-  });
-
-  const obligationBody = z.object({ label: z.string().min(1).max(120), amount: minor.refine((s) => BigInt(s) > 0n, "must be above zero"), dueDate: z.iso.datetime(), kind: z.enum(["payroll", "bill", "other"]).default("other") });
-  app.get("/api/obligations", async (c) => {
-    const a = need(c, "buyer");
-    const r = await db.query<{ id: string; label: string; amount: string; due_date: Date; kind: string }>(
-      "select id, label, amount::text as amount, due_date, kind::text as kind from obligations where buyer_org = $1 order by due_date",
-      [a.orgId],
-    );
-    return ok(c, r.map((x) => ({ id: x.id, label: x.label, amount: fromNumeric(x.amount), dueDate: new Date(x.due_date).toISOString(), kind: x.kind })));
-  });
-  app.post("/api/obligations", async (c) => {
-    const a = need(c, "buyer");
-    const b = await body(c, obligationBody);
-    const r = await db.query<{ id: string }>("insert into obligations (buyer_org, label, amount, due_date, kind) values ($1,$2,$3,$4,$5) returning id", [a.orgId, b.label, toNumeric(BigInt(b.amount)), b.dueDate, b.kind]);
-    return ok(c, { id: r[0]!.id, ...b }, 201);
-  });
-  app.delete("/api/obligations/:id", async (c) => {
-    const a = need(c, "buyer");
-    const r = await db.query("delete from obligations where id::text = $1 and buyer_org = $2 returning id", [c.req.param("id"), a.orgId]);
-    return r.length ? ok(c, { deleted: true }) : fail(c, "NOT_FOUND", "No such obligation.", 404);
-  });
-
   /**
    * A signed read for an agent process. The agent proves it controls its wallet (EIP-712 AgentRead over the path and a time),
    * and the API answers with that wallet's own business data only. This is how the buyer agent gets its payment calendar
@@ -589,13 +539,9 @@ export function createApp(d: AppDeps) {
   });
 
   app.use("/api/agent/*", limited(120));
-  app.get("/api/agent/obligations", async (c) => {
-    const who = await agentCaller(c, "/api/agent/obligations");
-    if (who instanceof Response) return who;
-    const r = await db.query<{ id: string; amount: string; due_date: Date; kind: string }>("select id, amount::text as amount, due_date, kind::text as kind from obligations where buyer_org = $1 order by due_date", [who.orgId]);
-    return ok(c, r.map((x) => ({ id: x.id, amount: fromNumeric(x.amount), dueSec: Math.floor(new Date(x.due_date).getTime() / 1000), kind: x.kind, provenance: "declared" })));
-  });
 
+  // NOTE (privacy): there is deliberately no route here for a buyer's hurdle, liquidity floor, caps or payment calendar, nor for a supplier's
+  // cost of waiting. Those private values stay with the owning agent (an encrypted local store). Migration 008 drops their old tables.
   // ------------------------------------------------------------------------------------------------ credit and exposure policy (SRS FR-05)
 
   const exposureBody = z
@@ -648,28 +594,6 @@ export function createApp(d: AppDeps) {
     const who = await agentCaller(c, "/api/agent/exposure-policy");
     if (who instanceof Response) return who;
     return ok(c, await exposurePolicyOf(who.orgId));
-  });
-
-  const prefsBody = z.object({ costOfWaitingAprBps: bps.max(5000), maxRateBps: bps, startRateBps: bps, stepBps: z.number().int().min(1).max(5000) });
-  app.get("/api/prefs", async (c) => {
-    const a = need(c, "supplier");
-    const r = await db.query<{ cost_of_waiting_apr_bps: number; max_rate_bps: number; start_rate_bps: number; step_bps: number }>(
-      "select cost_of_waiting_apr_bps, max_rate_bps, start_rate_bps, step_bps from supplier_prefs where supplier_org = $1",
-      [a.orgId],
-    );
-    const p = r[0];
-    return ok(c, p ? { costOfWaitingAprBps: p.cost_of_waiting_apr_bps, maxRateBps: p.max_rate_bps, startRateBps: p.start_rate_bps, stepBps: p.step_bps } : null);
-  });
-  app.put("/api/prefs", async (c) => {
-    const a = need(c, "supplier");
-    const p = await body(c, prefsBody);
-    await db.query(
-      `insert into supplier_prefs (supplier_org, cost_of_waiting_apr_bps, max_rate_bps, start_rate_bps, step_bps) values ($1,$2,$3,$4,$5)
-       on conflict (supplier_org) do update set cost_of_waiting_apr_bps = excluded.cost_of_waiting_apr_bps, max_rate_bps = excluded.max_rate_bps,
-         start_rate_bps = excluded.start_rate_bps, step_bps = excluded.step_bps`,
-      [a.orgId, p.costOfWaitingAprBps, p.maxRateBps, p.startRateBps, p.stepBps],
-    );
-    return ok(c, p);
   });
 
   // ------------------------------------------------------------------------------------------------ claim links (spec 8.15)

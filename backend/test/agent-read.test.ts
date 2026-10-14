@@ -8,7 +8,7 @@ const D = domain(5042002, BOOK);
 const buyerAgent = privateKeyToAccount(("0x" + "44".repeat(32)) as `0x${string}`);
 const otherAgent = privateKeyToAccount(("0x" + "55".repeat(32)) as `0x${string}`);
 const stranger = privateKeyToAccount(("0x" + "66".repeat(32)) as `0x${string}`);
-const PATH = "/api/agent/obligations";
+const PATH = "/api/agent/exposure-policy";
 
 async function setup() {
   const made = await makeApp({ env: { INVOICE_BOOK_ADDRESS: BOOK, AGENT_WALLETS: `${buyerAgent.address},${otherAgent.address}` } });
@@ -26,26 +26,32 @@ async function signed(account: typeof buyerAgent, o: { resource?: string; ts?: n
   return { "x-agent-wallet": o.as ?? account.address, "x-agent-ts": String(ts), "x-agent-sig": signature };
 }
 
-describe("signed agent read of the buyer's payment calendar", () => {
-  it("returns only that agent's own obligations, labelled declared", async () => {
+describe("signed agent read of the owner's exposure (risk) limit", () => {
+  it("returns only that agent's own business's policy, as integers", async () => {
     const { app, db, org } = await setup();
     const mine = await org("Buyer A", buyerAgent.address);
     const theirs = await org("Buyer B", otherAgent.address);
-    await db.query("insert into obligations (buyer_org, label, amount, due_date, kind) values ($1, 'payroll', 3000, '2026-11-01T00:00:00Z', 'payroll'), ($2, 'rent', 999, '2026-11-02T00:00:00Z', 'bill')", [mine, theirs]);
+    await db.query("insert into exposure_policies (org_id, version, new_counterparty_limit, max_limit, growth_bps, lookback_days, grace_seconds) values ($1, 2, 3000, 9000, 1500, 180, 86400), ($2, 1, 111, 222, 0, 30, 0)", [mine, theirs]);
     const res = await app.request(PATH, { headers: await signed(buyerAgent) });
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { ok: boolean; data: Array<{ amount: string; dueSec: number; kind: string; provenance: string }> };
-    expect(body.data).toHaveLength(1);
-    expect(body.data[0]).toMatchObject({ amount: "3000000000", kind: "payroll", provenance: "declared", dueSec: Date.parse("2026-11-01T00:00:00Z") / 1000 });
-    // the label is the owner's free text: it is not sent to an agent
-    expect(Object.keys(body.data[0]!)).not.toContain("label");
+    const body = (await res.json()) as { data: Record<string, unknown> };
+    expect(body.data).toMatchObject({ configured: true, version: "exposure-2", newCounterpartyLimit: "3000000000", maxLimit: "9000000000", growthBps: 1500 });
+    expect(JSON.stringify(body)).not.toContain("111"); // the other business's limit is not visible
   });
 
-  it("an empty calendar is an empty list, not an error", async () => {
+  it("a business with no policy reads as not configured, not as an error", async () => {
     const { app, org } = await setup();
     await org("Buyer A", buyerAgent.address);
     const res = await app.request(PATH, { headers: await signed(buyerAgent) });
-    expect(((await res.json()) as { data: unknown[] }).data).toEqual([]);
+    expect(((await res.json()) as { data: unknown }).data).toEqual({ configured: false });
+  });
+
+  it("no longer serves a payment calendar, a hurdle, a floor or a cost of waiting: those stay with the agent", async () => {
+    const { app, org } = await setup();
+    await org("Buyer A", buyerAgent.address);
+    for (const p of ["/api/agent/obligations", "/api/obligations", "/api/policy", "/api/prefs"]) {
+      expect((await app.request(p, { headers: await signed(buyerAgent, { resource: p }) })).status, p).toBe(404);
+    }
   });
 
   it("refuses a wallet that is not a configured agent", async () => {

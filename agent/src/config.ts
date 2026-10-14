@@ -28,6 +28,8 @@ const envSchema = z.object({
   ANTHROPIC_API_KEY: optionalText,
   ANTHROPIC_MODEL: z.string().default("claude-sonnet-5-5"),
   /** Which model service proposes strategy. Code still decides everything; there is no fallback between providers. */
+  /** 32 random bytes (openssl rand -base64 32). Encrypts the private files this agent keeps: policy records, decision preimages and, for the buyer, the payment calendar. */
+  AGENT_STORE_KEY: optionalText,
   MODEL_PROVIDER: z.enum(["anthropic", "groq"]).default("anthropic"),
   GROQ_API_KEY: optionalText,
   /** a Groq model id (listed by /models on 14 Oct 2026) that follows strict JSON instructions; check https://console.groq.com/docs/models. */

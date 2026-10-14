@@ -222,13 +222,13 @@ function Body({ me }: { me: `0x${string}` }) {
 
           <Card title="Upcoming payments" aside={<button type="button" className="btn btn-ghost btn-sm" onClick={() => setOblOpen(true)}>Add payment</button>}>
             <p className="muted tiny">
-              {declared.source === "server"
-                ? "Payroll and bills the agent must keep cash for. Saved on your account, where your agent reads them before it accepts any early payment."
-                : "Payroll and bills the agent must keep cash for. Saved on this device and sent to your agent only when you ask for a plan. Sign in to save them on your account so your agent always sees them."}
+              {declared.source === "agent"
+                ? "Payroll and bills the agent must keep cash for. Kept encrypted by your own buyer agent on your machine; they are never sent to the Misthos server."
+                : "Payroll and bills the agent must keep cash for. No buyer agent is connected, so they are saved only on this device and sent to your agent when you ask for a plan."}
             </p>
-            {declared.source === "server" && declared.browserOnly.length > 0 && (
-              <Notice kind="warn" title={`${declared.browserOnly.length} payment${declared.browserOnly.length === 1 ? "" : "s"} saved only in this browser`} action={<button type="button" className="btn btn-ghost btn-sm" onClick={() => void declared.moveToAccount()}>Save to my account</button>}>
-                Your agent cannot see these, so it could spend cash they need.
+            {declared.source === "agent" && declared.status === "ready" && !declared.declared && (
+              <Notice kind="warn" title="Not declared yet" action={<button type="button" className="btn btn-ghost btn-sm" onClick={() => void declared.declareNone()}>I have none</button>}>
+                Until you list your upcoming payments, or say you have none, your agent accepts nothing.
               </Notice>
             )}
             {declared.status === "unavailable" && <Notice kind="error" title="Unavailable">Your saved payments could not be read: {declared.error}. Your agent will accept nothing until it can read them.</Notice>}

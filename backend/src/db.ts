@@ -86,7 +86,7 @@ export async function openDb(url: string): Promise<Db> {
   return pgDb(new pg.Pool({ connectionString: url }));
 }
 
-const MIGRATIONS = ["schema.sql", "002_accounts_indexer.sql", "003_nonces_claims.sql", "004_decision_log.sql", "005_exposure_policy.sql", "006_agent_links.sql", "007_wallet_accounts.sql"];
+const MIGRATIONS = ["schema.sql", "002_accounts_indexer.sql", "003_nonces_claims.sql", "004_decision_log.sql", "005_exposure_policy.sql", "006_agent_links.sql", "007_wallet_accounts.sql", "008_private_values_removed.sql"];
 
 /** Applies each migration file once, in order, and remembers which ran. Safe to call on every boot. */
 export async function migrate(db: Db): Promise<string[]> {

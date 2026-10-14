@@ -3,6 +3,7 @@ import { decisionTypedData, type Domain } from "../core/index.js";
 import type { WalletAdapter } from "../wallets/types.js";
 import type { FetchLike } from "./backend.js";
 import { PolicyBook } from "./policybook.js";
+import type { Vault } from "./vault.js";
 import { DecisionStore, type LoggedDecision } from "./store.js";
 
 /**
@@ -18,13 +19,16 @@ export function openDecisionStore(args: {
   backendUrl?: string;
   /** This agent's private parameters. They are versioned in a local file; the log carries only the version and a salted commitment. */
   policy?: { label: string; params: unknown };
+  /** Encrypts the private files (policy records, decision preimages) at rest. */
+  vault?: Vault;
   /** Replaceable network call, for tests that run the API in the same process. */
   fetch?: FetchLike;
 }): DecisionStore {
   const { name, dataDir, wallet, domain, backendUrl } = args;
-  const stamp = args.policy ? new PolicyBook(join(dataDir, `${name}-policy.jsonl`)).use(args.policy.label, args.policy.params, Math.floor(Date.now() / 1000)) : undefined;
+  const stamp = args.policy ? new PolicyBook(join(dataDir, `${name}-policy.jsonl`), undefined, args.vault).use(args.policy.label, args.policy.params, Math.floor(Date.now() / 1000)) : undefined;
   return new DecisionStore({
     policy: stamp ? () => stamp : undefined,
+    vault: args.vault,
     file: join(dataDir, `${name}-decisions.jsonl`),
     attest: async (e) => {
       const signer = await wallet.address();

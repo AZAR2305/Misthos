@@ -11,6 +11,7 @@ import { CircleCliAdapter } from "../wallets/circleCli.js";
 import { readReputation, reputationClient, writeSettlementFeedback } from "../identity/erc8004.js";
 import { chainVerifier, WalletError, type Address } from "../wallets/types.js";
 import { ProtocolError } from "../agents/buyer.js";
+import { vaultFromEnv } from "../agents/vault.js";
 import { serve, type ServeOptions } from "./http.js";
 
 /**
@@ -42,7 +43,8 @@ const wallet = new CircleCliAdapter({
   verifier,
 });
 const chain = viemChainReader(cfg.ARC_RPC_URL, book);
-const store = openDecisionStore({ name: "supplier", dataDir: cfg.AGENT_DATA_DIR, wallet, domain: domain(cfg.ARC_CHAIN_ID, book), backendUrl: cfg.BACKEND_URL, policy: { label: "supplier-policy", params: supplierPrefsFromEnv() } });
+const vault = vaultFromEnv(cfg.AGENT_STORE_KEY);
+const store = openDecisionStore({ vault, name: "supplier", dataDir: cfg.AGENT_DATA_DIR, wallet, domain: domain(cfg.ARC_CHAIN_ID, book), backendUrl: cfg.BACKEND_URL, policy: { label: "supplier-policy", params: supplierPrefsFromEnv() } });
 // The supplier's history with a buyer and its own credit limit come from the API. Without BACKEND_URL it starts at its configured rate.
 const reader = cfg.BACKEND_URL ? signedReader({ backendUrl: cfg.BACKEND_URL, wallet, domain: domain(cfg.ARC_CHAIN_ID, book) }) : undefined;
 const exposure =

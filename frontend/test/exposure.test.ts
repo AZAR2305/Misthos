@@ -89,3 +89,18 @@ describe("the commitment tested against the limit for one invoice", () => {
     expect(newExposureFor("buyer", "0xaa", 100n, [ev("0xaa", "approved")])).toBe(100n);
   });
 });
+
+import { parseAgentObligations } from "../src/lib/obligations-parse";
+describe("the buyer agent's own payment calendar", () => {
+  it("reads declared and undeclared calendars, and refuses malformed rows", () => {
+    expect(parseAgentObligations({ declared: false, items: [] })).toEqual({ declared: false, items: [] });
+    expect(parseAgentObligations({ declared: true, items: [{ id: "a", label: "Payroll", amount: "12000000000", dueSec: "1800000000", kind: "payroll", provenance: "declared" }] })).toEqual({
+      declared: true,
+      items: [{ id: "a", label: "Payroll", amount: "12000000000", dueSec: "1800000000", kind: "payroll" }],
+    });
+    expect(parseAgentObligations({ declared: true, items: [{ id: "a", label: "x", amount: "-1", dueSec: "1", kind: "bill" }] })).toBeUndefined();
+    expect(parseAgentObligations({ declared: true, items: [{ id: "a", label: "x", amount: "1", dueSec: "1", kind: "loan" }] })).toBeUndefined();
+    expect(parseAgentObligations({ items: [] })).toBeUndefined();
+    expect(parseAgentObligations(null)).toBeUndefined();
+  });
+});

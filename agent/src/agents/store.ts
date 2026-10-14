@@ -1,4 +1,5 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
+import { VaultError, type Vault } from "./vault.js";
 import { dirname } from "node:path";
 import { GENESIS_HASH, canonicalJson, commitTo, findPrivateKey, hashDecision, verifyChain, type DecisionEntry, type StoredDecision } from "../core/index.js";
 
@@ -61,6 +62,8 @@ export interface DecisionStoreOptions {
   warn?: (message: string) => void;
   /** The policy in force. Every entry carries its version and commitment (SRS FR-10), and private inputs are committed with its salt. */
   policy?: () => PolicyStamp;
+  /** Encrypts the private preimage lines at rest. The public entry, signature and delivery lines stay readable: they are what the API publishes. */
+  vault?: Vault;
 }
 
 type Line =
@@ -68,7 +71,7 @@ type Line =
   | { k: "s"; hash: `0x${string}`; signer: `0x${string}`; signature: `0x${string}` }
   | { k: "p"; hashes: `0x${string}`[] }
   /** The private preimage of an entry's inputs commitment. Local only: never pushed and never sent to the API. */
-  | { k: "d"; hash: `0x${string}`; preimage: unknown };
+  | { k: "d"; hash: `0x${string}`; preimage?: unknown; sealed?: string };
 
 /** What is hashed must equal what is stored and reloaded, so bigints become decimal strings before anything is hashed. */
 const plain = <T>(v: T): T => (v === undefined ? (null as T) : (JSON.parse(canonicalJson(v)) as T));
@@ -103,7 +106,10 @@ export class DecisionStore {
         const e = byHash.get(line.hash);
         if (e) Object.assign(e, { signer: line.signer, signature: line.signature });
       } else if (line.k === "d") {
-        this.preimages.set(line.hash, line.preimage);
+        if (line.sealed !== undefined) {
+          if (!this.o.vault) throw new VaultError("NO_KEY", `The decision log ${file} holds sealed private records. Set AGENT_STORE_KEY to read them.`);
+          this.preimages.set(line.hash, JSON.parse(this.o.vault.open(line.sealed)));
+        } else this.preimages.set(line.hash, line.preimage); // older plaintext line, still readable
       } else for (const h of line.hashes) this.pushed.add(h);
     }
     const v = verifyChain(this.entries);
@@ -142,7 +148,7 @@ export class DecisionStore {
     if (stamp && inputs !== undefined) {
       const preimage = { policyVersion: stamp.version, inputs };
       this.preimages.set(stored.hash, preimage);
-      this.write({ k: "d", hash: stored.hash, preimage });
+      this.write(this.o.vault ? { k: "d", hash: stored.hash, sealed: this.o.vault.seal(JSON.stringify(preimage)) } : { k: "d", hash: stored.hash, preimage });
     }
     this.kick();
     return stored;

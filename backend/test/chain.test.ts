@@ -147,6 +147,25 @@ describe("API, indexer and relayer against a real chain", () => {
     expect((await loadInvoices(db)).length).toBe(before);
     expect(await getCursor(db)).toBe(await pub.getBlockNumber());
 
+    // ---- the shared store is a rebuildable cache: wipe every chain-derived table, re-index from the chain, and get the same answers
+    const snapshot = async () => ({
+      stats: (await supplier.get("/api/stats")).json.data,
+      invoices: (await supplier.get("/api/invoices")).json.data,
+      buyerLedger: (await buyer.get("/api/ledger")).json.data,
+      supplierLedger: (await supplier.get("/api/ledger")).json.data,
+      csv: (await buyer.get("/api/ledger.csv")).text,
+      beancount: (await buyer.get("/api/ledger.beancount")).text,
+    });
+    const original = await snapshot();
+    await db.query("delete from chain_events");
+    await db.query("delete from chain_blocks");
+    await db.query("delete from indexer_state");
+    const wiped = await snapshot();
+    expect(wiped.stats.summary.count).toBe(0); // the cache really was emptied
+    expect(wiped.invoices).toEqual({ total: 0, items: [] });
+    for (let i = 0; i < 20 && (await index()); i++); // catch up from the deploy block, in batches
+    expect(await snapshot()).toEqual(original); // identical: stats, invoices, both ledgers, the CSV and the Beancount export
+
     const health = (await supplier.get("/api/health")).json.data;
     expect(health).toMatchObject({ db: { ok: true }, rpc: { ok: true }, contract: { configured: true }, relayer: { configured: true } });
     expect(health.indexer.lag).toBe("0");

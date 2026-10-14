@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { agentReadTypedData, type BuyerObligation, type Domain, type ExposurePolicy, type InvoiceEvent } from "../core/index.js";
+import { agentReadTypedData, type Domain, type ExposurePolicy, type InvoiceEvent } from "../core/index.js";
 import type { WalletAdapter } from "../wallets/types.js";
 
 /**
@@ -8,7 +8,7 @@ import type { WalletAdapter } from "../wallets/types.js";
  * never defaulted: the caller treats a thrown read as "unavailable" and fails closed (SRS NFR-05).
  */
 export interface SignedReader {
-  /** GET a path (for example "/api/agent/obligations") and return the `data` of the envelope. */
+  /** GET a path (for example "/api/agent/exposure-policy") and return the `data` of the envelope. */
   get(path: string): Promise<unknown>;
 }
 
@@ -32,22 +32,6 @@ export function signedReader(args: { backendUrl: string; wallet: WalletAdapter; 
       return body.data;
     },
   };
-}
-
-const obligationRows = z.array(
-  z.strictObject({
-    id: z.string().max(80),
-    amount: z.string().regex(/^\d+$/),
-    dueSec: z.number().int().min(0),
-    kind: z.enum(["payroll", "bill", "other"]),
-    provenance: z.literal("declared"),
-  }),
-);
-
-/** The buyer's payment calendar as the owner declared it. Every row is labelled declared: nothing backs it on chain. */
-export async function fetchObligations(reader: SignedReader): Promise<BuyerObligation[]> {
-  const rows = obligationRows.parse(await reader.get("/api/agent/obligations"));
-  return rows.map((r) => ({ id: r.id, dueSec: BigInt(r.dueSec), amount: BigInt(r.amount), provenance: "declared" as const }));
 }
 
 const uintString = z.string().regex(/^\d{1,30}$/);

@@ -43,12 +43,12 @@ describe("linking an agent wallet to a business", () => {
 
     // Now the signed reads work, and they return the linked business's data.
     const org = await db.query<{ org_id: string }>("select org_id::text as org_id from accounts where address = $1", [(await buyer.get("/api/me")).json.data.address]);
-    await db.query("insert into obligations (buyer_org, label, amount, due_date, kind) values ($1, 'Payroll', 1500, '2026-12-01T00:00:00Z', 'payroll')", [org[0]!.org_id]);
-    const path = "/api/agent/obligations";
+    await db.query("insert into exposure_policies (org_id, version, new_counterparty_limit, max_limit, growth_bps, lookback_days, grace_seconds) values ($1, 1, 1500, 6000, 2000, 180, 86400)", [org[0]!.org_id]);
+    const path = "/api/agent/exposure-policy";
     const ts = Math.floor(Date.now() / 1000);
     const sig = await agent.signTypedData(agentReadTypedData(D, { resource: path, ts }) as never);
     const read = await app.request(path, { headers: { "x-agent-wallet": agent.address, "x-agent-ts": String(ts), "x-agent-sig": sig } });
-    expect(((await read.json()) as any).data).toEqual([expect.objectContaining({ amount: "1500000000", kind: "payroll" })]);
+    expect(((await read.json()) as any).data).toMatchObject({ configured: true, newCounterpartyLimit: "1500000000", maxLimit: "6000000000" });
   });
 
   it("a code works once", async () => {

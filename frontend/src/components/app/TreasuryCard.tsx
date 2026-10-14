@@ -10,7 +10,7 @@ import type { StoredObligations } from "@/lib/storage";
  * Each number says where it came from. The reserve is your agent's private setting, so it is read from your own agent on this
  * machine; if the agent is not running the reserve, and so the spare cash, say unavailable instead of guessing zero.
  */
-export function TreasuryCard({ balance, obligations, source, owed }: { balance: bigint | null; obligations: StoredObligations; source: "server" | "browser"; owed: bigint | null }) {
+export function TreasuryCard({ balance, obligations, source, owed }: { balance: bigint | null; obligations: StoredObligations; source: "agent" | "browser"; owed: bigint | null }) {
   const [floor, setFloor] = useState<bigint | null | "loading">("loading");
   useEffect(() => {
     if (!CONFIG.buyerAgentUrl) return setFloor(null);

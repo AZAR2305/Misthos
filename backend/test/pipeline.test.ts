@@ -9,7 +9,6 @@ import {
   SupplierAgent,
   fetchExposureEvents,
   fetchExposurePolicy,
-  fetchObligations,
   fetchPayables,
   openDecisionStore,
   signedReader,
@@ -19,6 +18,8 @@ import {
   type OnChainInvoice,
 } from "../../agent/src/agents/index";
 import { auditFromFiles } from "../../agent/src/audit";
+import { ObligationStore } from "../../agent/src/agents/obligations";
+import { Vault } from "../../agent/src/agents/vault";
 import { domain, findPrivateKey, type BuyerPolicy, type SupplierPrefs } from "../../agent/src/core/index";
 import { messageSchema, type OfferMsg } from "../../agent/src/protocol/index";
 import { eoaVerifier, type WalletAdapter } from "../../agent/src/wallets/types";
@@ -62,6 +63,14 @@ afterEach(() => {
   for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
 });
 
+/** Every row of every table in the shared store, as text, so a test can prove a private value is nowhere in it. */
+async function dumpEveryTable(db: any) {
+  const tables = await db.query("select table_name from information_schema.tables where table_schema = 'public'");
+  const out: Record<string, unknown> = {};
+  for (const { table_name } of tables) out[table_name] = await db.query(`select * from "${table_name}"`);
+  return out;
+}
+
 async function scenario(o: { newCounterpartyLimit: bigint; maxLimit: bigint; history: boolean; obligation?: bigint; payable?: bigint; pastRates?: number[] }) {
   const { app, db } = await makeApp({ env: { INVOICE_BOOK_ADDRESS: BOOK, AGENT_WALLETS: `${buyerKey.address},${supplierKey.address}` } });
   const now = Math.floor(Date.now() / 1000);
@@ -69,7 +78,6 @@ async function scenario(o: { newCounterpartyLimit: bigint; maxLimit: bigint; his
   // The buyer's business, its agent wallet, its declared payment and its credit limit, as the owner saved them.
   const org = (await db.query<{ id: string }>("insert into organizations (name, role) values ('Buyer Co', 'buyer') returning id"))[0]!.id;
   await db.query("insert into wallets (org_id, address, purpose, mode) values ($1, $2, 'agent', 'agent')", [org, buyerKey.address.toLowerCase()]);
-  if (o.obligation) await db.query("insert into obligations (buyer_org, label, amount, due_date, kind) values ($1, 'Payroll', $2, $3, 'payroll')", [org, o.obligation.toString().replace(/(\d{6})$/, ".$1"), new Date((now + 20 * DAY) * 1000).toISOString()]);
   await db.query("insert into exposure_policies (org_id, version, new_counterparty_limit, max_limit, growth_bps, lookback_days, grace_seconds) values ($1, 3, $2, $3, 2000, 180, 86400)", [org, (o.newCounterpartyLimit).toString().replace(/(\d{6})$/, ".$1"), o.maxLimit.toString().replace(/(\d{6})$/, ".$1")]);
 
   // The supplier's own business, agent wallet and credit limit (it reads them the same way the buyer does).
@@ -112,6 +120,10 @@ async function scenario(o: { newCounterpartyLimit: bigint; maxLimit: bigint; his
 
   const dir = mkdtempSync(join(tmpdir(), "misthos-pipeline-"));
   dirs.push(dir);
+  // The payment calendar is private: it lives in the buyer agent's own encrypted store, never in the shared API.
+  const obligationStore = new ObligationStore(dir, new Vault("ab".repeat(32)));
+  if (o.obligation) obligationStore.add({ label: "Payroll", amount: o.obligation.toString(), dueSec: String(now + 20 * DAY), kind: "payroll" }, now);
+  else obligationStore.declareNone();
   const buyerWallet = keyWallet(buyerKey);
   const supplierWallet = keyWallet(supplierKey);
   const buyerPolicy: BuyerPolicy = { hurdleAprBps: 0, liquidityFloor: 5_000n * USD, perInvoiceCap: 0n, dailyCap: 0n, humanAbove: 0n, feeBps: 1000 };
@@ -132,8 +144,8 @@ async function scenario(o: { newCounterpartyLimit: bigint; maxLimit: bigint; his
     chain,
     invoiceBook: BOOK,
     verifier: eoaVerifier,
-    // The real calendar from the API, and a real balance far above any floor: the only things that can stop this buyer are its calendar and its credit limit.
-    treasury: async () => ({ cash: 100_000n * USD, obligations: [...(await fetchObligations(reader)), ...(await fetchPayables({ backendUrl: "http://api.test", buyer: buyerKey.address, fetch: appFetch }))] }),
+    // The calendar from the agent's own encrypted store, and a real balance far above any floor: the only things that can stop this buyer are its calendar and its credit limit.
+    treasury: async () => ({ cash: 100_000n * USD, obligations: [...obligationStore.list().map((x) => ({ id: x.id, dueSec: BigInt(x.dueSec), amount: BigInt(x.amount), provenance: "declared" as const })), ...(await fetchPayables({ backendUrl: "http://api.test", buyer: buyerKey.address, fetch: appFetch }))] }),
     exposure: {
       policy: () => fetchExposurePolicy(reader),
       events: (supplier) => fetchExposureEvents({ backendUrl: "http://api.test", side: "buyer", owner: buyerKey.address, counterparty: supplier, fetch: appFetch }),
@@ -181,7 +193,7 @@ describe("the whole path, with the real code on both ends", () => {
     expect(t.verify).toMatchObject({ ok: true });
     expect(t.log.total).toBe(t.buyerStore.all().length + t.supplierStore.all().length);
 
-    // The calendar really came through the signed read: the buyer's kept inputs hold the 3,000 USDC payroll.
+    // The calendar came from the agent's own store: the buyer's kept inputs hold the 3,000 USDC payroll.
     const decisionHash = t.buyerWallet.calls[0].args[5] as string;
     const kept = t.buyerStore.preimageOf(decisionHash)!.inputs as any;
     expect(kept.treasury.obligations).toEqual([expect.objectContaining({ amount: "3000000000" })]);
@@ -197,6 +209,11 @@ describe("the whole path, with the real code on both ends", () => {
     expect(wire).not.toContain("5000000000"); // the buyer's reserve
     expect(wire).not.toContain("100000000000"); // its balance
     expect(wire).not.toContain("3000000000"); // its payroll
+
+    // The shared store holds none of the private values: not the payroll, not the reserve, not the balance, in any table.
+    const dump = JSON.stringify(await dumpEveryTable(t.db));
+    for (const secret of ["3000000000", "3000.000000", "5000000000", "5000.000000", "100000000000", "Payroll"]) expect(dump, secret).not.toContain(secret);
+    expect(dump).not.toMatch(/hurdle|liquidity_floor|cost_of_waiting|costOfWaiting|liquidityFloor/i);
 
     // The page's trace builder reads the same log, and the owner's own audit replays the accepting decision from the agent's files.
     const entries = t.log.items.map(fromApiEntry).filter(Boolean) as LogEntry[];

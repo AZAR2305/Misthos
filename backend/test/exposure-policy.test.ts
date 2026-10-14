@@ -67,7 +67,7 @@ describe("exposure policy", () => {
     expect(res.status).toBe(200);
     expect(((await res.json()) as { data: unknown }).data).toMatchObject({ configured: true, version: "exposure-1", newCounterpartyLimit: "5000000000", maxLimit: "20000000000" });
     // a signature for another path cannot read it
-    const wrong = await agent.signTypedData(agentReadTypedData(D, { resource: "/api/agent/obligations", ts }) as never);
+    const wrong = await agent.signTypedData(agentReadTypedData(D, { resource: "/api/agent/payables", ts }) as never);
     expect((await app.request(path, { headers: { "x-agent-wallet": agent.address, "x-agent-ts": String(ts), "x-agent-sig": wrong } })).status).toBe(401);
   });
 });

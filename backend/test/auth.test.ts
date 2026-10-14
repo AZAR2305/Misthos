@@ -63,7 +63,7 @@ describe("account onboarding: sign in with a wallet, then choose a side", () => 
     const { app } = await makeApp();
     const anon = browser(app);
     expect((await anon.put("/api/me/side", { side: "buyer" })).status).toBe(401);
-    expect((await anon.get("/api/policy")).status).toBe(401);
+    expect((await anon.get("/api/exposure-policy")).status).toBe(401);
 
     const evil = await anon.post("/api/auth/wallet/challenge", { address: wallet(1).address }, { origin: "https://evil.example" });
     expect(evil.status).toBe(403);
@@ -101,30 +101,28 @@ describe("account onboarding: sign in with a wallet, then choose a side", () => 
     expect(ch.json.data.message).toContain(`Site: ${ORIGIN}`);
   });
 
-  it("scopes private settings to the account's side and organisation", async () => {
+  it("keeps no private value on the server: the old private-settings routes are gone", async () => {
     const { app } = await makeApp();
     const buyer = browser(app);
     const supplier = browser(app);
-    await onboard(buyer, null, { sub: "b", email: "buyer@example.com", walletIndex: 2, side: "buyer" });
-    await onboard(supplier, null, { sub: "s", email: "supplier@example.com", walletIndex: 1, side: "supplier" });
+    await onboard(buyer, null, { walletIndex: 2, side: "buyer" });
+    await onboard(supplier, null, { walletIndex: 1, side: "supplier" });
+    // A buyer's hurdle, floor, caps and payment calendar, and a supplier's cost of waiting, stay with the owning agent.
+    for (const [who, method, path] of [[buyer, "get", "/api/policy"], [buyer, "get", "/api/obligations"], [supplier, "get", "/api/prefs"]] as const) {
+      expect((await who[method](path)).status, path).toBe(404);
+    }
+    expect((await buyer.put("/api/policy", { hurdleAprBps: 800, liquidityFloor: "5000000000", perInvoiceCap: "0", dailyCap: "0", humanAbove: "0" })).status).toBe(404);
+    expect((await buyer.post("/api/obligations", { label: "Payroll", amount: "12000000000", dueDate: "2026-11-01T00:00:00.000Z", kind: "payroll" })).status).toBe(404);
+    expect((await supplier.put("/api/prefs", { costOfWaitingAprBps: 2200, maxRateBps: 1200, startRateBps: 0, stepBps: 200 })).status).toBe(404);
+  });
 
-    expect((await supplier.get("/api/policy")).json.error.code).toBe("WRONG_SIDE");
-    expect((await buyer.get("/api/prefs")).json.error.code).toBe("WRONG_SIDE");
-
-    expect((await buyer.get("/api/policy")).json.data).toBeNull(); // nothing saved yet: no invented defaults
-    const put = await buyer.put("/api/policy", { hurdleAprBps: 800, liquidityFloor: "5000000000", perInvoiceCap: "2000000000", dailyCap: "0", humanAbove: "1000000000" });
-    expect(put.status).toBe(200);
-    expect((await buyer.get("/api/policy")).json.data).toEqual({ hurdleAprBps: 800, liquidityFloor: "5000000000", perInvoiceCap: "2000000000", dailyCap: "0", humanAbove: "1000000000" });
-    expect((await buyer.put("/api/policy", { hurdleAprBps: 9000, liquidityFloor: "0", perInvoiceCap: "0", dailyCap: "0", humanAbove: "0" })).status).toBe(400);
-
-    const ob = await buyer.post("/api/obligations", { label: "Payroll", amount: "12000000000", dueDate: "2026-11-01T00:00:00.000Z", kind: "payroll" });
-    expect(ob.status).toBe(201);
-    expect((await buyer.get("/api/obligations")).json.data).toHaveLength(1);
-    expect((await buyer.del(`/api/obligations/${ob.json.data.id}`)).json.data.deleted).toBe(true);
-
-    expect((await supplier.get("/api/prefs")).json.data).toBeNull();
-    expect((await supplier.put("/api/prefs", { costOfWaitingAprBps: 2200, maxRateBps: 1200, startRateBps: 0, stepBps: 200 })).status).toBe(200);
-    expect((await supplier.get("/api/prefs")).json.data).toEqual({ costOfWaitingAprBps: 2200, maxRateBps: 1200, startRateBps: 0, stepBps: 200 });
+  it("scopes the exposure (risk) limit, the one policy the server keeps, to the account's own side", async () => {
+    const { app } = await makeApp();
+    const buyer = browser(app);
+    await onboard(buyer, null, { walletIndex: 2, side: "buyer" });
+    const anon = browser(app);
+    expect((await anon.get("/api/exposure-policy")).status).toBe(401);
+    expect((await buyer.get("/api/exposure-policy")).status).toBe(200);
   });
 
   it("answers CORS only for the configured origin", async () => {
