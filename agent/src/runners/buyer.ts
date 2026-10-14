@@ -2,7 +2,7 @@ import { createPublicClient, http } from "viem";
 import { z } from "zod";
 import { domain } from "../core/index.js";
 import { BuyerAgent } from "../agents/buyer.js";
-import { AnthropicModel } from "../agents/model.js";
+import { createModel, modelKeyOf } from "../agents/modelFactory.js";
 import { viemChainReader } from "../agents/chain.js";
 import { openDecisionStore } from "../agents/log.js";
 import { fetchExposureEvents, fetchExposurePolicy, fetchObligations, fetchPayables, linkAgent, signedReader } from "../agents/backend.js";
@@ -56,7 +56,7 @@ const store = openDecisionStore({ name: "buyer", dataDir: cfg.AGENT_DATA_DIR, wa
 const buyer = new BuyerAgent({
   wallet,
   domain: domain(cfg.ARC_CHAIN_ID, book),
-  model: new AnthropicModel({ apiKey: cfg.ANTHROPIC_API_KEY ?? "", model: cfg.ANTHROPIC_MODEL }),
+  model: createModel(cfg),
   policy: buyerPolicyFromEnv(),
   store,
   chain: viemChainReader(cfg.ARC_RPC_URL, book),
@@ -99,7 +99,7 @@ const runPlan = async (body: unknown) => {
 serve(
   cfg.BUYER_AGENT_PORT,
   {
-    "GET /health": async () => ({ wallet: await wallet.health(), modelConfigured: !!cfg.ANTHROPIC_API_KEY, invoiceBook: book }),
+    "GET /health": async () => ({ wallet: await wallet.health(), modelConfigured: !!modelKeyOf(cfg), invoiceBook: book }),
     "POST /negotiate": async ({ body }) => buyer.handleOffer(offerMsgSchema.parse(body)),
     "POST /accept/:invoiceId": async ({ params }) => buyer.acceptHeld(z.string().regex(/^0x[0-9a-fA-F]{64}$/).parse(params.invoiceId).toLowerCase()),
     "POST /plan": async ({ body }) => runPlan(body),

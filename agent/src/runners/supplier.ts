@@ -1,7 +1,7 @@
 import { createPublicClient, http } from "viem";
 import { z } from "zod";
 import { domain } from "../core/index.js";
-import { AnthropicModel } from "../agents/model.js";
+import { createModel, modelKeyOf } from "../agents/modelFactory.js";
 import { SupplierAgent, httpTransport } from "../agents/supplier.js";
 import { viemChainReader } from "../agents/chain.js";
 import { fetchExposureEvents, fetchExposurePolicy, linkAgent, signedReader } from "../agents/backend.js";
@@ -58,7 +58,7 @@ const agentFor = (invoiceId: string) => {
   const a = new SupplierAgent({
     wallet,
     domain: domain(cfg.ARC_CHAIN_ID, book),
-    model: new AnthropicModel({ apiKey: cfg.ANTHROPIC_API_KEY ?? "", model: cfg.ANTHROPIC_MODEL }),
+    model: createModel(cfg),
     prefs: supplierPrefsFromEnv(),
     store,
     transport: httpTransport(cfg.BUYER_AGENT_URL!),
@@ -79,7 +79,7 @@ serve(
   {
     "GET /health": async () => {
       const w = await wallet.health();
-      return { wallet: w, modelConfigured: !!cfg.ANTHROPIC_API_KEY, invoiceBook: book };
+      return { wallet: w, modelConfigured: !!modelKeyOf(cfg), invoiceBook: book };
     },
     "POST /start/:invoiceId": async ({ params }) => {
       const id = idSchema.parse(params.invoiceId) as `0x${string}`;

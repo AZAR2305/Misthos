@@ -338,3 +338,7 @@ middle to hand over an offer, a thumbs up and a jump on accept, a dance on settl
 - **Cost.** No recovery: lose the wallet, lose the account. No email, so no notification channel. This supersedes the 7 Oct "Accounts: Google identity" decision above.
 - **Unchanged.** Money still moves only by the wallet's own signature on chain; the agent-link, exposure, policy and obligation features hang off the account as before.
 - **Stays public.** Invoices, settlements and the explorer trail are on-chain either way; wallet sign-in protects who you are off chain, not what the chain shows.
+
+## Model provider: Groq supported alongside Anthropic (14 Oct 2026)
+- `MODEL_PROVIDER=anthropic|groq`. `GroqModel` calls Groq's OpenAI-compatible chat endpoint with plain fetch, strict JSON, temperature 0, same schema check, two attempts, then fails closed. No fallback between providers. `GROQ_MODEL` default is VERIFY.
+- The model never touches money (it proposes numbers that code bounds), so a smaller model is acceptable; the quality of its proposals is untested on real runs.

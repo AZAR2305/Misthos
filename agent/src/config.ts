@@ -27,6 +27,11 @@ const envSchema = z.object({
   BUYER_CIRCLE_CLI_HOME: optionalText,
   ANTHROPIC_API_KEY: optionalText,
   ANTHROPIC_MODEL: z.string().default("claude-sonnet-5-5"),
+  /** Which model service proposes strategy. Code still decides everything; there is no fallback between providers. */
+  MODEL_PROVIDER: z.enum(["anthropic", "groq"]).default("anthropic"),
+  GROQ_API_KEY: optionalText,
+  /** VERIFY: a Groq model id that follows strict JSON instructions; check https://console.groq.com/docs/models. */
+  GROQ_MODEL: z.string().default("llama-3.3-70b-versatile"),
   LADDER_RUNG_SECONDS: z.coerce.number().int().positive().default(900),
 });
 export type AgentConfig = z.infer<typeof envSchema>;

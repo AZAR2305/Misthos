@@ -1,5 +1,6 @@
 import { createPublicClient, erc20Abi, http } from "viem";
 import { loadConfig, loadEnvFile } from "./config.js";
+import { modelKeyOf, modelNameOf } from "./agents/modelFactory.js";
 import { CircleCliAdapter, classifyCliFailure, nodeCliRunner, resolveCliEntry } from "./wallets/circleCli.js";
 import { WalletError } from "./wallets/types.js";
 
@@ -75,7 +76,7 @@ async function main() {
     } catch (e) {
       add("arc rpc", false, `unreachable: ${(e as Error).message.split("\n")[0]}`);
     }
-    add("model key", !!cfg.ANTHROPIC_API_KEY, cfg.ANTHROPIC_API_KEY ? `model ${cfg.ANTHROPIC_MODEL}` : "ANTHROPIC_API_KEY is not set (agents fail closed without it)");
+    add("model key", !!modelKeyOf(cfg), modelKeyOf(cfg) ? `${cfg.MODEL_PROVIDER} model ${modelNameOf(cfg)}` : `${cfg.MODEL_PROVIDER === "groq" ? "GROQ_API_KEY" : "ANTHROPIC_API_KEY"} is not set (agents fail closed without it)`);
   }
 
   for (const r of rows) console.log(`${r.ok ? "ok  " : "FAIL"}  ${r.check.padEnd(26)} ${r.detail}`);

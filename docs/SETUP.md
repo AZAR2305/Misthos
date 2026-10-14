@@ -143,6 +143,8 @@ Check on the explorer: https://explorer.testnet.arc.io/address/YOUR_CONTRACT
 
 ## 6. Add the model key
 
+Two providers work. Anthropic: set `ANTHROPIC_API_KEY`. Groq (cheaper, OpenAI-compatible): set `MODEL_PROVIDER=groq` and `GROQ_API_KEY` (console.groq.com/keys); `GROQ_MODEL` defaults to `llama-3.3-70b-versatile` (VERIFY the id on Groq's model list). The model only proposes; code bounds and decides everything, and there is no fallback between providers.
+
 Website: **https://console.anthropic.com**
 
 1. Sign in, open **Settings → Billing** and add credits (API calls are paid; the key does nothing without credit).
