@@ -361,3 +361,17 @@ These closed spec Appendix A items and fixed three bugs that no scripted-CLI tes
   real Circle wallets. A 40 USDC invoice against 35 USDC of cash was refused on every rung (`LIQUIDITY_FLOOR`), correctly.
 - Still unverified: running with the website and backend linked (the agents ran with `BACKEND_URL` unset and `BUYER_OBLIGATIONS_DECLARED_NONE=true`, so no credit
   limit or payment calendar was applied in these two deals).
+
+## ERC-8004 identity and bilateral reputation, built and run on Arc (14 Oct 2026)
+- Interface confirmed on the deployed testnet registries (selectors present in the implementation bytecode behind each proxy; the Arc tutorial uses the same argument types):
+  `register(string)`, `giveFeedback(uint256,int128,uint8,string,string,string,string,bytes32)`, `getSummary(uint256,address[],string,string)`, `readFeedback`, `getClients`.
+  `getSummary` requires you to name the raters you trust; there is no anonymous average, and the summary is a raw sum, not a canonical score.
+- Owners cannot rate their own agents, so it is bilateral: after a chain-confirmed settlement the buyer agent rates the supplier's agent and the supplier agent rates the buyer's.
+  Flat arguments only (Circle's CLI cannot encode a struct). The write is best effort and after the fact: it can never block or undo a payment, and a retry uses a stable idempotency key.
+- Ran for real: supplier agent id 897306, buyer agent id 897307 (register txs on explorer), four feedback transactions for the two 14 Oct settlements. **These are team-operated agents rating
+  each other; they demonstrate the mechanism and are not independent reputation.** Value 100, decimals 0, tags `misthos.settlement` and `early_pay`, `feedbackHash` = the invoice id.
+- Not built: reading reputation into the negotiation decision (an agent could demand a lower exposure for a counterparty with poor ratings). Endpoints `GET /reputation` show the counterparty's summary.
+
+## Market research and recommended policy numbers (14 Oct 2026)
+- See `docs/MARKET_RESEARCH.md` (rates, sources, confidence) and `docs/GO_TO_MARKET.md` (what the 10% fee really earns, other revenue, first-user plan). Supplier ceiling lowered from
+  5,000 to 2,400 bps and step to 400 bps in `agent/.env`; all other numbers await the owners. At 0% the on-chain fee is zero, so revenue must come from elsewhere.

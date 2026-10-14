@@ -109,6 +109,8 @@ export interface BuyerDeps {
   exposure?: ExposureSource;
   /** Private ledger lookups used to confirm model flags. */
   facts?: (invoiceId: string) => InvoiceFacts;
+  /** Called after a settlement transaction is sent (for example to write ERC-8004 feedback). Never awaited and never allowed to throw into the payment. */
+  onSettled?: (invoiceId: `0x${string}`, txHash?: `0x${string}`) => void | Promise<void>;
   now?: () => number;
 }
 
@@ -477,6 +479,12 @@ export class BuyerAgent {
   }
 
   private async settle(msg: OfferMsg, decisionHash: `0x${string}`) {
+    const result = await this.settleTx(msg, decisionHash);
+    void Promise.resolve(this.d.onSettled?.(msg.invoiceId as `0x${string}`, result.txHash)).catch(() => undefined);
+    return result;
+  }
+
+  private async settleTx(msg: OfferMsg, decisionHash: `0x${string}`) {
     return this.d.wallet.execute({
       to: this.d.invoiceBook,
       abi: SETTLE_EARLY_FRAGMENT,

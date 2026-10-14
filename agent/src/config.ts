@@ -32,6 +32,11 @@ const envSchema = z.object({
   GROQ_API_KEY: optionalText,
   /** a Groq model id (listed by /models on 14 Oct 2026) that follows strict JSON instructions; check https://console.groq.com/docs/models. */
   GROQ_MODEL: z.string().default("openai/gpt-oss-120b"),
+  /** ERC-8004 on Arc testnet (confirmed 14 Oct 2026). The ids are minted when each agent registers (scripts/erc8004-register.ts). */
+  ERC8004_IDENTITY: z.string().default("0x8004A818BFB912233c491871b3d84c89A494BD9e"),
+  ERC8004_REPUTATION: z.string().default("0x8004B663056A597Dffe9eCcC1965A193B7388713"),
+  SUPPLIER_ERC8004_ID: optionalText,
+  BUYER_ERC8004_ID: optionalText,
   LADDER_RUNG_SECONDS: z.coerce.number().int().positive().default(900),
 });
 export type AgentConfig = z.infer<typeof envSchema>;

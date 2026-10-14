@@ -8,6 +8,7 @@ import { fetchExposureEvents, fetchExposurePolicy, linkAgent, signedReader } fro
 import { openDecisionStore } from "../agents/log.js";
 import { loadConfig, loadEnvFile, supplierPrefsFromEnv } from "../config.js";
 import { CircleCliAdapter } from "../wallets/circleCli.js";
+import { readReputation, reputationClient, writeSettlementFeedback } from "../identity/erc8004.js";
 import { chainVerifier, WalletError, type Address } from "../wallets/types.js";
 import { ProtocolError } from "../agents/buyer.js";
 import { serve, type ServeOptions } from "./http.js";
@@ -98,12 +99,22 @@ serve(
         pastAcceptedBps: [], // filled by the agent from proven settlements with this buyer when it can read history
         buyer: inv.buyer,
       });
+      // After a settlement the chain confirms, rate the buyer's ERC-8004 agent (best effort, never blocks the reply).
+      if (result.kind === "accepted") {
+        void (async () => {
+          const settled = await chain.invoice(id);
+          if (settled?.status === "settled_early" || settled?.status === "settled_due") {
+            await writeSettlementFeedback({ wallet, reputation: cfg.ERC8004_REPUTATION as Address, counterpartyAgentId: cfg.BUYER_ERC8004_ID ? BigInt(cfg.BUYER_ERC8004_ID) : undefined, log: (m) => console.log(`[supplier-agent] ${m}`) }, id);
+          }
+        })().catch(() => undefined);
+      }
       return { result, transcript: agent.transcript };
     },
     "POST /pause/:invoiceId": async ({ params }) => {
       paused.add(idSchema.parse(params.invoiceId));
       return { paused: true };
     },
+    "GET /reputation": async () => ({ buyerAgentId: cfg.BUYER_ERC8004_ID ?? null, summary: cfg.BUYER_ERC8004_ID ? await readReputation(reputationClient(cfg.ARC_RPC_URL), cfg.ERC8004_REPUTATION as Address, BigInt(cfg.BUYER_ERC8004_ID), [cfg.SUPPLIER_AGENT_WALLET_ADDRESS as Address]) ?? null : null }),
     "GET /prefs": async () => supplierPrefsFromEnv(),
     "GET /range/:invoiceId": async ({ params }) => {
       const id = idSchema.parse(params.invoiceId) as `0x${string}`;

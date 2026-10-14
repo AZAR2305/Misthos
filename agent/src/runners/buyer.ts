@@ -9,6 +9,7 @@ import { fetchExposureEvents, fetchExposurePolicy, fetchObligations, fetchPayabl
 import { offerMsgSchema } from "../protocol/index.js";
 import { buyerPolicyFromEnv, loadConfig, loadEnvFile } from "../config.js";
 import { CircleCliAdapter } from "../wallets/circleCli.js";
+import { readReputation, reputationClient, writeSettlementFeedback } from "../identity/erc8004.js";
 import { chainVerifier, type Address } from "../wallets/types.js";
 import { serve, type ServeOptions } from "./http.js";
 
@@ -73,6 +74,9 @@ const buyer = new BuyerAgent({
           events: (supplier) => fetchExposureEvents({ backendUrl: cfg.BACKEND_URL!, side: "buyer", owner: cfg.BUYER_AGENT_WALLET_ADDRESS!, counterparty: supplier }),
         }
       : undefined,
+  // After a settlement, rate the supplier's ERC-8004 agent (owners cannot rate their own agents, so each side rates the other). Best effort.
+  onSettled: (invoiceId) =>
+    void writeSettlementFeedback({ wallet, reputation: cfg.ERC8004_REPUTATION as Address, counterpartyAgentId: cfg.SUPPLIER_ERC8004_ID ? BigInt(cfg.SUPPLIER_ERC8004_ID) : undefined, log: (m) => console.log(`[buyer-agent] ${m}`) }, invoiceId),
   treasury: async () => ({ cash: await wallet.balance("USDC"), obligations: [...(await obligations()), ...(await payables())] }),
 });
 
@@ -108,6 +112,7 @@ serve(
       return { allocation, settled: await buyer.executePlan(allocation) };
     },
     "GET /range/:invoiceId": async ({ params }) => buyer.range(z.string().regex(/^0x[0-9a-fA-F]{64}$/).parse(params.invoiceId).toLowerCase() as `0x${string}`),
+    "GET /reputation": async () => ({ supplierAgentId: cfg.SUPPLIER_ERC8004_ID ?? null, summary: cfg.SUPPLIER_ERC8004_ID ? await readReputation(reputationClient(cfg.ARC_RPC_URL), cfg.ERC8004_REPUTATION as Address, BigInt(cfg.SUPPLIER_ERC8004_ID), [cfg.BUYER_AGENT_WALLET_ADDRESS as Address]) ?? null : null }),
     "GET /policy": async () => buyerPolicyFromEnv(), // private to this machine: the hurdle is shown only to its owner
     "GET /needs-approval": async () => [...buyer.needsApproval].map(([invoiceId, v]) => ({ invoiceId, ...v })),
     "GET /decisions": async () => ({ entries: store.all(), verify: store.verify(), delivery: { ...store.status(), backend: !!cfg.BACKEND_URL } }),
