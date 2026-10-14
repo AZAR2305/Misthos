@@ -40,7 +40,7 @@ const wallet = new CircleCliAdapter({
   verifier,
 });
 const chain = viemChainReader(cfg.ARC_RPC_URL, book);
-const store = openDecisionStore({ name: "supplier", dataDir: cfg.AGENT_DATA_DIR, wallet, domain: domain(cfg.ARC_CHAIN_ID, book), backendUrl: cfg.BACKEND_URL });
+const store = openDecisionStore({ name: "supplier", dataDir: cfg.AGENT_DATA_DIR, wallet, domain: domain(cfg.ARC_CHAIN_ID, book), backendUrl: cfg.BACKEND_URL, policy: { label: "supplier-policy", params: supplierPrefsFromEnv() } });
 const paused = new Set<string>();
 const agents = new Map<string, SupplierAgent>();
 

@@ -1,6 +1,6 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname } from "node:path";
-import { GENESIS_HASH, canonicalJson, findPrivateKey, hashDecision, verifyChain, type DecisionEntry, type StoredDecision } from "../core/index.js";
+import { GENESIS_HASH, canonicalJson, commitTo, findPrivateKey, hashDecision, verifyChain, type DecisionEntry, type StoredDecision } from "../core/index.js";
 
 /**
  * Append-only, hash-chained decision log (spec 8.4). `hash` is what goes on chain as `decisionHash` in settleEarly.
@@ -24,6 +24,18 @@ export interface DecisionInput {
   outcome: DecisionOutcome;
   reasonCode?: string;
   reason: string;
+  /**
+   * The private inputs this decision used (balances, floors, limits). They are NOT logged. The public entry carries only a salted
+   * commitment to them, and the full value is kept in the agent's own file so the owner can replay and prove the decision later.
+   */
+  private?: unknown;
+}
+
+/** The policy in force, as the store stamps it on every entry. The salt is secret and never leaves this machine. */
+export interface PolicyStamp {
+  version: string;
+  commitment: `0x${string}`;
+  salt: `0x${string}`;
 }
 
 /** One logged decision as it is stored, signed and pushed. */
@@ -47,12 +59,16 @@ export interface DecisionStoreOptions {
   push?: (entries: readonly LoggedDecision[]) => Promise<void>;
   retryMs?: number;
   warn?: (message: string) => void;
+  /** The policy in force. Every entry carries its version and commitment (SRS FR-10), and private inputs are committed with its salt. */
+  policy?: () => PolicyStamp;
 }
 
 type Line =
   | ({ k: "e" } & LoggedDecision)
   | { k: "s"; hash: `0x${string}`; signer: `0x${string}`; signature: `0x${string}` }
-  | { k: "p"; hashes: `0x${string}`[] };
+  | { k: "p"; hashes: `0x${string}`[] }
+  /** The private preimage of an entry's inputs commitment. Local only: never pushed and never sent to the API. */
+  | { k: "d"; hash: `0x${string}`; preimage: unknown };
 
 /** What is hashed must equal what is stored and reloaded, so bigints become decimal strings before anything is hashed. */
 const plain = <T>(v: T): T => (v === undefined ? (null as T) : (JSON.parse(canonicalJson(v)) as T));
@@ -60,6 +76,7 @@ const plain = <T>(v: T): T => (v === undefined ? (null as T) : (JSON.parse(canon
 export class DecisionStore {
   private entries: LoggedDecision[] = [];
   private pushed = new Set<string>();
+  private preimages = new Map<string, unknown>();
   private pumping = false;
   private timer?: ReturnType<typeof setTimeout>;
 
@@ -85,6 +102,8 @@ export class DecisionStore {
       } else if (line.k === "s") {
         const e = byHash.get(line.hash);
         if (e) Object.assign(e, { signer: line.signer, signature: line.signature });
+      } else if (line.k === "d") {
+        this.preimages.set(line.hash, line.preimage);
       } else for (const h of line.hashes) this.pushed.add(h);
     }
     const v = verifyChain(this.entries);
@@ -102,10 +121,17 @@ export class DecisionStore {
     const leaked = findPrivateKey(input.snapshot) ?? findPrivateKey(input.proposal);
     if (leaked) throw new Error(`The decision log is public: "${leaked}" is a private policy value and cannot be logged.`);
     const prevHash = this.entries.at(-1)?.hash ?? GENESIS_HASH;
+    const stamp = this.o.policy?.();
+    const inputs = input.private === undefined ? undefined : plain(input.private);
     const entry: DecisionEntry = {
       prevHash,
       actor: input.actor,
-      snapshot: plain({ invoiceId: input.invoiceId, ...(input.snapshot as object) }),
+      snapshot: plain({
+        invoiceId: input.invoiceId,
+        ...(input.snapshot as object),
+        ...(stamp ? { policyVersion: stamp.version, policyCommitment: stamp.commitment } : {}),
+        ...(stamp && inputs !== undefined ? { inputsCommitment: commitTo(inputs, stamp.salt) } : {}),
+      }),
       proposal: plain(input.proposal),
       outcome: input.outcome,
       reason: input.reasonCode ? `${input.reasonCode}: ${input.reason}` : input.reason,
@@ -113,8 +139,18 @@ export class DecisionStore {
     const stored: LoggedDecision = { ...entry, hash: hashDecision(entry), seq: this.entries.length, invoiceRef: input.invoiceId, reasonCode: input.reasonCode, at: nowSec };
     this.entries.push(stored);
     this.write({ k: "e", ...stored });
+    if (stamp && inputs !== undefined) {
+      const preimage = { policyVersion: stamp.version, inputs };
+      this.preimages.set(stored.hash, preimage);
+      this.write({ k: "d", hash: stored.hash, preimage });
+    }
     this.kick();
     return stored;
+  }
+
+  /** The private inputs behind an entry's inputs commitment, if this agent kept them. For the owner and the audit tool only. */
+  preimageOf(hash: string): { policyVersion: string; inputs: unknown } | undefined {
+    return this.preimages.get(hash) as { policyVersion: string; inputs: unknown } | undefined;
   }
 
   all(): readonly LoggedDecision[] {

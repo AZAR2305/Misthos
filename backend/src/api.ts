@@ -29,7 +29,7 @@ import { exposureEvents } from "./exposure";
 import type { Relayer, RegisterPayload } from "./relayer";
 import { rateLimit } from "./ratelimit";
 import { fromNumeric, ser, toNumeric } from "./serialize";
-import { GENESIS_HASH, agentReadTypedData, decisionTypedData, hashDecision, INVOICE_BOOK_ABI, balanced, domain, invoiceId, invoiceTypedData, offerTypedData, journalFrom, settlementRows, summarise, toBeancount, toCsv, verifyChain, type InvoiceRecord, type StoredDecision } from "./shared";
+import { GENESIS_HASH, agentReadTypedData, decisionTypedData, findPrivateKey, hashDecision, INVOICE_BOOK_ABI, balanced, domain, invoiceId, invoiceTypedData, offerTypedData, journalFrom, settlementRows, summarise, toBeancount, toCsv, verifyChain, type InvoiceRecord, type StoredDecision } from "./shared";
 
 export interface AppDeps {
   config: Config;
@@ -299,6 +299,9 @@ export function createApp(d: AppDeps) {
     // Check everything before storing anything: an agent we do not know, a hash that is not the entry's hash, a signature that is not the agent's.
     for (const e of entries) {
       if (!config.AGENTS.includes(e.signer)) return fail(c, "UNKNOWN_AGENT", "That wallet is not one of this deployment's agents.", 403);
+      // The log is public. A private policy value in a snapshot or proposal is refused, whatever the agent meant (defence in depth).
+      const leaked = findPrivateKey(e.snapshot) ?? findPrivateKey(e.proposal);
+      if (leaked) return fail(c, "PRIVATE_VALUE", `Entry ${e.seq} contains "${leaked}", a private policy value. Private values are committed to, never logged.`, 422);
       const recomputed = hashDecision({ prevHash: e.prevHash, actor: e.actor, snapshot: e.snapshot ?? null, proposal: e.proposal ?? null, outcome: e.outcome, reason: e.reason });
       if (recomputed !== e.hash) return fail(c, "BAD_HASH", `Entry ${e.seq} does not hash to the value sent.`, 422);
       if (!(await attestationOk(e))) return fail(c, "BAD_SIGNATURE", `Entry ${e.seq} is not signed by ${e.signer}.`, 422);
@@ -368,6 +371,9 @@ export function createApp(d: AppDeps) {
         hash: r.hash,
         prevHash: r.prev_hash,
         signature: r.signature,
+        /** From the snapshot, so a page need not parse it: the version of the policy the decision ran under, and the decision. */
+        policyVersion: (r.snapshot_json as { policyVersion?: string } | null)?.policyVersion ?? null,
+        result: (r.snapshot_json as { result?: { code?: string } } | null)?.result?.code ?? null,
         snapshot: r.snapshot_json,
         proposal: r.proposal_json,
         settlement: settled.get(r.hash.toLowerCase()) ? { txHash: settled.get(r.hash.toLowerCase())!.tx_hash, block: settled.get(r.hash.toLowerCase())!.block } : null,

@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import { decisionTypedData, type Domain } from "../core/index.js";
 import type { WalletAdapter } from "../wallets/types.js";
+import { PolicyBook } from "./policybook.js";
 import { DecisionStore, type LoggedDecision } from "./store.js";
 
 /**
@@ -8,9 +9,19 @@ import { DecisionStore, type LoggedDecision } from "./store.js";
  * entry with the agent's wallet, and delivered to the Misthos API (which re-checks the chain and the signature) when
  * BACKEND_URL is set. Without BACKEND_URL the log stays on this machine and says so in /decisions.
  */
-export function openDecisionStore(args: { name: "supplier" | "buyer"; dataDir: string; wallet: WalletAdapter; domain: Domain; backendUrl?: string }): DecisionStore {
+export function openDecisionStore(args: {
+  name: "supplier" | "buyer";
+  dataDir: string;
+  wallet: WalletAdapter;
+  domain: Domain;
+  backendUrl?: string;
+  /** This agent's private parameters. They are versioned in a local file; the log carries only the version and a salted commitment. */
+  policy?: { label: string; params: unknown };
+}): DecisionStore {
   const { name, dataDir, wallet, domain, backendUrl } = args;
+  const stamp = args.policy ? new PolicyBook(join(dataDir, `${name}-policy.jsonl`)).use(args.policy.label, args.policy.params, Math.floor(Date.now() / 1000)) : undefined;
   return new DecisionStore({
+    policy: stamp ? () => stamp : undefined,
     file: join(dataDir, `${name}-decisions.jsonl`),
     attest: async (e) => {
       const signer = await wallet.address();

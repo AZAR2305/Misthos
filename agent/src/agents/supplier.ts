@@ -2,8 +2,7 @@ import { randomBytes } from "node:crypto";
 import { z } from "zod";
 import {
   MAX_RATE_BPS,
-  buildLadder,
-  maxRate,
+  planLadder,
   offerTypedData,
   type Domain,
   type ReasonCode,
@@ -146,13 +145,12 @@ export class SupplierAgent {
       return { kind: "needs_approval", reasonCode: "PARTIAL_UNSUPPORTED", reason: "Partial acceleration is not built yet." };
     }
 
-    // Code clamps whatever the model proposed into the supplier's configured bounds.
-    const ceiling = maxRate(this.d.prefs);
-    const start = Math.min(Math.max(proposal.start_rate_bps ?? this.d.prefs.startRateBps, 0), ceiling);
-    const max = Math.min(Math.max(proposal.max_rate_bps ?? ceiling, start), ceiling);
-    const ladder = buildLadder({ ...this.d.prefs, startRateBps: start, maxRateBps: max }, inv.pastAcceptedBps);
+    // Code clamps whatever the model proposed into the supplier's configured bounds (the same pure function an auditor replays).
+    const ladderInput = { prefs: this.d.prefs, pastAcceptedBps: inv.pastAcceptedBps, proposedStartBps: proposal.start_rate_bps, proposedMaxBps: proposal.max_rate_bps };
+    const { ceilingBps, rungs: ladder } = planLadder(ladderInput);
     // The top rung is the supplier's private ceiling, so the log says where the ask starts and how many rungs, not where it ends.
-    this.log(inv, logged, publicProposal, "auto_apply", `Accelerate now: ${ladder.length} rungs, starting at ${ladder[0]} bps.`);
+    // The private inputs and the ladder are committed to, and kept only in this agent's own file.
+    this.log(inv, { ...logged, result: { code: "ACCEPT" } }, publicProposal, "auto_apply", `Accelerate now: ${ladder.length} rungs, starting at ${ladder[0]} bps.`, undefined, { ...ladderInput, face: inv.face, secondsEarly, ceilingBps, rungs: ladder });
 
     const firstRung = this.transcript.length; // the transcript spans invoices; judge only this negotiation
     for (let rung = 0; rung < ladder.length; rung++) {
@@ -223,7 +221,7 @@ export class SupplierAgent {
     return "continue";
   }
 
-  private log(inv: SupplierInvoice, snapshot: unknown, proposal: unknown, outcome: "auto_apply" | "needs_approval" | "rejected", reason: string, reasonCode?: string) {
-    this.d.store.append({ actor: "supplier_agent", invoiceId: inv.id, snapshot, proposal, outcome, reason, reasonCode }, this.now());
+  private log(inv: SupplierInvoice, snapshot: unknown, proposal: unknown, outcome: "auto_apply" | "needs_approval" | "rejected", reason: string, reasonCode?: string, priv?: unknown) {
+    this.d.store.append({ actor: "supplier_agent", invoiceId: inv.id, snapshot, proposal, outcome, reason, reasonCode, private: priv }, this.now());
   }
 }

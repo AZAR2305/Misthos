@@ -7,3 +7,5 @@ export * from "./hash";
 export * from "./eip712";
 export * from "./decision";
 export * from "./exposure";
+export * from "./commit";
+export * from "./decide";

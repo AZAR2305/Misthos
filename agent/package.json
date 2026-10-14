@@ -9,6 +9,7 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "doctor": "tsx src/doctor.ts",
+    "audit-decision": "tsx src/audit.ts",
     "supplier": "tsx src/runners/supplier.ts",
     "buyer": "tsx src/runners/buyer.ts"
   },

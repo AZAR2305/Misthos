@@ -1,10 +1,14 @@
 import { describe, expect, it } from "vitest";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { keccak256, toHex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
-import { DEFAULT_EXPOSURE_POLICY, domain, findPrivateKey, offerTypedData, type BuyerPolicy, type ExposurePolicy, type InvoiceEvent, type Obligation, type Domain, type SupplierPrefs } from "../src/core/index.js";
+import { DEFAULT_EXPOSURE_POLICY, canonicalJson, commitTo, domain, findPrivateKey, hashDecision, offerTypedData, type BuyerPolicy, type ExposurePolicy, type InvoiceEvent, type Obligation, type Domain, type SupplierPrefs } from "../src/core/index.js";
 import {
   BuyerAgent,
   DecisionStore,
+  PolicyBook,
   ModelUnavailableError,
   ProposalInvalidError,
   ProtocolError,
@@ -16,6 +20,7 @@ import {
   type ProposeArgs,
 } from "../src/agents/index.js";
 import { messageSchema, type OfferMsg } from "../src/protocol/index.js";
+import { auditDecision, auditFromFiles } from "../src/audit.js";
 import { WalletError, eoaVerifier, type ContractCall, type Eip712Payload, type WalletAdapter } from "../src/wallets/types.js";
 
 /**
@@ -63,7 +68,7 @@ const down = () => new ScriptedModel(() => {
   throw new ModelUnavailableError("The model is unavailable: test");
 });
 
-function setup(opts: { hurdle?: number; humanAbove?: bigint; model?: AgentModel; prefs?: Partial<SupplierPrefs>; buyerExecuteFails?: WalletError; status?: OnChainInvoice["status"]; treasury?: () => Promise<{ cash: bigint; obligations: Obligation[] }>; exposure?: ExposureSource } = {}) {
+function setup(opts: { hurdle?: number; humanAbove?: bigint; model?: AgentModel; prefs?: Partial<SupplierPrefs>; buyerExecuteFails?: WalletError; status?: OnChainInvoice["status"]; treasury?: () => Promise<{ cash: bigint; obligations: Obligation[] }>; exposure?: ExposureSource; stamped?: { dir?: string; push?: (e: readonly unknown[]) => Promise<void> } } = {}) {
   const supplier = keyWallet("supplier");
   const buyer = keyWallet("buyer", opts.buyerExecuteFails);
   const onchain: OnChainInvoice = {
@@ -81,10 +86,23 @@ function setup(opts: { hurdle?: number; humanAbove?: bigint; model?: AgentModel;
     offerNonceUsed: async (s, n) => usedNonces.has(`${s.toLowerCase()}:${n}`),
   };
   const policy: BuyerPolicy = { hurdleAprBps: opts.hurdle ?? 1000, liquidityFloor: 5_000n * USD, perInvoiceCap: 0n, dailyCap: 0n, humanAbove: opts.humanAbove ?? 0n, feeBps: 1000 };
-  const buyerStore = new DecisionStore();
-  const supplierStore = new DecisionStore();
-  const buyerAgent = new BuyerAgent({ wallet: buyer.wallet, domain: D, model: new ScriptedModel({ risk_flags: [], summary: "none" }), policy, store: buyerStore, chain, invoiceBook: BOOK, verifier: eoaVerifier, treasury: opts.treasury ?? rich, exposure: opts.exposure, now: () => NOW });
+  // A stamped run keeps a policy book and private inputs, as the real agents do; the plain run is the in-memory log used by older tests.
+  const salt = ("0x" + "5a".repeat(32)) as `0x${string}`;
+  const buyerBook = new PolicyBook(opts.stamped?.dir ? join(opts.stamped.dir, "buyer-policy.jsonl") : undefined, () => salt);
+  const supplierBook = new PolicyBook(opts.stamped?.dir ? join(opts.stamped.dir, "supplier-policy.jsonl") : undefined, () => salt);
+  const stampOpts = (name: "buyer" | "supplier", book: PolicyBook, params: unknown) => {
+    if (!opts.stamped) return {};
+    const stamp = book.use(`${name}-policy`, params, NOW);
+    return {
+      policy: () => stamp,
+      ...(opts.stamped.dir ? { file: join(opts.stamped.dir, `${name}-decisions.jsonl`) } : {}),
+      ...(opts.stamped.push ? { attest: async (e: { hash: string }) => ({ signer: "0x" + "11".repeat(20), signature: ("0x" + "22".repeat(65)) as `0x${string}` }), push: opts.stamped.push as never } : {}),
+    };
+  };
   const prefs: SupplierPrefs = { costOfWaitingAprBps: 2200, maxRateBps: 1000, startRateBps: 600, stepBps: 200, ...opts.prefs };
+  const buyerStore = new DecisionStore(stampOpts("buyer", buyerBook, policy) as never);
+  const supplierStore = new DecisionStore(stampOpts("supplier", supplierBook, prefs) as never);
+  const buyerAgent = new BuyerAgent({ wallet: buyer.wallet, domain: D, model: new ScriptedModel({ risk_flags: [], summary: "none" }), policy, store: buyerStore, chain, invoiceBook: BOOK, verifier: eoaVerifier, treasury: opts.treasury ?? rich, exposure: opts.exposure, now: () => NOW });
   const sent: unknown[] = [];
   const supplierAgent = new SupplierAgent({
     wallet: supplier.wallet,
@@ -104,7 +122,7 @@ function setup(opts: { hurdle?: number; humanAbove?: bigint; model?: AgentModel;
     now: () => NOW,
   });
   const inv = { id: INVOICE, face: 2_000n * USD, dueSec: BigInt(NOW + 27 * DAY), status: "approved" as const, pastAcceptedBps: [] };
-  return { supplier, buyer, supplierAgent, buyerAgent, supplierStore, buyerStore, inv, sent, usedNonces, policy };
+  return { supplier, buyer, supplierAgent, buyerAgent, supplierStore, buyerStore, buyerBook, supplierBook, inv, sent, usedNonces, policy, prefs };
 }
 
 describe("ladder negotiation (Appendix B)", () => {
@@ -482,5 +500,135 @@ describe("credit and exposure (SRS FR-05 and acceptance 5)", () => {
     expect(entry.snapshot).toMatchObject({ exposure: { policyVersion: "exposure-3", result: "ok", evidence: [{ ref: "0xaa", kind: "settlement", txHash: settledBefore.txHash, logIndex: 3 }] } });
     expect(findPrivateKey(entry.snapshot)).toBeUndefined();
     expect(JSON.stringify(entry.snapshot)).not.toMatch(/1990|3990|5000000000|1990000000/);
+  });
+});
+
+describe("policy version, evidence and reproducibility (SRS FR-10 and NFR-04)", () => {
+  const dump = (v: unknown) => JSON.stringify(v, (_k, x) => (typeof x === "bigint" ? x.toString() : x));
+  const entryOf = (store: DecisionStore, pred: (e: ReturnType<DecisionStore["all"]>[number]) => boolean) => store.all().find(pred)!;
+
+  it("every entry names the policy version and its commitment; decisions that used private inputs also commit to them", async () => {
+    const t = setup({ stamped: {} });
+    await t.supplierAgent.start(t.inv);
+    for (const e of [...t.buyerStore.all(), ...t.supplierStore.all()]) {
+      expect(e.snapshot).toMatchObject({ policyVersion: expect.stringMatching(/^(buyer|supplier)-policy-1$/), policyCommitment: expect.stringMatching(/^0x[0-9a-f]{64}$/) });
+    }
+    const accept = entryOf(t.buyerStore, (e) => e.outcome === "auto_apply");
+    expect(accept.snapshot).toMatchObject({ inputsCommitment: expect.stringMatching(/^0x[0-9a-f]{64}$/), result: { code: "ACCEPT" } });
+    const reject = entryOf(t.buyerStore, (e) => e.reasonCode === "BELOW_HURDLE");
+    expect(reject.snapshot).toMatchObject({ result: { code: "BELOW_HURDLE" } });
+  });
+
+  it("the accepting entry is the settlement's decision hash and replays to the same decision", async () => {
+    const t = setup({ stamped: {} });
+    await t.supplierAgent.start(t.inv);
+    const decisionHash = (t.buyer.calls[0]!.args as unknown[])[3] as string;
+    const accept = t.buyerStore.all().find((e) => e.hash === decisionHash)!;
+    const report = auditDecision(accept, t.buyerStore.preimageOf(accept.hash), t.buyerBook);
+    expect(report).toMatchObject({ ok: true, policyVersion: "buyer-policy-1" });
+    expect(report.checks.map((c) => c.name)).toEqual(["entry hash", "policy commitment", "inputs commitment", "replay"]);
+    expect(report.replay).toEqual(["eligibility: passed", "credit: skipped", "liquidity: passed", "decision: ACCEPT"]);
+  });
+
+  it("a rejection replays too, and shows which check failed", async () => {
+    const t = setup({ hurdle: 0, prefs: { startRateBps: 0 }, stamped: {}, treasury: async () => ({ cash: 5_100n * USD, obligations: [] }) });
+    await t.supplierAgent.start(t.inv);
+    const reject = entryOf(t.buyerStore, (e) => e.reasonCode === "LIQUIDITY_FLOOR");
+    const report = auditDecision(reject, t.buyerStore.preimageOf(reject.hash), t.buyerBook);
+    expect(report.ok).toBe(true);
+    expect(report.replay).toEqual(["eligibility: passed", "credit: skipped", "liquidity: failed", "decision: LIQUIDITY_FLOOR"]);
+  });
+
+  it("an exposure decision replays with the same limit check", async () => {
+    const exposure: ExposureSource = { policy: async () => ({ ...DEFAULT_EXPOSURE_POLICY, version: "exposure-3", newCounterpartyLimit: 1_990n * USD, maxLimit: 1_990n * USD }), events: async () => [] };
+    const t = setup({ hurdle: 0, stamped: {}, exposure });
+    await t.supplierAgent.start(t.inv);
+    const refused = entryOf(t.buyerStore, (e) => e.reasonCode === "EXPOSURE_LIMIT");
+    const report = auditDecision(refused, t.buyerStore.preimageOf(refused.hash), t.buyerBook);
+    expect(report.ok).toBe(true);
+    expect(report.replay).toContain("credit: failed");
+  });
+
+  it("changing the kept inputs, the policy, or the entry is caught", async () => {
+    const t = setup({ stamped: {} });
+    await t.supplierAgent.start(t.inv);
+    const accept = entryOf(t.buyerStore, (e) => e.outcome === "auto_apply");
+    const pre = t.buyerStore.preimageOf(accept.hash)!;
+    // more cash than there was
+    const richer = { policyVersion: pre.policyVersion, inputs: { ...(pre.inputs as object), treasury: { cash: "999999999999999", obligations: [] } } };
+    expect(auditDecision(accept, richer, t.buyerBook).checks.find((c) => c.name === "inputs commitment")!.ok).toBe(false);
+    // an entry edited after the fact
+    const edited = { ...accept, reason: "something else" };
+    expect(auditDecision(edited, pre, t.buyerBook).checks.find((c) => c.name === "entry hash")!.ok).toBe(false);
+    // a policy book that does not have that version
+    expect(auditDecision(accept, pre, new PolicyBook(undefined)).checks.find((c) => c.name === "policy commitment")!.ok).toBe(false);
+    // no kept inputs
+    expect(auditDecision(accept, undefined, t.buyerBook).ok).toBe(false);
+  });
+
+  it("the replay disagrees when the logged decision is not what the inputs give", async () => {
+    const t = setup({ stamped: {} });
+    await t.supplierAgent.start(t.inv);
+    const accept = entryOf(t.buyerStore, (e) => e.outcome === "auto_apply");
+    const pre = t.buyerStore.preimageOf(accept.hash)!;
+    // Recommit consistently to inputs whose decision differs from what was logged: only the replay can catch it.
+    const original = pre.inputs as { policy: object };
+    const changed = { ...original, policy: { ...original.policy, hurdleAprBps: 4000 } };
+    const rec = t.buyerBook.byVersion(pre.policyVersion)!;
+    const forged = { ...accept, snapshot: { ...(accept.snapshot as object), inputsCommitment: commitTo(JSON.parse(canonicalJson(changed)), rec.salt) } };
+    forged.hash = hashDecision({ prevHash: forged.prevHash, actor: forged.actor, snapshot: forged.snapshot, proposal: forged.proposal, outcome: forged.outcome, reason: forged.reason });
+    const report = auditDecision(forged, { policyVersion: pre.policyVersion, inputs: changed }, t.buyerBook);
+    expect(report.checks.find((c) => c.name === "replay")!.ok).toBe(false);
+  });
+
+  it("a policy change makes a new version, and an old decision still verifies under the version it ran with", async () => {
+    const t = setup({ stamped: {} });
+    await t.supplierAgent.start(t.inv);
+    const accept = entryOf(t.buyerStore, (e) => e.outcome === "auto_apply");
+    const v2 = t.buyerBook.use("buyer-policy", { ...t.policy, hurdleAprBps: 1500 }, NOW + 1);
+    expect(v2.version).toBe("buyer-policy-2");
+    expect(v2.commitment).not.toBe((accept.snapshot as { policyCommitment: string }).policyCommitment);
+    expect(t.buyerBook.use("buyer-policy", { ...t.policy, hurdleAprBps: 1500 }, NOW + 2).version).toBe("buyer-policy-2"); // same numbers, same version
+    expect(auditDecision(accept, t.buyerStore.preimageOf(accept.hash), t.buyerBook).ok).toBe(true);
+  });
+
+  it("the supplier's ladder replays from its kept inputs", async () => {
+    const t = setup({ stamped: {}, prefs: { startRateBps: 0, maxRateBps: 1234, costOfWaitingAprBps: 2347, stepBps: 10 } });
+    await t.supplierAgent.start(t.inv);
+    const ladder = entryOf(t.supplierStore, (e) => e.outcome === "auto_apply" && /rungs/.test(e.reason));
+    const report = auditDecision(ladder, t.supplierStore.preimageOf(ladder.hash), t.supplierBook);
+    expect(report.ok).toBe(true);
+    expect(report.replay![0]).toBe("ceiling 1234 bps");
+  });
+
+  it("private inputs reach neither the public entry nor anything pushed to the API", async () => {
+    const pushed: unknown[] = [];
+    const t = setup({ hurdle: 777, stamped: { push: async (e) => void pushed.push(...e) } });
+    await t.supplierAgent.start(t.inv);
+    await new Promise((r) => setTimeout(r, 30));
+    expect(pushed.length).toBeGreaterThan(0);
+    const wire = dump(pushed);
+    // the floor, the cash balance and the hurdle are private; the commitment is all the public log holds
+    expect(wire).not.toContain("5000000000");
+    expect(wire).not.toContain("100000000000");
+    // 777 as a standalone number or string (the hurdle). Hex hashes are excluded by their neighbours, so chance matches inside them cannot count.
+    expect(wire).not.toMatch(/(?<![0-9a-fA-Fx])777(?![0-9a-fA-F])/);
+    expect(wire).not.toContain("preimage");
+    expect(wire).toContain("inputsCommitment");
+  });
+
+  it("the private inputs survive a restart, and the audit runs from the agent's own files", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "misthos-audit-"));
+    try {
+      const t = setup({ stamped: { dir } });
+      await t.supplierAgent.start(t.inv);
+      const decisionHash = (t.buyer.calls[0]!.args as unknown[])[3] as string;
+      const report = auditFromFiles(dir, "buyer", decisionHash.slice(0, 14));
+      expect(report).toMatchObject({ ok: true, hash: decisionHash });
+      expect(auditFromFiles(dir, "supplier", t.supplierStore.all()[0]!.hash).ok).toBe(true);
+      expect(() => auditFromFiles(dir, "buyer", "0xdeadbeef00")).toThrow(/No entry/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

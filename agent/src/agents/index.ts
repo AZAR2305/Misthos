@@ -4,3 +4,4 @@ export * from "./chain.js";
 export * from "./supplier.js";
 export * from "./buyer.js";
 export * from "./backend.js";
+export * from "./policybook.js";

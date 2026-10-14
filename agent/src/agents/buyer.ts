@@ -1,14 +1,17 @@
 import { z } from "zod";
 import {
   allocate,
+  decideBuyerOffer,
   evaluateExposure,
-  evaluateOffer,
-  fitsCashPath,
+  exposureOf,
   priceOffer,
   type Allocation,
+  type BuyerDecision,
+  type BuyerDecisionInput,
   type BuyerPolicy,
   type Candidate,
   type Domain,
+  type ExposureInputs,
   type ExposurePolicy,
   type InvoiceEvent,
   type Obligation,
@@ -170,41 +173,24 @@ export class BuyerAgent {
     };
     this.offers.set(id, { msg, supplier: onchain.supplier, face: onchain.amount, dueSec: onchain.dueDate });
 
-    const ev = evaluateOffer(this.d.policy, candidate, BigInt(nowSec));
-    if (!ev.ok) {
-      const outcome = ev.reason === "NEEDS_HUMAN_APPROVAL" ? "needs_approval" : "rejected";
-      this.log(id, { rung: msg.rung, rateBps: msg.offer.rateBps }, null, outcome, ev.detail, ev.reason === "NEEDS_HUMAN_APPROVAL" ? ev.reason : undefined);
-      if (ev.reason === "NEEDS_HUMAN_APPROVAL") this.needsApproval.set(id, { reasonCode: ev.reason, reason: ev.detail });
-      return this.remember(replyKey, await this.reject(msg, ev.reason, nowSec));
+    // Gather every input, then let the pure decision function decide (SRS NFR-04). Unreadable inputs are never defaulted.
+    const { input, decision: verdict, info, readErrors } = await this.decideOffer(candidate, onchain.supplier, nowSec);
+    const where = { rung: msg.rung, rateBps: msg.offer.rateBps };
+    const shown = (code: string) => ({ ...where, ...(info ? { exposure: info } : {}), result: { code } });
+    if (verdict.result === "reject") {
+      this.log(id, shown(verdict.code), null, "rejected", verdict.detail, verdict.code, this.privateOf(input, verdict));
+      return this.remember(replyKey, await this.reject(msg, verdict.code, nowSec));
     }
-
-    // Credit: the payment must stay inside the limit set for this supplier (SRS FR-05). Unreadable history fails closed.
-    const ex = await this.checkExposure(candidate, nowSec, onchain.supplier);
-    if (ex.kind === "unavailable") {
+    if (verdict.result === "needs_approval") {
+      const reason = readErrors.length ? `${verdict.detail} (${readErrors.join("; ")})` : verdict.detail;
+      this.log(id, shown(verdict.code), null, "needs_approval", reason, verdict.code, this.privateOf(input, verdict));
+      this.needsApproval.set(id, { reasonCode: verdict.code, reason });
+      if (verdict.code === "NEEDS_HUMAN_APPROVAL") return this.remember(replyKey, await this.reject(msg, "NEEDS_HUMAN_APPROVAL", nowSec));
       this.seenNonces.delete(nonceKey); // nothing was decided, so the same offer may be sent again
-      this.log(id, { rung: msg.rung }, null, "needs_approval", ex.reason, "EVIDENCE_UNAVAILABLE");
-      this.needsApproval.set(id, { reasonCode: "EVIDENCE_UNAVAILABLE", reason: ex.reason });
       return this.reject(msg, "NEEDS_HUMAN_APPROVAL", nowSec);
     }
-    if (ex.kind === "limit") {
-      this.log(id, { rung: msg.rung, rateBps: msg.offer.rateBps, exposure: ex.info }, null, "rejected", "The payment would take the exposure to this supplier past its allowed limit.", "EXPOSURE_LIMIT");
-      return this.remember(replyKey, await this.reject(msg, "EXPOSURE_LIMIT", nowSec));
-    }
 
-    // Liquidity: the offer must fit the cash path above the floor, with obligations and the daily cap (spec 3.2 step 5).
-    const fit = await this.fitsCash(candidate, nowSec);
-    if (fit.kind === "unavailable") {
-      this.seenNonces.delete(nonceKey); // nothing was decided, so the same offer may be sent again
-      this.log(id, { rung: msg.rung }, null, "needs_approval", fit.reason, "TREASURY_UNAVAILABLE");
-      this.needsApproval.set(id, { reasonCode: "TREASURY_UNAVAILABLE", reason: fit.reason });
-      return this.reject(msg, "NEEDS_HUMAN_APPROVAL", nowSec);
-    }
-    if (fit.kind === "no") {
-      this.log(id, { rung: msg.rung, rateBps: msg.offer.rateBps }, null, "rejected", fit.reason, "LIQUIDITY_FLOOR");
-      return this.remember(replyKey, await this.reject(msg, "LIQUIDITY_FLOOR", nowSec));
-    }
-
-    const decision = this.log(id, { rung: msg.rung, rateBps: msg.offer.rateBps, ...(ex.kind === "ok" ? { exposure: ex.info } : {}) }, null, "auto_apply", `Accepted rung ${msg.rung} at ${msg.offer.rateBps} bps: eligible and at or above the hurdle.`);
+    const decision = this.log(id, shown("ACCEPT"), null, "auto_apply", `Accepted rung ${msg.rung} at ${msg.offer.rateBps} bps: eligible, inside the credit limit and above the liquidity floor.`, undefined, this.privateOf(input, verdict));
     try {
       await this.settle(msg, decision.hash);
     } catch (e) {
@@ -275,16 +261,49 @@ export class BuyerAgent {
     this.spent.amount += outflow;
   }
 
-  /** Is this offer part of a plan that keeps the cash path above the floor? Uses the real balance. */
-  private async fitsCash(c: Candidate, nowSec: number): Promise<{ kind: "ok" } | { kind: "no"; reason: string } | { kind: "unavailable"; reason: string }> {
-    let t: Treasury;
+  /**
+   * Read every input the decision needs, then call the pure `decideBuyerOffer`. An input that cannot be read is passed as
+   * unreadable, so the answer is "needs a person", never a favourable default. `info` is the public part of the credit check:
+   * the policy version and the on-chain evidence, never a limit.
+   */
+  private async decideOffer(c: Candidate, supplier: Address, nowSec: number) {
+    const readErrors: string[] = [];
+    let treasury: BuyerDecisionInput["treasury"] = null;
     try {
-      t = await this.d.treasury();
+      const t = await this.d.treasury();
+      treasury = { cash: t.cash, obligations: t.obligations };
     } catch (e) {
-      return { kind: "unavailable", reason: `The treasury could not be read, so nothing is accepted: ${(e as Error).message}` };
+      readErrors.push(`The treasury could not be read: ${(e as Error).message}`);
     }
-    const ok = fitsCashPath({ nowSec: BigInt(nowSec), cash: t.cash, policy: this.d.policy, obligations: t.obligations, candidates: [c], spentToday: this.spentToday(nowSec) }, c.id);
-    return ok ? { kind: "ok" } : { kind: "no", reason: "Accepting would take the cash path under the liquidity floor, or over the daily cap." };
+    let exposure: ExposureInputs = { kind: "off" };
+    if (this.d.exposure) {
+      try {
+        const policy = await this.d.exposure.policy();
+        if (policy) {
+          const events = await this.d.exposure.events(supplier);
+          const local = this.paidEarly.filter((p) => p.supplier === supplier.toLowerCase()).map((p) => p.event);
+          // Indexed events come first, so a payment that has been indexed wins over this process's own record of it.
+          exposure = { kind: "on", policy, events: [...events, ...local] };
+        }
+      } catch (e) {
+        readErrors.push(`The credit limit or its history could not be read: ${(e as Error).message}`);
+        exposure = { kind: "unreadable" };
+      }
+    }
+    const input: BuyerDecisionInput = { nowSec: BigInt(nowSec), candidate: c, policy: this.d.policy, treasury, spentToday: this.spentToday(nowSec), exposure };
+    const decision = decideBuyerOffer(input);
+    const credit = decision.steps[1]!.result;
+    const d = exposure.kind === "on" && (credit === "passed" || credit === "failed") ? exposureOf(input) : null;
+    const info: ExposureInfo | undefined =
+      d && d.kind === "decided" && exposure.kind === "on"
+        ? { policyVersion: exposure.policy.version, result: d.ok ? "ok" : "limit", evidence: d.evidence.map((e) => ({ ref: e.ref, kind: e.kind, ...(e.txHash ? { txHash: e.txHash } : {}), ...(e.logIndex !== undefined ? { logIndex: e.logIndex } : {}) })) }
+        : undefined;
+    return { input, decision, info, readErrors };
+  }
+
+  /** Everything the decision used, for the agent's own file. The public log only gets a salted commitment to it. */
+  private privateOf(input: BuyerDecisionInput, decision: BuyerDecision) {
+    return { ...input, decision: decision.result === "accept" ? "ACCEPT" : decision.code };
   }
 
   /**
@@ -304,23 +323,22 @@ export class BuyerAgent {
       offerRateBps: held.msg.offer.rateBps,
       offerExpirySec: BigInt(held.msg.offer.expiry),
     };
-    const ev = evaluateOffer(this.d.policy, candidate, BigInt(this.now()));
-    if (!ev.ok) return { settled: false, reasonCode: ev.reason };
-    const ex = await this.checkExposure(candidate, this.now(), held.supplier);
-    if (ex.kind === "unavailable") {
-      this.log(invoiceId, { rateBps: held.msg.offer.rateBps }, null, "needs_approval", ex.reason, "EVIDENCE_UNAVAILABLE");
+    const nowSec = this.now();
+    const { input, decision: verdict, info, readErrors } = await this.decideOffer(candidate, held.supplier, nowSec);
+    const where = { rateBps: held.msg.offer.rateBps };
+    const shown = (code: string) => ({ ...where, ...(info ? { exposure: info } : {}), result: { code } });
+    // An offer that is no longer eligible (expired, disputed, due) is simply refused; the decision log records only real decisions.
+    if (verdict.steps[0]!.result === "failed") return { settled: false, reasonCode: verdict.result === "accept" ? undefined : verdict.code };
+    if (verdict.result === "reject") {
+      this.log(invoiceId, shown(verdict.code), null, "rejected", verdict.detail, verdict.code, this.privateOf(input, verdict));
+      return { settled: false, reasonCode: verdict.code };
+    }
+    if (verdict.result === "needs_approval") {
+      const reason = readErrors.length ? `${verdict.detail} (${readErrors.join("; ")})` : verdict.detail;
+      this.log(invoiceId, shown(verdict.code), null, "needs_approval", reason, verdict.code, this.privateOf(input, verdict));
       return { settled: false, reasonCode: "NEEDS_HUMAN_APPROVAL" };
     }
-    if (ex.kind === "limit") {
-      this.log(invoiceId, { rateBps: held.msg.offer.rateBps, exposure: ex.info }, null, "rejected", "The payment would take the exposure to this supplier past its allowed limit.", "EXPOSURE_LIMIT");
-      return { settled: false, reasonCode: "EXPOSURE_LIMIT" };
-    }
-    const fit = await this.fitsCash(candidate, this.now());
-    if (fit.kind !== "ok") {
-      this.log(invoiceId, { rateBps: held.msg.offer.rateBps }, null, fit.kind === "no" ? "rejected" : "needs_approval", fit.reason, fit.kind === "no" ? "LIQUIDITY_FLOOR" : "TREASURY_UNAVAILABLE");
-      return { settled: false, reasonCode: fit.kind === "no" ? "LIQUIDITY_FLOOR" : "NEEDS_HUMAN_APPROVAL" };
-    }
-    const decision = this.log(invoiceId, { rateBps: held.msg.offer.rateBps, ...(ex.kind === "ok" ? { exposure: ex.info } : {}) }, null, "auto_apply", "Accepted the held offer on request.");
+    const decision = this.log(invoiceId, shown("ACCEPT"), null, "auto_apply", "Accepted the held offer on request.", undefined, this.privateOf(input, verdict));
     const r = await this.settle(held.msg, decision.hash);
     this.addSpent(candidate, this.now());
     this.recordPaid(candidate, held.supplier, this.now());
@@ -435,7 +453,7 @@ export class BuyerAgent {
     return signReject(this.d.wallet, this.d.domain, { invoiceId: msg.invoiceId as `0x${string}`, rung: msg.rung, reasonCode, ts });
   }
 
-  private log(invoiceId: string, snapshot: unknown, proposal: unknown, outcome: "auto_apply" | "needs_approval" | "rejected", reason: string, reasonCode?: string) {
-    return this.d.store.append({ actor: "buyer_agent", invoiceId, snapshot, proposal, outcome, reason, reasonCode }, this.now());
+  private log(invoiceId: string, snapshot: unknown, proposal: unknown, outcome: "auto_apply" | "needs_approval" | "rejected", reason: string, reasonCode?: string, priv?: unknown) {
+    return this.d.store.append({ actor: "buyer_agent", invoiceId, snapshot, proposal, outcome, reason, reasonCode, private: priv }, this.now());
   }
 }

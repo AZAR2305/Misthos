@@ -47,7 +47,7 @@ const obligations = async () => {
   if (declaredNone) return [];
   throw new Error("The payment calendar is unavailable: set BACKEND_URL, or set BUYER_OBLIGATIONS_DECLARED_NONE=true if you have no obligations.");
 };
-const store = openDecisionStore({ name: "buyer", dataDir: cfg.AGENT_DATA_DIR, wallet, domain: domain(cfg.ARC_CHAIN_ID, book), backendUrl: cfg.BACKEND_URL });
+const store = openDecisionStore({ name: "buyer", dataDir: cfg.AGENT_DATA_DIR, wallet, domain: domain(cfg.ARC_CHAIN_ID, book), backendUrl: cfg.BACKEND_URL, policy: { label: "buyer-policy", params: buyerPolicyFromEnv() } });
 const buyer = new BuyerAgent({
   wallet,
   domain: domain(cfg.ARC_CHAIN_ID, book),
