@@ -295,6 +295,8 @@ async function main() {
   await pb.getByRole("button", { name: "Approve invoice" }).click();
   await pb.getByText("Invite the supplier to be paid early").waitFor({ timeout: 60_000 });
   await pb.fill("#claim-rate", "0");
+  check(await pb.getByRole("button", { name: "Create claim link" }).isDisabled(), "a link cannot be made until the buyer says who they expect to pay");
+  await pb.locator("#claim-expected").check();
   await pb.getByRole("button", { name: "Create claim link" }).click();
   await pb.locator(".code-wrap .code").waitFor();
   const claimUrl = (await pb.locator(".code-wrap .code").innerText()).trim();
@@ -326,6 +328,12 @@ async function main() {
   // The buyer reviews and pays with the stored signature.
   await pb.goto(`${BASE}/buyer`, { waitUntil: "networkidle" });
   await pb.getByText("Signed: ready to pay").waitFor({ timeout: 30_000 });
+  // This buyer has never paid this address, so the signed offer is held back until they confirm it.
+  await pb.getByText("First payment to this address").waitFor({ timeout: 30_000 });
+  check((await pb.getByRole("button", { name: "Review and pay" }).count()) === 0, "before confirming, there is no way to pay: the signed offer is not released");
+  await pb.getByRole("button", { name: "Yes, this is the right address" }).click();
+  await pb.getByRole("button", { name: "Review and pay" }).waitFor({ timeout: 30_000 });
+  check(true, "after confirming the address, the signed offer is released");
   await pb.getByRole("button", { name: "Review and pay" }).click();
   await pb.getByText("You pay in total").waitFor({ timeout: 30_000 });
   const allow = pb.locator(".modal button", { hasText: "Allow Misthos to use your USDC" });

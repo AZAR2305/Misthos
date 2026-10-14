@@ -31,7 +31,7 @@ import {
 } from "../protocol/index.js";
 import type { ReputationInput } from "../core/decide.js";
 import { WalletError, type Address, type SignatureVerifier, type WalletAdapter } from "../wallets/types.js";
-import { SETTLE_EARLY_FRAGMENT, type ChainReader } from "./chain.js";
+import { SETTLE_EARLY_FRAGMENT, type ChainReader, type OnChainInvoice } from "./chain.js";
 import { ModelUnavailableError, ProposalInvalidError, type AgentModel } from "./model.js";
 import { DecisionStore } from "./store.js";
 
@@ -134,6 +134,8 @@ export class BuyerAgent {
   private readonly now: () => number;
   /** Latest offer per invoice, for plan() and /accept. */
   private readonly offers = new Map<string, HeldOffer>();
+  /** Offers being decided right now, by reply key. */
+  private readonly inflight = new Map<string, Promise<NegotiateReply>>();
   /** Offer nonces seen in this process (the contract enforces the same rule on chain). */
   private readonly seenNonces = new Set<string>();
   /** Answers already given, so a retried offer (a timeout, a restart of the sender) gets the same answer and settles once. */
@@ -171,7 +173,15 @@ export class BuyerAgent {
     const replyKey = `${id}:${msg.rung}:${msg.offer.nonce}`;
     const cached = this.replies.get(replyKey);
     if (cached) return cached;
+    // Two copies of the same offer that arrive together share ONE decision: a supplier that timed out and retried gets the real answer, never a second settlement.
+    const running = this.inflight.get(replyKey);
+    if (running) return running;
+    const work = this.decideAndSettle(msg, onchain, id, replyKey, nowSec).finally(() => this.inflight.delete(replyKey));
+    this.inflight.set(replyKey, work);
+    return work;
+  }
 
+  private async decideAndSettle(msg: OfferMsg, onchain: OnChainInvoice, id: `0x${string}`, replyKey: string, nowSec: number): Promise<NegotiateReply> {
     const nonceKey = `${onchain.supplier.toLowerCase()}:${msg.offer.nonce}`;
     const replayed = this.seenNonces.has(nonceKey) || (await this.d.chain.offerNonceUsed(onchain.supplier, BigInt(msg.offer.nonce)));
     if (replayed) return this.reject(msg, "NOT_ELIGIBLE", nowSec, "The offer nonce was already used.");

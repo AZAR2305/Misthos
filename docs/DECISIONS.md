@@ -414,3 +414,15 @@ These closed spec Appendix A items and fixed three bugs that no scripted-CLI tes
 - registry read fails: a real read against an address that is not a registry -> `needs_approval` `REGISTRY_UNAVAILABLE`, nothing paid.
 **Not done as written:** the plan said to test each row "on the hosted deployment". There is no hosted deployment yet, so these ran on this machine against the live Arc testnet, Circle and Groq services. Re-run it from the host once T1 exists.
 NO_OVERLAP was already built: the supplier logs `NO_OVERLAP`, the result is `hold_to_due`, and the invoice page's trace shows it.
+
+## T7 claim link safety (14 Oct 2026)
+- **What was already safe:** the payout address of a claim is the invoice's own supplier, fixed on chain; only that wallet's signature is accepted (EIP-712, EOA or ERC-1271); a token is single-use, expiring, stored only as a SHA-256, rate-limited and never echoed.
+- **Added:** (1) the buyer must say who they expect to pay when they make a link; if the invoice pays another address the link is refused (`SUPPLIER_MISMATCH`). (2) A first payment to an address this buyer has never settled with is **held**: the signed
+  offer is withheld by the server until the buyer confirms the exact address (`confirm-payout`), and the page names the address and says it is new. (3) A possible duplicate (same supplier, buyer, amount, reference) is flagged on the invoice page and the list,
+  and the relayer refuses to register it unless the supplier sends `allowDuplicate`. Nothing is blocked on chain. (4) The buyer agent now shares one decision between copies of the same offer that arrive together, so a supplier retry gets the real answer and
+  never a second settlement; a race found by a test (both copies were accepted) is fixed.
+- **Deviation from the plan:** "bind the expected supplier contact when the buyer approves the invoice" is done when the buyer makes the claim link, not at approval. Approval is an on-chain transaction from the buyer's own wallet; the server cannot add a step to it.
+  The expected address is checked against the invoice at the moment the link is created.
+- **Limit:** the confirmation hold is enforced by the server for the website path. A buyer who already holds a signed offer, or the buyer agent acting through its own wallet, is not subject to it. The agent path has its own `new_payout_address` risk flag and exposure limits.
+- Tests: look-alike address refused; a forwarded link signed by another wallet is refused and the real supplier can still claim once; the hold and its release; no hold for a known payee; reused, expired, malformed and unknown tokens; duplicates on registration and in the list;
+  no free text in any prompt (every string handed to a model is an id, a number or a fixed word); a retry, two copies at once, and a fresh offer after settlement each cause at most one payment.

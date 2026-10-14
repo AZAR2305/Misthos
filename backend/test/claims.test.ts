@@ -61,20 +61,20 @@ describe("claim links", () => {
     await index();
 
     // Not approved yet: no link.
-    expect((await buyer.post("/api/standing-offers", { invoiceId: id, rateBps: 0 })).json.error.code).toBe("NOT_APPROVED");
+    expect((await buyer.post("/api/standing-offers", { invoiceId: id, expectedSupplier: msg.supplier, rateBps: 0 })).json.error.code).toBe("NOT_APPROVED");
     await pub.waitForTransactionReceipt({ hash: await wc(6).writeContract({ address: dep.invoiceBook, abi: INVOICE_BOOK_ABI, functionName: "approveInvoice", args: [id] }) });
     await index();
 
     // Another buyer cannot invite on this invoice; the real buyer gets a link, shown once.
     const stranger = browser(app);
     await onboard(stranger, google, { sub: "cs", email: "stranger@example.com", walletIndex: 7, side: "buyer" });
-    expect((await stranger.post("/api/standing-offers", { invoiceId: id, rateBps: 0 })).json.error.code).toBe("NOT_YOUR_INVOICE");
-    const made = await buyer.post("/api/standing-offers", { invoiceId: id, rateBps: 0, validHours: 48 });
+    expect((await stranger.post("/api/standing-offers", { invoiceId: id, expectedSupplier: msg.supplier, rateBps: 0 })).json.error.code).toBe("NOT_YOUR_INVOICE");
+    const made = await buyer.post("/api/standing-offers", { invoiceId: id, expectedSupplier: msg.supplier, rateBps: 0, validHours: 48 });
     expect(made.status).toBe(201);
     const token: string = made.json.data.token;
     expect(token).toMatch(/^[A-Za-z0-9_-]{22}$/);
     expect(made.json.data.claimUrl).toBe(`${ORIGIN}/claim/${token}`);
-    expect((await buyer.post("/api/standing-offers", { invoiceId: id, rateBps: 0 })).json.error.code).toBe("OPEN_LINK_EXISTS");
+    expect((await buyer.post("/api/standing-offers", { invoiceId: id, expectedSupplier: msg.supplier, rateBps: 0 })).json.error.code).toBe("OPEN_LINK_EXISTS");
 
     // Only the hash is stored, never the token.
     const stored = await db.query<{ claim_token_hash: string }>("select claim_token_hash from standing_offers");
@@ -103,10 +103,16 @@ describe("claim links", () => {
     expect((await supplier.post(`/api/claims/${token}/accept`, { offer: wire, signature: sigOk })).json.error.code).toBe("NOT_OPEN");
     expect((await supplier.get(`/api/claims/${token}`)).json.data).toEqual({ status: "claimed" });
 
+    // This buyer has never settled with this address, so the signed offer is held back until they confirm it.
+    const held = (await buyer.get("/api/standing-offers")).json.data;
+    expect(held[0]).toMatchObject({ status: "claimed", newAddress: true, payoutConfirmed: false, signedOffer: null });
+    expect((await buyer.post(`/api/standing-offers/${held[0].id}/confirm-payout`, { address: wallet(8).address })).json.error.code).toBe("ADDRESS_CHANGED");
+    expect((await buyer.post(`/api/standing-offers/${held[0].id}/confirm-payout`, { address: msg.supplier })).json.data).toEqual({ confirmed: true });
+
     // The buyer sees the signed offer and settles with it: the contract accepts the signature the server stored.
     const mine = (await buyer.get("/api/standing-offers")).json.data;
     expect(mine).toHaveLength(1);
-    expect(mine[0]).toMatchObject({ status: "claimed", invoiceId: id });
+    expect(mine[0]).toMatchObject({ status: "claimed", invoiceId: id, payoutConfirmed: true });
     const signed = mine[0].signedOffer;
     expect(signed.supplier).toBe(msg.supplier);
     await pub.waitForTransactionReceipt({ hash: await wc(6).writeContract({ address: dep.usdc, abi: parseAbi(["function approve(address,uint256) returns (bool)"]), functionName: "approve", args: [dep.invoiceBook, 5_000_000_000n] }) });
@@ -128,10 +134,10 @@ describe("claim links", () => {
     await pub.waitForTransactionReceipt({ hash: await wc(3).writeContract({ address: dep.invoiceBook, abi: INVOICE_BOOK_ABI, functionName: "registerInvoice", args: [msg2, await wallet(5).signTypedData(invoiceTypedData(dom, msg2))] }) });
     await pub.waitForTransactionReceipt({ hash: await wc(6).writeContract({ address: dep.invoiceBook, abi: INVOICE_BOOK_ABI, functionName: "approveInvoice", args: [id2] }) });
     await index();
-    const second = await buyer.post("/api/standing-offers", { invoiceId: id2, rateBps: 200 });
+    const second = await buyer.post("/api/standing-offers", { invoiceId: id2, expectedSupplier: msg.supplier, rateBps: 200 });
     expect((await supplier.post(`/api/claims/${second.json.data.token}/decline`)).json.data).toEqual({ declined: true });
     expect((await supplier.get(`/api/claims/${second.json.data.token}`)).json.data).toEqual({ status: "withdrawn" });
-    const third = await buyer.post("/api/standing-offers", { invoiceId: id2, rateBps: 100 });
+    const third = await buyer.post("/api/standing-offers", { invoiceId: id2, expectedSupplier: msg.supplier, rateBps: 100 });
     expect((await buyer.del(`/api/standing-offers/${third.json.data.id}`)).json.data).toEqual({ withdrawn: true });
     expect((await supplier.get(`/api/claims/${third.json.data.token}`)).json.data).toEqual({ status: "withdrawn" });
   }, 180_000);

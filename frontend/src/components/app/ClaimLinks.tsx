@@ -22,6 +22,9 @@ export interface StandingOffer {
   status: "open" | "claimed" | "expired" | "withdrawn";
   supplier: string;
   claimedAt: string | null;
+  /** True when this buyer has never settled with this address: the signed offer is held back until they confirm it. */
+  newAddress: boolean;
+  payoutConfirmed: boolean;
   signedOffer: unknown;
 }
 
@@ -37,6 +40,7 @@ export function InviteSupplier({ invoice }: { invoice: InvoiceRecord }) {
   const [ratePct, setRatePct] = useState("0");
   const [hours, setHours] = useState("72");
   const [busy, setBusy] = useState(false);
+  const [expected, setExpected] = useState(false);
   const [made, setMade] = useState<{ claimUrl: string; expiresAt: string } | null>(null);
   if (!eligible || invoice.status !== "approved") return null;
 
@@ -48,7 +52,7 @@ export function InviteSupplier({ invoice }: { invoice: InvoiceRecord }) {
 
   const create = async () => {
     setBusy(true);
-    const r = await api<{ claimUrl: string; expiresAt: string }>("/api/standing-offers", { method: "POST", body: { invoiceId: invoice.id, rateBps, validHours: hrs } });
+    const r = await api<{ claimUrl: string; expiresAt: string }>("/api/standing-offers", { method: "POST", body: { invoiceId: invoice.id, expectedSupplier: invoice.supplier, rateBps, validHours: hrs } });
     setBusy(false);
     if (!r.ok) return void toast.push({ kind: "error", title: "The link was not created", body: r.error.message });
     setMade(r.data);
@@ -85,7 +89,13 @@ export function InviteSupplier({ invoice }: { invoice: InvoiceRecord }) {
               Today the supplier would receive <Money minor={invoice.amount - discount} accent /> instead of <Money minor={invoice.amount} /> on {dateOnly(Number(invoice.dueDate))}.
             </p>
           )}
-          <button type="button" className="btn btn-primary" disabled={busy || !rateOk || hrs < 1 || hrs > 168} onClick={() => void create()}>
+          <label className="check" style={{ display: "flex", gap: 8, alignItems: "flex-start", margin: "12px 0" }}>
+            <input id="claim-expected" type="checkbox" checked={expected} onChange={(e) => setExpected(e.target.checked)} />
+            <span>
+              This invoice pays <span className="mono" style={{ wordBreak: "break-all" }}>{invoice.supplier}</span>, and that is the business I expect to pay. <span className="muted tiny">If a supplier sent you a different address for the same invoice, stop and check with them first.</span>
+            </span>
+          </label>
+          <button type="button" className="btn btn-primary" disabled={busy || !expected || !rateOk || hrs < 1 || hrs > 168} onClick={() => void create()}>
             {busy ? "Creating…" : "Create claim link"}
           </button>
         </>
@@ -115,6 +125,11 @@ export function ClaimLinksCard() {
   }, [eligible, load]);
 
   if (!eligible) return null;
+  const confirmPayout = async (r: StandingOffer) => {
+    const res = await api(`/api/standing-offers/${r.id}/confirm-payout`, { method: "POST", body: { address: r.supplier } });
+    if (!res.ok) return void toast.push({ kind: "error", title: "Not confirmed", body: res.error.message });
+    void load();
+  };
   const withdraw = async (id: string) => {
     const r = await api(`/api/standing-offers/${id}`, { method: "DELETE" });
     if (!r.ok) return void toast.push({ kind: "error", title: "Could not withdraw", body: r.error.message });
@@ -139,6 +154,11 @@ export function ClaimLinksCard() {
                   <span className="muted tiny"> · {(r.rateBps / 100).toFixed(2)}% a year</span>
                 </div>
                 <span className="chip" data-status={r.status}>{STATUS_TEXT[r.status]}</span>
+                {r.status === "claimed" && r.newAddress && !r.payoutConfirmed && (
+                  <Notice kind="warn" title="First payment to this address" action={<button type="button" className="btn btn-ghost btn-sm" onClick={() => void confirmPayout(r)}>Yes, this is the right address</button>}>
+                    You have never paid <span className="mono" style={{ wordBreak: "break-all" }}>{r.supplier}</span> before. Check it with the supplier, then confirm. Until you do, the signed offer is not released.
+                  </Notice>
+                )}
                 <div className="claim-actions">
                   {r.status === "open" && <button type="button" className="btn btn-ghost btn-sm" onClick={() => void withdraw(r.id)}>Withdraw</button>}
                   {parsed?.success && invoice?.status === "approved" && <PayEarlyButton invoice={invoice} initialCode={encodeOfferCode(parsed.data)} label="Review and pay" />}

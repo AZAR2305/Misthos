@@ -25,7 +25,7 @@ import { exposureEvents, payablesOf, toInvoiceEvents } from "./exposure";
 import type { Relayer, RegisterPayload } from "./relayer";
 import { rateLimit } from "./ratelimit";
 import { fromNumeric, ser, toNumeric } from "./serialize";
-import { GENESIS_HASH, agentReadTypedData, decisionTypedData, evaluateExposure, findPrivateKey, hashDecision, INVOICE_BOOK_ABI, balanced, domain, invoiceId, invoiceTypedData, offerTypedData, journalFrom, settlementRows, summarise, toBeancount, toCsv, verifyChain, type InvoiceRecord, type StoredDecision } from "./shared";
+import { findDuplicate, GENESIS_HASH, agentReadTypedData, decisionTypedData, evaluateExposure, findPrivateKey, hashDecision, INVOICE_BOOK_ABI, balanced, domain, invoiceId, invoiceTypedData, offerTypedData, journalFrom, settlementRows, summarise, toBeancount, toCsv, verifyChain, type InvoiceRecord, type StoredDecision } from "./shared";
 
 export interface AppDeps {
   config: Config;
@@ -228,7 +228,8 @@ export function createApp(d: AppDeps) {
       .filter((i) => (!q.status || i.status === q.status) && (!q.supplier || i.supplier === q.supplier) && (!q.buyer || i.buyer === q.buyer))
       .filter((i) => !needle || i.id.includes(needle) || i.supplier.includes(needle) || i.buyer.includes(needle) || i.refHash.includes(needle))
       .sort((a, b) => (a.registered.block === b.registered.block ? 0 : a.registered.block < b.registered.block ? 1 : -1));
-    return ok(c, { total: rows.length, items: rows.slice(q.offset, q.offset + q.limit) });
+    // possibleDuplicateOf: the earliest other invoice with the same supplier, buyer, amount and reference (a flag for a person, never a block).
+    return ok(c, { total: rows.length, items: rows.slice(q.offset, q.offset + q.limit).map((i) => ({ ...i, possibleDuplicateOf: findDuplicate(all, i) ?? null })) });
   });
 
   app.get("/api/invoices/:id", async (c) => {
@@ -421,7 +422,7 @@ export function createApp(d: AppDeps) {
 
   // ------------------------------------------------------------------------------------------------ relay: registerInvoice for a supplier
 
-  const registerBody = z.object({
+  const registerBody = z.object({ allowDuplicate: z.boolean().optional(), 
     invoice: z.object({ supplier: address, buyer: address, token: address, amount: minor, dueDate: z.string().regex(/^\d{1,12}$/), refHash: hex(64), nonce: z.string().regex(/^\d{1,40}$/) }),
     signature: hex(),
   });
@@ -441,7 +442,7 @@ export function createApp(d: AppDeps) {
     const waitMin = overRegisterLimit(a.address!, now().getTime());
     if (waitMin) return fail(c, "REGISTER_LIMIT", `This wallet has asked for ${config.REGISTER_LIMIT_PER_HOUR} registrations in the last hour. Try again in about ${waitMin} minutes, or register from your own wallet.`, 429);
     if (!d.relayer || !d.client || !config.INVOICE_BOOK) return unavailable(c, "the relayer is not configured", "Set RELAYER_PRIVATE_KEY, ARC_RPC_URL and INVOICE_BOOK_ADDRESS, or register the invoice from your own wallet.");
-    const { invoice, signature } = await body(c, registerBody);
+    const { invoice, signature, allowDuplicate } = await body(c, registerBody);
     if (invoice.supplier !== a.address) return fail(c, "NOT_YOUR_INVOICE", "You can only register invoices where your linked wallet is the supplier.", 403);
     if (invoice.supplier === invoice.buyer) return fail(c, "BAD_REQUEST", "Supplier and buyer must differ.", 400);
 
@@ -460,6 +461,10 @@ export function createApp(d: AppDeps) {
     const id = invoiceId(dom, msg);
     const chain = await d.client.readContract({ address: config.INVOICE_BOOK, abi: INVOICE_BOOK_ABI, functionName: "invoices", args: [id] });
     if (chain[6] !== 0) return ok(c, { invoiceId: id, alreadyRegistered: true });
+
+    // The same supplier, buyer, amount and reference again, under a new nonce, is probably a double send. Say so before the relayer pays gas for it.
+    const dup = findDuplicate(await indexed(), { id, supplier: invoice.supplier, buyer: invoice.buyer, amount: BigInt(invoice.amount), refHash: invoice.refHash.toLowerCase() as `0x${string}` });
+    if (dup && !allowDuplicate) return fail(c, "DUPLICATE_INVOICE", `This looks like a duplicate of invoice ${dup.slice(0, 10)}…: the same buyer, amount and reference. If it is deliberate, send it again with allowDuplicate.`, 409);
 
     // Credit extended (SRS FR-05): if the supplier has set a limit for this buyer, a new invoice that would take what the buyer owes past it
     // is not registered for them. The supplier decides the limit; the server only applies it. No limit set means no check.
@@ -660,10 +665,12 @@ export function createApp(d: AppDeps) {
     claimed_at: Date | null;
     signed_offer: unknown;
     created_at: Date;
+    payout_new: boolean;
+    payout_confirmed_at: Date | null;
   }
-  const OFFER_COLS = "id, chain_invoice_id, rate_bps, expiry, status::text as status, supplier_address, claimed_at, signed_offer, created_at";
+  const OFFER_COLS = "id, chain_invoice_id, rate_bps, expiry, status::text as status, supplier_address, claimed_at, signed_offer, created_at, payout_new, payout_confirmed_at";
 
-  const createBody = z.object({ invoiceId: hex(64), rateBps: z.number().int().min(0).max(5000), validHours: z.number().int().min(1).max(168).default(72) });
+  const createBody = z.object({ invoiceId: hex(64), expectedSupplier: address, rateBps: z.number().int().min(0).max(5000), validHours: z.number().int().min(1).max(168).default(72) });
 
   app.post("/api/standing-offers", async (c) => {
     const a = need(c, "buyer");
@@ -673,6 +680,11 @@ export function createApp(d: AppDeps) {
     if (!inv) return fail(c, "NOT_FOUND", "That invoice is not in the index yet. Wait a moment and try again.", 404);
     if (inv.buyer !== a.address) return fail(c, "NOT_YOUR_INVOICE", "Only the buyer named on the invoice can invite the supplier.", 403);
     if (inv.status !== "approved") return fail(c, "NOT_APPROVED", "Approve the invoice first. Only approved invoices can be paid early.", 409);
+    // The buyer says who they expect to pay. If the invoice pays someone else (a look-alike address, a changed payout), no link is made.
+    if (b.expectedSupplier.toLowerCase() !== inv.supplier) return fail(c, "SUPPLIER_MISMATCH", `This invoice pays ${inv.supplier}, not the address you expected. Check it with the supplier before you offer anything.`, 409);
+    // A first payment to an address this buyer has never settled with is held for their confirmation.
+    const all = await indexed();
+    const knownPayee = all.some((o) => o.id !== id && o.buyer === a.address && o.supplier === inv.supplier && (o.status === "settled_early" || o.status === "settled_due"));
     const nowMs = now().getTime();
     const expiry = new Date(Math.min(nowMs + b.validHours * 3_600_000, Number(inv.dueDate) * 1000 - 60_000));
     if (expiry.getTime() <= nowMs + 60_000) return fail(c, "TOO_LATE", "The invoice is due too soon to leave an offer open.", 409);
@@ -681,18 +693,48 @@ export function createApp(d: AppDeps) {
 
     const token = randomBytes(16).toString("base64url");
     const row = await db.query<{ id: string }>(
-      "insert into standing_offers (chain_invoice_id, rate_bps, expiry, claim_token_hash, created_by, supplier_address) values ($1,$2,$3,$4,$5,$6) returning id",
-      [id, b.rateBps, expiry.toISOString(), hashToken(token), a.id, inv.supplier],
+      "insert into standing_offers (chain_invoice_id, rate_bps, expiry, claim_token_hash, created_by, supplier_address, expected_supplier, payout_new) values ($1,$2,$3,$4,$5,$6,$7,$8) returning id",
+      [id, b.rateBps, expiry.toISOString(), hashToken(token), a.id, inv.supplier, b.expectedSupplier.toLowerCase(), !knownPayee],
     );
     // The only time the token is ever shown. It is not stored and not logged.
-    return ok(c, { id: row[0]!.id, token, claimUrl: `${origin()}/claim/${token}`, expiresAt: expiry }, 201);
+    return ok(c, { id: row[0]!.id, token, claimUrl: `${origin()}/claim/${token}`, expiresAt: expiry, newAddress: !knownPayee }, 201);
   });
 
   app.get("/api/standing-offers", async (c) => {
     const a = need(c, "buyer");
     const rows = await db.query<OfferRow>(`select ${OFFER_COLS} from standing_offers where created_by = $1 order by created_at desc`, [a.id]);
     const t = now().getTime();
-    return ok(c, rows.map((r) => ({ id: r.id, invoiceId: r.chain_invoice_id, rateBps: r.rate_bps, expiresAt: r.expiry, status: r.status === "open" && new Date(r.expiry).getTime() <= t ? "expired" : r.status, supplier: r.supplier_address, claimedAt: r.claimed_at, signedOffer: r.signed_offer })));
+    return ok(
+      c,
+      rows.map((r) => {
+        // A first payment to an address this buyer has never settled with is not released until they confirm that address. Server-enforced:
+        // the signed offer is what the buyer needs to settle, and it is not handed over before the confirmation.
+        const held = r.payout_new && !r.payout_confirmed_at;
+        return {
+          id: r.id,
+          invoiceId: r.chain_invoice_id,
+          rateBps: r.rate_bps,
+          expiresAt: r.expiry,
+          status: r.status === "open" && new Date(r.expiry).getTime() <= t ? "expired" : r.status,
+          supplier: r.supplier_address,
+          claimedAt: r.claimed_at,
+          newAddress: r.payout_new,
+          payoutConfirmed: !r.payout_new || !!r.payout_confirmed_at,
+          signedOffer: held ? null : r.signed_offer,
+        };
+      }),
+    );
+  });
+
+  /** The buyer confirms the payout address of a first payment. The address must be exactly the one they were shown. */
+  app.post("/api/standing-offers/:id/confirm-payout", async (c) => {
+    const a = need(c, "buyer");
+    const { address: shown } = await body(c, z.object({ address }));
+    const row = (await db.query<OfferRow>(`select ${OFFER_COLS} from standing_offers where id::text = $1 and created_by = $2`, [c.req.param("id"), a.id]))[0];
+    if (!row) return fail(c, "NOT_FOUND", "No such claim link.", 404);
+    if (shown.toLowerCase() !== row.supplier_address) return fail(c, "ADDRESS_CHANGED", "That is not the address on this invoice. Look again before you confirm.", 409);
+    await db.query("update standing_offers set payout_confirmed_at = $2 where id = $1 and payout_confirmed_at is null", [row.id, now().toISOString()]);
+    return ok(c, { confirmed: true });
   });
 
   app.delete("/api/standing-offers/:id", async (c) => {

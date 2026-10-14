@@ -104,3 +104,19 @@ describe("the buyer agent's own payment calendar", () => {
     expect(parseAgentObligations(null)).toBeUndefined();
   });
 });
+
+import { findDuplicate } from "../src/lib/chain/duplicates";
+describe("possible duplicate invoices", () => {
+  const rec = (id: string, o: Partial<{ supplier: string; buyer: string; amount: bigint; refHash: string; status: string; block: bigint }> = {}) =>
+    ({ id, supplier: o.supplier ?? "0xaa", buyer: o.buyer ?? "0xbb", amount: o.amount ?? 1000n, refHash: o.refHash ?? "0x01", status: o.status ?? "approved", registered: { block: o.block ?? 1n } }) as never;
+  it("matches the same supplier, buyer, amount and reference, and points at the earliest", () => {
+    const all = [rec("late", { block: 9n }), rec("early", { block: 2n }), rec("other", { amount: 5n }), rec("diffref", { refHash: "0x02" })];
+    expect(findDuplicate(all, all[0] as never)).toBe("early");
+    expect(findDuplicate(all, all[2] as never)).toBeUndefined();
+    expect(findDuplicate(all, all[3] as never)).toBeUndefined();
+  });
+  it("does not treat a disputed invoice as the original", () => {
+    const all = [rec("a", { status: "disputed" }), rec("b")];
+    expect(findDuplicate(all, all[1] as never)).toBeUndefined();
+  });
+});

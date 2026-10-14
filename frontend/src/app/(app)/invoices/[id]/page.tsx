@@ -8,6 +8,7 @@ import { useChainData } from "@/components/app/ChainData";
 import { DiscountCurve } from "@/components/app/DiscountCurve";
 import { OfferButton, PayEarlyButton } from "@/components/app/OfferFlows";
 import { InviteSupplier } from "@/components/app/ClaimLinks";
+import { findDuplicate } from "@/lib/chain/duplicates";
 import { CreditBasis } from "@/components/app/CreditBasis";
 import { NegotiationTrace } from "@/components/app/NegotiationTrace";
 import { PayStateChip } from "@/components/app/PayStateChip";
@@ -116,6 +117,15 @@ export default function InvoicePage() {
       />
 
       <Stepper steps={["Signed", "Registered", "Approved", "Offered", "Paid"]} current={stepIndex} />
+
+      {(() => {
+        const dup = findDuplicate(chain.invoices, inv);
+        return dup ? (
+          <Notice kind="warn" title="This may be a duplicate">
+            The same supplier, buyer, amount and reference already exist on invoice <Link href={`/invoices/${dup}`} className="mono">{dup.slice(0, 10)}…</Link>. Check with the supplier before you approve or pay. Nothing is blocked on chain.
+          </Notice>
+        ) : null;
+      })()}
 
       {inv.status === "disputed" && <Notice kind="error" title="This invoice is disputed">The buyer disputed it, so no payment can happen until it is resolved off chain. The contract will not settle it.</Notice>}
 
