@@ -26,6 +26,10 @@ fs.mkdirSync(shots, { recursive: true });
 const acct = (i) => mnemonicToAccount(MNEMONIC, { addressIndex: i });
 const [supplier, buyer] = [acct(1).address.toLowerCase(), acct(2).address.toLowerCase()];
 
+// `next build` rewrites tsconfig.json to include each build folder. Put it back when this run ends, so a test run never changes a tracked file.
+const TSCONFIG = path.resolve(import.meta.dirname, "..", "tsconfig.json");
+const TSCONFIG_ORIGINAL = fs.readFileSync(TSCONFIG, "utf8");
+const restoreTsconfig = () => fs.writeFileSync(TSCONFIG, TSCONFIG_ORIGINAL);
 const procs = [];
 const servers = [];
 const log = (m) => console.log(`\n== ${m}`);
@@ -381,4 +385,4 @@ async function main() {
 
 main()
   .catch((e) => { console.error(e instanceof Error ? e.message : e); process.exitCode = 1; })
-  .finally(() => { for (const p of procs) p.kill(); for (const s of servers) s.close(); setTimeout(() => process.exit(process.exitCode ?? 0), 500); });
+  .finally(() => { restoreTsconfig(); for (const p of procs) p.kill(); for (const s of servers) s.close(); setTimeout(() => process.exit(process.exitCode ?? 0), 500); });

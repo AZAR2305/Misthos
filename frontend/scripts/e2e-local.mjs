@@ -19,6 +19,9 @@ fs.mkdirSync(shots, { recursive: true });
 const acct = (i) => mnemonicToAccount(MNEMONIC, { addressIndex: i }).address.toLowerCase();
 const [supplier, buyer] = [acct(1), acct(2)];
 
+// `next build` rewrites tsconfig.json to include each build folder. Put it back when this run ends, so a test run never changes a tracked file.
+const TSCONFIG = path.resolve(import.meta.dirname, "..", "tsconfig.json");
+const TSCONFIG_ORIGINAL = fs.readFileSync(TSCONFIG, "utf8");
 const procs = [];
 let pageRef;
 const pageErrors = [];
@@ -269,5 +272,6 @@ try {
   }
   process.exitCode = 1;
 } finally {
+  fs.writeFileSync(TSCONFIG, TSCONFIG_ORIGINAL);
   for (const p of procs) try { p.kill(); } catch { /* already gone */ }
 }
