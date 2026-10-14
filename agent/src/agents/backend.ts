@@ -77,6 +77,7 @@ const eventRows = z.array(
     state: z.enum(["approved", "settled_early", "settled_on_due", "disputed"]),
     face: uintString,
     outflow: uintString.optional(),
+    rateBps: z.number().int().min(0).max(5000).optional(),
     dueSec: z.number().int().min(0),
     settledAtSec: z.number().int().min(0).optional(),
     txHash: z.string().max(80).optional(),
@@ -95,6 +96,7 @@ export async function fetchExposureEvents(args: { backendUrl: string; side: "sup
     state: e.state,
     face: BigInt(e.face),
     ...(e.outflow !== undefined ? { outflow: BigInt(e.outflow) } : {}),
+    ...(e.rateBps !== undefined ? { rateBps: e.rateBps } : {}),
     dueSec: BigInt(e.dueSec),
     ...(e.settledAtSec !== undefined ? { settledAtSec: BigInt(e.settledAtSec) } : {}),
     ...(e.txHash !== undefined ? { txHash: e.txHash } : {}),
@@ -123,4 +125,18 @@ export async function linkAgent(args: { backendUrl: string; wallet: WalletAdapte
   } catch (e) {
     return { ok: false, message: `Could not reach the API: ${(e as Error).message}` };
   }
+}
+
+const payableRows = z.array(z.strictObject({ invoiceId: z.string().max(80), face: uintString, dueSec: z.number().int().min(0) }));
+
+/**
+ * What this buyer owes on invoices that are approved and unpaid, whoever the supplier is. These are on-chain facts (the contract will
+ * take this money on each due date), so unlike a calendar the owner typed they are VERIFIED obligations. The id carries the invoice id so
+ * the invoice being decided is never counted against itself. Throws if the API cannot answer: the buyer then fails closed.
+ */
+export async function fetchPayables(args: { backendUrl: string; buyer: string; timeoutMs?: number; fetch?: FetchLike }): Promise<Array<{ id: string; dueSec: bigint; amount: bigint; provenance: "onchain" }>> {
+  const res = await (args.fetch ?? fetch)(`${args.backendUrl.replace(/\/$/, "")}/api/payables?buyer=${args.buyer.toLowerCase()}`, { signal: AbortSignal.timeout(args.timeoutMs ?? 15_000) });
+  const body = (await res.json().catch(() => ({}))) as { ok?: boolean; data?: { payables?: unknown }; error?: { message?: string } };
+  if (!res.ok || !body.ok) throw new Error(body.error?.message ?? `The API answered ${res.status}.`);
+  return payableRows.parse(body.data?.payables).map((p) => ({ id: `invoice:${p.invoiceId.toLowerCase()}`, dueSec: BigInt(p.dueSec), amount: BigInt(p.face), provenance: "onchain" as const }));
 }

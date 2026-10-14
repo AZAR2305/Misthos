@@ -1,3 +1,4 @@
+import type { InvoiceEvent } from "./shared";
 import type { InvoiceRecord } from "./shared";
 
 /**
@@ -11,6 +12,8 @@ export interface ExposureEventJson {
   state: "approved" | "settled_early" | "settled_on_due" | "disputed";
   face: string;
   outflow?: string;
+  /** The yearly rate an early payment cleared at, in basis points. Lets a supplier start near what this buyer has accepted before. */
+  rateBps?: number;
   dueSec: number;
   settledAtSec?: number;
   txHash?: string;
@@ -34,7 +37,7 @@ export function exposureEvents(
       out.push({
         ...base,
         state: early ? "settled_early" : "settled_on_due",
-        ...(early ? { outflow: (r.settled.net + r.settled.fee).toString() } : {}),
+        ...(early ? { outflow: (r.settled.net + r.settled.fee).toString(), rateBps: r.settled.rateBps } : {}),
         settledAtSec: blockTime(r.settled.block),
         txHash: r.settled.tx,
         logIndex: r.settled.logIndex,
@@ -42,4 +45,36 @@ export function exposureEvents(
     }
   }
   return out;
+}
+
+/** The wire shape into the agents' own type (bigint money, integer times). */
+export function toInvoiceEvents(rows: readonly ExposureEventJson[]): InvoiceEvent[] {
+  return rows.map((e) => ({
+    invoiceId: e.invoiceId,
+    state: e.state,
+    face: BigInt(e.face),
+    ...(e.outflow !== undefined ? { outflow: BigInt(e.outflow) } : {}),
+    ...(e.rateBps !== undefined ? { rateBps: e.rateBps } : {}),
+    dueSec: BigInt(e.dueSec),
+    ...(e.settledAtSec !== undefined ? { settledAtSec: BigInt(e.settledAtSec) } : {}),
+    ...(e.txHash !== undefined ? { txHash: e.txHash } : {}),
+    ...(e.logIndex !== undefined ? { logIndex: e.logIndex } : {}),
+  }));
+}
+
+/**
+ * What a buyer owes on invoices that are approved and not yet paid, whoever the supplier is. These are on-chain facts, so they are
+ * the one obligation that is verified rather than declared: the contract itself will take this money on the due date.
+ */
+export interface PayableJson {
+  invoiceId: string;
+  face: string;
+  dueSec: number;
+}
+
+export function payablesOf(records: readonly InvoiceRecord[], buyer: string): PayableJson[] {
+  return records
+    .filter((r) => r.buyer === buyer && r.status === "approved")
+    .map((r) => ({ invoiceId: r.id, face: r.amount.toString(), dueSec: Number(r.dueDate) }))
+    .sort((a, b) => (a.invoiceId < b.invoiceId ? -1 : 1));
 }

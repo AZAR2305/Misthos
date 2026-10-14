@@ -80,7 +80,7 @@ nonce is still rejected.
   `/api/log/verify` recomputes every chain and every signature from the stored rows; `/api/log` lists entries with the settlement
   transaction that carries the same hash. Tested: 3 agent tests, 6 API tests. Not yet run with a real Circle wallet: a contract
   wallet's signature is checked through the chain RPC.
-- **The buyer's obligation calendar is now read from the backend** (signed read, 14 Oct); an unreadable calendar fails closed. Supplier history (`pastAcceptedBps`) is still not read in a real run: the supplier runner passes an empty list.
+- **Superseded 14 Oct, second pass: supplier history (`pastAcceptedBps`) is now read from proven settlements.** The buyer's obligation calendar is now read from the backend (signed read, 14 Oct); an unreadable calendar fails closed. Supplier history (`pastAcceptedBps`) is still not read in a real run: the supplier runner passes an empty list.
 - ERC-8004 identity and feedback, MCP server, A2A cards, compliance screening: Tier 2, not built.
 - Circle Agent Wallet adapter has never run against a real login (Appendix A items 5 to 8). First real run will likely need fixes.
 - Contract tests and the two Anvil backend suites **were run on 14 Oct and pass** (Foundry is installed on this machine).
@@ -98,6 +98,7 @@ Requirement-by-requirement status is in `docs/SRS_GAP_PLAN.md`; how it works is 
 | Private stays private | Hurdle, reserve, caps and limits are never in the public log. The store and the API both refuse a private key name in a snapshot or proposal, and the public entry carries only a salted commitment to the inputs |
 | Real data only | History comes from indexed chain events with a transaction hash and log index; with none, the page says so. Declared obligations are labelled declared |
 
-**Tested:** 168 agent tests, 64 backend tests (including `pipeline.test.ts`, which runs both agents against the real API in one process), 45 frontend tests, both real-browser end-to-end suites.
+**Tested:** 182 agent tests, 72 backend tests (including `pipeline.test.ts`, which runs both agents against the real API in one process), 45 frontend tests, 40 contract tests, both real-browser end-to-end suites.
 **Not tested on Arc:** nothing in this layer has run against a deployed contract or a real Circle wallet.
-**Known limits:** the supplier agent does not gate on credit (it only reports it); `/plan` (the allocator) is not exposure-aware, but `/plan/execute` skips any payment the credit limit forbids; the supplier's adaptive start from past deals is still unwired.
+**Closed on 14 Oct (second pass):** the supplier's limit is enforced at invoice registration; the supplier's adaptive start now reads proven past rates; approved unpaid invoices are verified (`onchain`) obligations.
+**Known limits:** the supplier agent does not refuse to accelerate on credit (getting paid early lowers exposure; it records its position instead); a supplier registering from their own wallet is not stopped by the server; `/plan` (the allocator) is not exposure-aware, but `/plan/execute` skips any payment the credit limit forbids; typed obligations (payroll, rent) have no on-chain source and stay `declared`.

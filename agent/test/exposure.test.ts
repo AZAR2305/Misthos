@@ -146,3 +146,19 @@ describe("determinism", () => {
     expect(JSON.stringify(a, (_k, v) => (typeof v === "bigint" ? v.toString() : v))).toBe(JSON.stringify(b, (_k, v) => (typeof v === "bigint" ? v.toString() : v)));
   });
 });
+
+import { pastAcceptedRates } from "../src/core/index.js";
+
+describe("rates a buyer accepted before", () => {
+  const early = (id: string, rate: number, ago: bigint, o: Partial<InvoiceEvent> = {}): InvoiceEvent => ({
+    invoiceId: id, state: "settled_early", face: 1n, rateBps: rate, dueSec: NOW + DAY, settledAtSec: NOW - ago, txHash: `0x${id}`, logIndex: 1, ...o,
+  });
+  it("lists proven, recent early payments oldest first, each invoice once", () => {
+    const r = pastAcceptedRates([early("c", 700, 1n * DAY), early("a", 400, 30n * DAY), early("b", 600, 10n * DAY), early("b", 600, 10n * DAY)], NOW);
+    expect(r).toEqual([400, 600, 700]);
+  });
+  it("ignores on-due payments, unproven ones and ones outside the look-back", () => {
+    expect(pastAcceptedRates([settledOnDue("x", 1n, 1n * DAY), early("y", 500, 1n * DAY, { txHash: undefined }), early("z", 500, 200n * DAY)], NOW)).toEqual([]);
+    expect(pastAcceptedRates([early("z", 500, 200n * DAY)], NOW, 365)).toEqual([500]);
+  });
+});

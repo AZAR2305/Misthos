@@ -10,8 +10,8 @@ is unconfirmed, ask in the Canteen Discord). Companion files: `docs/SETUP.md` (t
 | Part | State | Checked today |
 |---|---|---|
 | `contract/` InvoiceBook | Written, 40 Foundry tests, deploy scripts | **40/40 pass** (run 14 Oct; Foundry is installed in `C:\Users\thame\dev-tools\bin`) |
-| `agent/` core, protocol, allocator, decision log, wallet adapters, two agent processes | Built | `tsc` clean, **168/168 tests pass** (14 Oct), including the credit and exposure layer, replayable decisions and the audit tool |
-| `backend/` API, indexer, job outbox, Google and wallet sign-in, claim links, ledger exports | Built | `tsc` clean, **64/64 tests pass** (14 Oct), including both Anvil suites and `pipeline.test.ts`, which runs both agents against the real API in one process |
+| `agent/` core, protocol, allocator, decision log, wallet adapters, two agent processes | Built | `tsc` clean, **182/182 tests pass** (14 Oct), including the credit and exposure layer, replayable decisions, the audit tool, the supplier's adaptive start and verified payables |
+| `backend/` API, indexer, job outbox, Google and wallet sign-in, claim links, ledger exports | Built | `tsc` clean, **72/72 tests pass** (14 Oct), including both Anvil suites, the registration credit gate and `pipeline.test.ts`, which runs both agents against the real API in one process |
 | `frontend/` landing, app pages, docs | Built | `tsc` clean, 45/45 tests pass; `next build` passes; `e2e:local` and `e2e:accounts` both pass in a real browser (14 Oct) |
 | SRS v1.0 layer: credit limits, ranges, policy versions, audit | **Built, local only** | `docs/SRS_GAP_PLAN.md` (status per requirement) and `docs/SRS_IMPLEMENTATION_SPEC.md` (how it works, and where it differs from the plan) |
 | Deployed contract on Arc testnet | **No** | The app says "unavailable" wherever it would read the chain |

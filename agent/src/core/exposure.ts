@@ -54,6 +54,8 @@ export interface InvoiceEvent {
   face: bigint;
   /** For settled_early: what the buyer paid (net + fee). */
   outflow?: bigint;
+  /** For settled_early: the yearly rate it cleared at, in basis points. */
+  rateBps?: number;
   dueSec: bigint;
   /** Block time of the settlement. */
   settledAtSec?: bigint;
@@ -164,4 +166,16 @@ export function evaluateExposure(i: ExposureInput): ExposureDecision {
   const room = allowed > outstanding ? allowed - outstanding : 0n;
   const ok = i.newExposure + outstanding <= allowed;
   return { kind: "decided", ok, ...(ok ? {} : { reasonCode: "EXPOSURE_LIMIT" as const }), allowed, outstanding, newExposure: i.newExposure, room, settledVolume, evidence };
+}
+
+/**
+ * The rates this buyer has actually accepted from this supplier, from settlements with a transaction behind them, oldest first.
+ * A supplier starts its ladder near what this buyer took before (spec 8.2). Only recent, proven early payments count, each once.
+ */
+export function pastAcceptedRates(events: readonly InvoiceEvent[], nowSec: bigint, lookbackDays = DEFAULT_EXPOSURE_POLICY.lookbackDays): number[] {
+  const from = nowSec - BigInt(lookbackDays) * SECONDS_PER_DAY;
+  return onePerInvoice(events)
+    .filter((e) => e.state === "settled_early" && e.rateBps !== undefined && e.txHash !== undefined && e.logIndex !== undefined && e.settledAtSec !== undefined && e.settledAtSec >= from)
+    .sort((a, b) => Number(a.settledAtSec! - b.settledAtSec!))
+    .map((e) => e.rateBps!);
 }

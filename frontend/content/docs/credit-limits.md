@@ -10,6 +10,8 @@ Having the cash to pay is not the same as being willing to take on more exposure
 
 ## Two ranges, one deal
 
+A supplier's agent also looks at what this buyer has accepted before. With at least three proven early payments, it starts its ladder near the lower quarter of those rates instead of at its default.
+
 Every early payment is a price between two private limits.
 
 - **The supplier** has a highest rate it will sign. That rate comes from its own cost of waiting, with a safety margin, so it never signs for less than it is willing to take.
@@ -29,7 +31,7 @@ You set it on **Credit limits**. It limits one business at a time.
 
 What counts as exposure depends on your side.
 
-- **As a supplier**, it is what a buyer owes you across approved, unpaid invoices.
+- **As a supplier**, it is what a buyer owes you across approved, unpaid invoices. When you register a new invoice, the server checks it against your limit for that buyer and refuses one that would go past it, with the reason. Getting paid early only lowers what a buyer owes, so your agent never holds back an early payment on credit; it records where you stand instead.
 - **As a buyer**, it is what you have paid ahead of terms to one supplier whose invoices are not yet due.
 
 A new commitment is allowed only if the new amount plus what is already outstanding stays within the limit.
@@ -49,6 +51,8 @@ A buyer sets a starting limit of 5,000 USDC, growth of 20% and a maximum of 20,0
 If your agent cannot read your limit, its history or your payment calendar, it accepts nothing and waits for you. It never assumes a favourable answer. Every number on these pages says where it came from: **on-chain**, **policy** (your own setting) or **declared** (something you listed yourself, which can only lower what your agent pays, never raise it).
 
 ## Your payment calendar
+
+Two things are held back from your spare cash. The first is what the chain says you owe: invoices you approved and have not paid. The contract will take that money on each due date, so it is verified and marked **on-chain**. The second is what you list yourself: payroll and large bills. Nothing on a chain backs that, so it is marked **declared**.
 
 List payroll and large bills on the buyer dashboard. Signed in, they are saved on your account, because your agent reads them there before it accepts any early payment. Kept only in a browser, your agent would not see them. The page tells you if any are saved only on your device.
 

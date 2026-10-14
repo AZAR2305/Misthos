@@ -20,9 +20,10 @@ test won and the text was corrected.
 | B credit and exposure | **Done** | `core/exposure.ts`, `GET /api/exposure`, versioned policy (`exposure_policies`, migration 005), `BuyerAgent.checkExposure` |
 | C policy version and evidence in the log | **Done** | `core/decide.ts` (`decideBuyerOffer`, `planLadder`), `core/commit.ts`, `agents/policybook.ts`, `agents/store.ts`, `audit.ts` |
 | D negotiation trace, credit basis, states | **Done** | `NegotiationTrace`, `YourRange`, `CreditBasis`, `ExposurePolicyCard`, `LinkAgentCard`, `PayStateChip`, `TreasuryCard`; in-app doc `credit-limits` |
-| Supplier-side exposure *enforced by the agent* | **Not built** | The supplier side is shown on the invoice page (`CreditBasis`) and edited on `/supplier/policy`. The supplier agent does not refuse to accelerate on it: early payment reduces exposure, so there is nothing to gate. Gating invoice creation is a possible next step |
+| Supplier-side credit | **Done**, enforced where credit is extended | `POST /api/relay/register` refuses (409 `EXPOSURE_LIMIT`) an invoice that would take what one buyer owes the supplier past the supplier's own limit. The supplier agent does not refuse to *accelerate* on credit, because getting paid early only lowers what the buyer owes; it records its credit position and evidence in the log instead. Limit: a supplier who registers from their own wallet instead of the relayer is not stopped by the server, since the limit is the supplier's own guard, not a rule of the contract |
+| Supplier's adaptive start | **Done** | The supplier agent reads proven early payments with this buyer (`rateBps` on indexed events, `pastAcceptedRates`) and starts at the 25th percentile when it has at least three (spec 8.2) |
 | Urgency input for the supplier | **Skipped** (decision 3) | Cost of waiting stays the only economic input |
-| Verified obligation source | **None** (decision 4) | Every obligation is `declared` and can only lower what the buyer pays |
+| Verified obligations | **Done** for what the chain knows | Approved, unpaid invoices the buyer owes (`GET /api/payables`) are on-chain facts and are subtracted from spare cash, labelled `onchain`. What the owner types (payroll, rent) stays `declared`: nothing on a chain backs it, and it can only lower what the buyer pays |
 | Run on Arc with real Circle wallets | **No** | needs the owner's deploy and logins |
 
 **Differences from the original text** (corrected lines are marked in place):

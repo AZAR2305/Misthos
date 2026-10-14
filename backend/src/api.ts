@@ -25,11 +25,11 @@ import type { Config } from "./config";
 import type { Db } from "./db";
 import { blockTimes, getCursor, loadInvoices, type IndexerStatus } from "./indexer";
 import { enqueue, getJob } from "./jobs";
-import { exposureEvents } from "./exposure";
+import { exposureEvents, payablesOf, toInvoiceEvents } from "./exposure";
 import type { Relayer, RegisterPayload } from "./relayer";
 import { rateLimit } from "./ratelimit";
 import { fromNumeric, ser, toNumeric } from "./serialize";
-import { GENESIS_HASH, agentReadTypedData, decisionTypedData, findPrivateKey, hashDecision, INVOICE_BOOK_ABI, balanced, domain, invoiceId, invoiceTypedData, offerTypedData, journalFrom, settlementRows, summarise, toBeancount, toCsv, verifyChain, type InvoiceRecord, type StoredDecision } from "./shared";
+import { GENESIS_HASH, agentReadTypedData, decisionTypedData, evaluateExposure, findPrivateKey, hashDecision, INVOICE_BOOK_ABI, balanced, domain, invoiceId, invoiceTypedData, offerTypedData, journalFrom, settlementRows, summarise, toBeancount, toCsv, verifyChain, type InvoiceRecord, type StoredDecision } from "./shared";
 
 export interface AppDeps {
   config: Config;
@@ -201,6 +201,12 @@ export function createApp(d: AppDeps) {
     const q = z.object({ side: z.enum(["supplier", "buyer"]), owner: address, counterparty: address }).parse(c.req.query());
     const records = await indexed();
     return ok(c, { events: exposureEvents(records, q, await blockTimes(db)), indexedThroughBlock: (await getCursor(db))?.toString() ?? null });
+  });
+
+  /** What a buyer owes on approved, unpaid invoices: on-chain facts, so the one obligation that is verified, not declared. */
+  app.get("/api/payables", async (c) => {
+    const q = z.object({ buyer: address }).parse(c.req.query());
+    return ok(c, { payables: payablesOf(await indexed(), q.buyer), indexedThroughBlock: (await getCursor(db))?.toString() ?? null });
   });
 
   app.get("/api/invoices", async (c) => {
@@ -440,6 +446,23 @@ export function createApp(d: AppDeps) {
     const id = invoiceId(dom, msg);
     const chain = await d.client.readContract({ address: config.INVOICE_BOOK, abi: INVOICE_BOOK_ABI, functionName: "invoices", args: [id] });
     if (chain[6] !== 0) return ok(c, { invoiceId: id, alreadyRegistered: true });
+
+    // Credit extended (SRS FR-05): if the supplier has set a limit for this buyer, a new invoice that would take what the buyer owes past it
+    // is not registered for them. The supplier decides the limit; the server only applies it. No limit set means no check.
+    const pol = await exposurePolicyOf(a.orgId!);
+    if (pol.configured) {
+      const events = toInvoiceEvents(exposureEvents(await indexed(), { side: "supplier", owner: invoice.supplier, counterparty: invoice.buyer }, await blockTimes(db)));
+      const decision = evaluateExposure({
+        side: "supplier",
+        nowSec: BigInt(Math.floor((d.now?.() ?? new Date()).getTime() / 1000)),
+        newExposure: BigInt(invoice.amount),
+        events,
+        policy: { version: pol.version, newCounterpartyLimit: pol.newCounterpartyLimit, maxLimit: pol.maxLimit, growthBps: pol.growthBps, lookbackDays: pol.lookbackDays, graceSeconds: pol.graceSeconds },
+      });
+      if (decision.kind === "decided" && !decision.ok) {
+        return fail(c, "EXPOSURE_LIMIT", `This invoice would take what this buyer owes you past the limit you set (${pol.version}). Raise the limit on the Credit limits page, or wait for earlier invoices to be paid.`, 409);
+      }
+    }
 
     const payload: RegisterPayload = { invoice: { ...invoice }, signature, invoiceId: id };
     const { job, created } = await enqueue(db, { kind: "register_invoice", key: `register:${id}`, payload, accountId: a.id });

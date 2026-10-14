@@ -10,6 +10,7 @@ import {
   fetchExposureEvents,
   fetchExposurePolicy,
   fetchObligations,
+  fetchPayables,
   openDecisionStore,
   signedReader,
   type AgentModel,
@@ -61,7 +62,7 @@ afterEach(() => {
   for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
 });
 
-async function scenario(o: { newCounterpartyLimit: bigint; maxLimit: bigint; history: boolean; obligation?: bigint }) {
+async function scenario(o: { newCounterpartyLimit: bigint; maxLimit: bigint; history: boolean; obligation?: bigint; payable?: bigint; pastRates?: number[] }) {
   const { app, db } = await makeApp({ env: { INVOICE_BOOK_ADDRESS: BOOK, AGENT_WALLETS: `${buyerKey.address},${supplierKey.address}` } });
   const now = Math.floor(Date.now() / 1000);
 
@@ -70,6 +71,27 @@ async function scenario(o: { newCounterpartyLimit: bigint; maxLimit: bigint; his
   await db.query("insert into wallets (org_id, address, purpose, mode) values ($1, $2, 'agent', 'agent')", [org, buyerKey.address.toLowerCase()]);
   if (o.obligation) await db.query("insert into obligations (buyer_org, label, amount, due_date, kind) values ($1, 'Payroll', $2, $3, 'payroll')", [org, o.obligation.toString().replace(/(\d{6})$/, ".$1"), new Date((now + 20 * DAY) * 1000).toISOString()]);
   await db.query("insert into exposure_policies (org_id, version, new_counterparty_limit, max_limit, growth_bps, lookback_days, grace_seconds) values ($1, 3, $2, $3, 2000, 180, 86400)", [org, (o.newCounterpartyLimit).toString().replace(/(\d{6})$/, ".$1"), o.maxLimit.toString().replace(/(\d{6})$/, ".$1")]);
+
+  // The supplier's own business, agent wallet and credit limit (it reads them the same way the buyer does).
+  const supOrg = (await db.query<{ id: string }>("insert into organizations (name, role) values ('Supplier Co', 'supplier') returning id"))[0]!.id;
+  await db.query("insert into wallets (org_id, address, purpose, mode) values ($1, $2, 'agent', 'agent')", [supOrg, supplierKey.address.toLowerCase()]);
+  await db.query("insert into exposure_policies (org_id, version, new_counterparty_limit, max_limit, growth_bps, lookback_days, grace_seconds) values ($1, 1, 1000, 100000, 2000, 180, 86400)", [supOrg]);
+
+  const raw = (tx: string, block: number, name: string, payload: object) => db.query("insert into chain_events (tx_hash, log_index, block, name, payload_json) values ($1, 5, $2, $3, $4::jsonb)", [tx, block, name, JSON.stringify(payload)]);
+  // Something else the chain says this buyer owes: an approved invoice from another supplier. It is a verified obligation.
+  if (o.payable) {
+    const other = "0x" + "66".repeat(32);
+    await raw("0x" + "d1".repeat(32), 20, "InvoiceRegistered", { id: other, supplier: "0x" + "dd".repeat(20), buyer: buyerKey.address.toLowerCase(), token: TOKEN, amount: o.payable.toString(), dueDate: String(now + 40 * DAY), refHash: "0x" + "98".repeat(32) });
+    await raw("0x" + "d2".repeat(32), 21, "InvoiceApproved", { id: other, approvedAt: String(now) });
+  }
+  // Early payments this buyer made to this supplier before, at known rates: where the supplier's ladder should start.
+  for (const [i, rate] of (o.pastRates ?? []).entries()) {
+    const past = "0x" + (0x80 + i).toString(16).repeat(32);
+    await raw("0x" + (0xa0 + i).toString(16).repeat(32), 30 + i * 3, "InvoiceRegistered", { id: past, supplier: supplierKey.address.toLowerCase(), buyer: buyerKey.address.toLowerCase(), token: TOKEN, amount: "1000000000", dueDate: String(now + 5 * DAY), refHash: "0x" + "97".repeat(32) });
+    await raw("0x" + (0xb0 + i).toString(16).repeat(32), 31 + i * 3, "InvoiceApproved", { id: past, approvedAt: String(now - 20 * DAY) });
+    await raw("0x" + (0xc0 + i).toString(16).repeat(32), 32 + i * 3, "EarlySettled", { id: past, net: "990000000", discount: "10000000", rateBps: rate, fee: "1000000", decisionHash: "0x" + "96".repeat(32) });
+    await db.query("insert into chain_blocks (block, time_sec) values ($1, $2)", [32 + i * 3, now - (10 + i) * DAY]);
+  }
 
   // History the indexer read from the chain: one invoice between these two businesses, settled on its due date 10 days ago.
   if (o.history) {
@@ -111,7 +133,7 @@ async function scenario(o: { newCounterpartyLimit: bigint; maxLimit: bigint; his
     invoiceBook: BOOK,
     verifier: eoaVerifier,
     // The real calendar from the API, and a real balance far above any floor: the only things that can stop this buyer are its calendar and its credit limit.
-    treasury: async () => ({ cash: 100_000n * USD, obligations: await fetchObligations(reader) }),
+    treasury: async () => ({ cash: 100_000n * USD, obligations: [...(await fetchObligations(reader)), ...(await fetchPayables({ backendUrl: "http://api.test", buyer: buyerKey.address, fetch: appFetch }))] }),
     exposure: {
       policy: () => fetchExposurePolicy(reader),
       events: (supplier) => fetchExposureEvents({ backendUrl: "http://api.test", side: "buyer", owner: buyerKey.address, counterparty: supplier, fetch: appFetch }),
@@ -127,9 +149,14 @@ async function scenario(o: { newCounterpartyLimit: bigint; maxLimit: bigint; his
     buyerAgent: buyerKey.address,
     verifier: eoaVerifier,
     rungSeconds: 900,
+    // The supplier reads its own history and limit from the API too.
+    exposure: {
+      policy: () => fetchExposurePolicy(signedReader({ backendUrl: "http://api.test", wallet: supplierWallet, domain: D, fetch: appFetch })),
+      events: (b) => fetchExposureEvents({ backendUrl: "http://api.test", side: "supplier", owner: supplierKey.address, counterparty: b, fetch: appFetch }),
+    },
   });
 
-  const result = await supplier.start({ id: INVOICE, face: invoice.amount, dueSec: invoice.dueDate, status: "approved", pastAcceptedBps: [] });
+  const result = await supplier.start({ id: INVOICE, face: invoice.amount, dueSec: invoice.dueDate, status: "approved", pastAcceptedBps: [], buyer: buyerKey.address });
 
   // Let each agent finish signing and delivering its log.
   for (let i = 0; i < 100; i++) {
@@ -200,5 +227,31 @@ describe("the whole path, with the real code on both ends", () => {
     expect(t.buyerWallet.calls).toHaveLength(0);
     const trace = buildTrace(t.log.items.map(fromApiEntry).filter(Boolean) as LogEntry[]);
     expect(trace.rungs.every((r) => r.code === "LIQUIDITY_FLOOR")).toBe(true);
+  });
+});
+
+describe("verified obligations and the supplier's history, through the real API", () => {
+  it("another approved invoice the chain says the buyer owes uses up its cash, like payroll, but is marked on-chain", async () => {
+    // Cash 100,000 less the 5,000 reserve leaves 95,000. Payables of 96,000 owed to someone else leave nothing: no deal. Nobody declared it.
+    const t = await scenario({ newCounterpartyLimit: 50_000n * USD, maxLimit: 50_000n * USD, history: false, payable: 96_000n * USD });
+    expect(t.result.kind).toBe("hold_to_due");
+    expect(t.buyerWallet.calls).toHaveLength(0);
+    const refused = t.buyerStore.all().find((e) => e.reasonCode === "LIQUIDITY_FLOOR")!;
+    const kept = t.buyerStore.preimageOf(refused.hash)!.inputs as any;
+    expect(kept.treasury.obligations).toEqual([expect.objectContaining({ id: expect.stringMatching(/^invoice:0x/), amount: "96000000000", provenance: "onchain" })]);
+    expect(auditFromFiles(t.dir, "buyer", refused.hash)).toMatchObject({ ok: true });
+  });
+
+  it("the supplier starts its ladder at the 25th percentile of the rates this buyer really paid before, from chain events", async () => {
+    // Three earlier early payments at 400, 600 and 600 bps; the supplier's configured start is 0.
+    const t = await scenario({ newCounterpartyLimit: 50_000n * USD, maxLimit: 50_000n * USD, history: false, pastRates: [400, 600, 600] });
+    expect(t.result).toMatchObject({ kind: "accepted", rateBps: 400 });
+    const open = t.supplierStore.all()[0]!;
+    expect(open.snapshot).toMatchObject({ pastAcceptedCount: 3 });
+    // the supplier's own credit position rests on its own history and is public without any limit in it
+    expect(open.snapshot).toMatchObject({ credit: { policyVersion: "exposure-1", result: "within" } });
+    expect(findPrivateKey({ s: open.snapshot })).toBeUndefined();
+    const items = t.log.items.filter((i: any) => i.actor === "supplier_agent");
+    expect(JSON.stringify(items)).not.toContain("100000");
   });
 });

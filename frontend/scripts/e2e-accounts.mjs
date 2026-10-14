@@ -251,6 +251,19 @@ async function main() {
   check(true, "with no history it says the limit is the starting limit, and settlements raise it");
   await shot("04e-credit-basis");
 
+  // credit is enforced where it is extended: an invoice over the supplier's own limit is not registered for them
+  await page.goto(`${BASE}/supplier/invoices/new`, { waitUntil: "networkidle" });
+  await page.fill("#buyer", buyer);
+  await page.fill("#amount", "7000");
+  await page.fill("#due", new Date(Date.now() + 30 * 86_400_000).toISOString().slice(0, 10));
+  await page.fill("#ref", "PO-TOO-BIG");
+  await page.locator(".preview").waitFor();
+  await page.locator("button[type=submit]").click();
+  await text("past the limit you set").waitFor({ timeout: 60_000 });
+  check(true, "a 7,000 USDC invoice is refused under a 6,000 limit, with the reason, while the 2,500 one was registered");
+  const bigLogs = await rpc("eth_getLogs", [{ address: dep.invoiceBook, fromBlock: "0x0", toBlock: "latest", topics: [keccak256(toHex("InvoiceRegistered(bytes32,address,address,address,uint256,uint64,bytes32)"))] }]);
+  check(bigLogs.length === 1, "and nothing more was registered on the chain");
+
   log("7. the guards");
   await page.goto(`${BASE}/buyer`);
   await text("This page is for buyers").waitFor();

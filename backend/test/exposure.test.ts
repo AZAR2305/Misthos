@@ -43,7 +43,7 @@ describe("GET /api/exposure", () => {
     expect(byId.has(id(4))).toBe(false);
     expect(byId.get(id(1))).toMatchObject({ state: "settled_on_due", face: "10000000000", settledAtSec: 1_790_000_000, txHash: tx(1) });
     expect(typeof byId.get(id(1))!.logIndex).toBe("number");
-    expect(byId.get(id(2))).toMatchObject({ state: "settled_early", face: "4000000000", outflow: "3820000000", settledAtSec: 1_795_000_000, txHash: tx(2) });
+    expect(byId.get(id(2))).toMatchObject({ state: "settled_early", face: "4000000000", outflow: "3820000000", rateBps: 600, settledAtSec: 1_795_000_000, txHash: tx(2) });
     expect(byId.get(id(3))).toMatchObject({ state: "approved", face: "2000000000", dueSec: 1_900_000_000 });
     expect(byId.get(id(3))).not.toHaveProperty("txHash");
   });

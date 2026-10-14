@@ -13,6 +13,7 @@ import {
   type Candidate,
   type Domain,
   type ExposureInputs,
+  type Provenance,
   type ExposurePolicy,
   type InvoiceEvent,
   type Obligation,
@@ -68,7 +69,8 @@ export interface InvoiceFacts {
 /** What the buyer holds right now: the real USDC balance and its own calendar of payments (spec 8.3 and 3.2 step 5). */
 export interface Treasury {
   cash: bigint;
-  obligations: readonly Obligation[];
+  /** Each obligation says where it came from: `onchain` for approved unpaid invoices, `declared` (the default) for what the owner listed. */
+  obligations: readonly (Obligation & { provenance?: Provenance })[];
 }
 
 /**
@@ -267,12 +269,13 @@ export class BuyerAgent {
    * unreadable, so the answer is "needs a person", never a favourable default. `info` is the public part of the credit check:
    * the policy version and the on-chain evidence, never a limit.
    */
-  private async gather(supplier: Address): Promise<{ treasury: BuyerDecisionInput["treasury"]; exposure: ExposureInputs; readErrors: string[] }> {
+  private async gather(supplier: Address, invoiceId: string): Promise<{ treasury: BuyerDecisionInput["treasury"]; exposure: ExposureInputs; readErrors: string[] }> {
     const readErrors: string[] = [];
     let treasury: BuyerDecisionInput["treasury"] = null;
     try {
       const t = await this.d.treasury();
-      treasury = { cash: t.cash, obligations: t.obligations };
+      // The invoice being decided is also one of the buyer's payables; counting it here would charge it twice.
+      treasury = { cash: t.cash, obligations: t.obligations.filter((o) => o.id !== `invoice:${invoiceId.toLowerCase()}`) };
     } catch (e) {
       readErrors.push(`The treasury could not be read: ${(e as Error).message}`);
     }
@@ -295,7 +298,7 @@ export class BuyerAgent {
   }
 
   private async decideOffer(c: Candidate, supplier: Address, nowSec: number) {
-    const { treasury, exposure, readErrors } = await this.gather(supplier);
+    const { treasury, exposure, readErrors } = await this.gather(supplier, c.id);
     const input: BuyerDecisionInput = { nowSec: BigInt(nowSec), candidate: c, policy: this.d.policy, treasury, spentToday: this.spentToday(nowSec), exposure };
     const decision = decideBuyerOffer(input);
     const credit = decision.steps[1]!.result;
@@ -317,7 +320,7 @@ export class BuyerAgent {
     const nowSec = this.now();
     const secondsEarly = onchain.dueDate - BigInt(nowSec);
     if (onchain.status !== "approved" || secondsEarly <= 0n) return { state: "closed" as const };
-    const { treasury, exposure, readErrors } = await this.gather(onchain.supplier);
+    const { treasury, exposure, readErrors } = await this.gather(onchain.supplier, invoiceId);
     if (exposure.kind === "unreadable") return { state: "unavailable" as const, missing: readErrors };
     let exposureRoom: bigint | null = null;
     if (exposure.kind === "on") {
@@ -330,7 +333,7 @@ export class BuyerAgent {
       feeBps: this.d.policy.feeBps,
       cash: treasury ? treasury.cash : null,
       policy: this.d.policy,
-      obligations: treasury ? treasury.obligations.map((o) => ({ ...o, provenance: "declared" as const })) : null,
+      obligations: treasury ? treasury.obligations.map((o) => ({ ...o, provenance: (o as { provenance?: Provenance }).provenance ?? ("declared" as const) })) : null,
       spentToday: this.spentToday(nowSec),
       exposureRoom,
     });

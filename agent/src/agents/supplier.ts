@@ -2,6 +2,8 @@ import { randomBytes } from "node:crypto";
 import { z } from "zod";
 import {
   MAX_RATE_BPS,
+  evaluateExposure,
+  pastAcceptedRates,
   planLadder,
   supplierFloor,
   offerTypedData,
@@ -19,6 +21,7 @@ import {
 } from "../protocol/index.js";
 import { WalletError, type Address, type SignatureVerifier, type WalletAdapter } from "../wallets/types.js";
 import { ModelUnavailableError, ProposalInvalidError, type AgentModel } from "./model.js";
+import type { ExposureSource } from "./buyer.js";
 import { DecisionStore } from "./store.js";
 
 /**
@@ -46,8 +49,10 @@ export interface SupplierInvoice {
   face: bigint;
   dueSec: bigint;
   status: "approved" | "registered" | "settled" | "disputed";
-  /** Rates this buyer accepted before (basis points), from the ledger. */
+  /** Rates this buyer accepted before (basis points). When empty and the agent can read history, it is filled from proven settlements. */
   pastAcceptedBps: readonly number[];
+  /** The buyer's wallet: whose history to read. */
+  buyer?: Address;
 }
 
 export type NegotiationResult =
@@ -84,6 +89,12 @@ export interface SupplierDeps {
   buyerAgent: Address;
   verifier: SignatureVerifier;
   rungSeconds: number;
+  /**
+   * The supplier's own history with this buyer and its own credit limit. History sets where the ladder starts (the rates this buyer has
+   * accepted before). The credit check is reported in the log with its on-chain evidence; it does not stop an early payment, because
+   * getting paid early only lowers what the buyer owes. The limit is enforced where credit is extended: when an invoice is registered.
+   */
+  exposure?: ExposureSource;
   /** POST /pause/:invoiceId: checked before every rung. */
   shouldStop?: (invoiceId: string) => boolean;
   now?: () => number;
@@ -111,21 +122,45 @@ export class SupplierAgent {
     return { state: "ok" as const, face: inv.face, secondsEarly, floor: supplierFloor({ face: inv.face, secondsEarly, prefs: this.d.prefs, feeBps: 0 }) };
   }
 
+  /** What this buyer has accepted before, and where the supplier stands against its own limit. A read that fails is reported, never guessed. */
+  private async history(inv: SupplierInvoice): Promise<{ past: readonly number[]; credit?: Record<string, unknown> }> {
+    const src = this.d.exposure;
+    if (!src || !inv.buyer) return { past: inv.pastAcceptedBps };
+    try {
+      const events = await src.events(inv.buyer);
+      const nowSec = BigInt(this.now());
+      const past = inv.pastAcceptedBps.length ? inv.pastAcceptedBps : pastAcceptedRates(events, nowSec);
+      const policy = await src.policy();
+      if (!policy) return { past };
+      // This invoice is already approved, so it is already part of what the buyer owes: nothing new is being added.
+      const d = evaluateExposure({ side: "supplier", nowSec, newExposure: 0n, events, policy });
+      if (d.kind !== "decided") return { past, credit: { status: "unavailable" } };
+      return {
+        past,
+        credit: { policyVersion: policy.version, result: d.ok ? "within" : "over", evidence: d.evidence.map((e) => ({ ref: e.ref, kind: e.kind, ...(e.txHash ? { txHash: e.txHash } : {}), ...(e.logIndex !== undefined ? { logIndex: e.logIndex } : {}) })) },
+      };
+    } catch {
+      return { past: inv.pastAcceptedBps, credit: { status: "unavailable" } };
+    }
+  }
+
   async start(inv: SupplierInvoice): Promise<NegotiationResult> {
     const nowSec = this.now();
     const secondsEarly = inv.dueSec - BigInt(nowSec);
     if (inv.status !== "approved") return { kind: "skipped", reason: "Only approved invoices can be accelerated." };
     if (secondsEarly <= 0n) return { kind: "skipped", reason: "The invoice is already due." };
 
+    const hist = await this.history(inv);
+    const past = hist.past;
     // Numbers and opaque ids only: no invoice description, no supplier or buyer names (spec 8.5 #1).
     const snapshot = {
       invoice: { face: inv.face, secondsEarly },
       prefs: this.d.prefs,
-      history: { pastAcceptedBps: inv.pastAcceptedBps },
+      history: { pastAcceptedBps: past },
       allowedRefs: EVIDENCE_REFS,
     };
     // What the public log gets: the invoice and counts, never the supplier's private settings (finding F-0).
-    const logged = { invoice: { face: inv.face, secondsEarly }, pastAcceptedCount: inv.pastAcceptedBps.length };
+    const logged = { invoice: { face: inv.face, secondsEarly }, pastAcceptedCount: past.length, ...(hist.credit ? { credit: hist.credit } : {}) };
 
     let proposal: SupplierProposal;
     try {
@@ -157,7 +192,7 @@ export class SupplierAgent {
     }
 
     // Code clamps whatever the model proposed into the supplier's configured bounds (the same pure function an auditor replays).
-    const ladderInput = { prefs: this.d.prefs, pastAcceptedBps: inv.pastAcceptedBps, proposedStartBps: proposal.start_rate_bps, proposedMaxBps: proposal.max_rate_bps };
+    const ladderInput = { prefs: this.d.prefs, pastAcceptedBps: past, proposedStartBps: proposal.start_rate_bps, proposedMaxBps: proposal.max_rate_bps };
     const { ceilingBps, rungs: ladder } = planLadder(ladderInput);
     // The top rung is the supplier's private ceiling, so the log says where the ask starts and how many rungs, not where it ends.
     // The private inputs and the ladder are committed to, and kept only in this agent's own file.

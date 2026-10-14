@@ -68,7 +68,7 @@ const down = () => new ScriptedModel(() => {
   throw new ModelUnavailableError("The model is unavailable: test");
 });
 
-function setup(opts: { hurdle?: number; humanAbove?: bigint; model?: AgentModel; prefs?: Partial<SupplierPrefs>; buyerExecuteFails?: WalletError; status?: OnChainInvoice["status"]; treasury?: () => Promise<{ cash: bigint; obligations: Obligation[] }>; exposure?: ExposureSource; stamped?: { dir?: string; push?: (e: readonly unknown[]) => Promise<void> } } = {}) {
+function setup(opts: { hurdle?: number; humanAbove?: bigint; model?: AgentModel; prefs?: Partial<SupplierPrefs>; buyerExecuteFails?: WalletError; status?: OnChainInvoice["status"]; treasury?: () => Promise<{ cash: bigint; obligations: Obligation[] }>; exposure?: ExposureSource; supplierExposure?: ExposureSource; stamped?: { dir?: string; push?: (e: readonly unknown[]) => Promise<void> } } = {}) {
   const supplier = keyWallet("supplier");
   const buyer = keyWallet("buyer", opts.buyerExecuteFails);
   const onchain: OnChainInvoice = {
@@ -119,9 +119,10 @@ function setup(opts: { hurdle?: number; humanAbove?: bigint; model?: AgentModel;
     buyerAgent: buyer.account.address,
     verifier: eoaVerifier,
     rungSeconds: 900,
+    exposure: opts.supplierExposure,
     now: () => NOW,
   });
-  const inv = { id: INVOICE, face: 2_000n * USD, dueSec: BigInt(NOW + 27 * DAY), status: "approved" as const, pastAcceptedBps: [] };
+  const inv = { id: INVOICE, face: 2_000n * USD, dueSec: BigInt(NOW + 27 * DAY), status: "approved" as const, pastAcceptedBps: [] as number[], buyer: buyer.account.address };
   return { supplier, buyer, supplierAgent, buyerAgent, supplierStore, buyerStore, buyerBook, supplierBook, inv, sent, usedNonces, policy, prefs };
 }
 
@@ -688,5 +689,111 @@ describe("each side's own range, for the owner's page", () => {
     expect(r).toMatchObject({ state: "ok", floor: { maxRateBps: 2000, askNet: 2_000n * USD } });
     expect((r as { floor: { floorNet: bigint } }).floor.floorNet).toBeLessThan(2_000n * USD);
     expect(t.supplierAgent.range({ face: 1n, dueSec: BigInt(NOW - 1) })).toEqual({ state: "closed" });
+  });
+});
+
+describe("the supplier reads its history with this buyer (adaptive start, credit position)", () => {
+  const past = (rate: number, n: number, o: Partial<InvoiceEvent> = {}): InvoiceEvent => ({
+    invoiceId: `0xp${n}`, state: "settled_early", face: 1_000n * USD, outflow: 990n * USD, rateBps: rate, dueSec: BigInt(NOW) + 5n * 86_400n,
+    settledAtSec: BigInt(NOW) - BigInt(n) * 86_400n, txHash: "0x" + String(n).repeat(64).slice(0, 64), logIndex: n, ...o,
+  });
+  const src = (events: InvoiceEvent[] | Error, policy: ExposurePolicy | null = null): ExposureSource => ({
+    policy: async () => policy,
+    events: async () => {
+      if (events instanceof Error) throw events;
+      return events;
+    },
+  });
+
+  it("starts at the 25th percentile of the rates this buyer took before, not at the configured rate", async () => {
+    const t = setup({ hurdle: 0, supplierExposure: src([past(400, 1), past(600, 2), past(600, 3)]) });
+    const result = await t.supplierAgent.start(t.inv);
+    expect(result).toMatchObject({ kind: "accepted", rung: 0, rateBps: 400 }); // configured start is 600
+    expect(t.supplierStore.all()[0]!.snapshot).toMatchObject({ pastAcceptedCount: 3 });
+  });
+
+  it("with fewer than three past deals, or none, it starts at its configured rate", async () => {
+    for (const events of [[], [past(400, 1), past(600, 2)]]) {
+      const t = setup({ hurdle: 0, supplierExposure: src(events) });
+      expect(await t.supplierAgent.start(t.inv)).toMatchObject({ kind: "accepted", rateBps: 600 });
+    }
+  });
+
+  it("rates without a transaction behind them, or older than the look-back, are not used", async () => {
+    const unproven = [past(100, 1, { txHash: undefined }), past(100, 2, { logIndex: undefined }), past(100, 3, { settledAtSec: undefined })];
+    const old = [past(100, 4, { settledAtSec: BigInt(NOW) - 200n * 86_400n }), past(100, 5, { settledAtSec: BigInt(NOW) - 300n * 86_400n }), past(100, 6, { settledAtSec: BigInt(NOW) - 400n * 86_400n })];
+    for (const events of [unproven, old]) {
+      const t = setup({ hurdle: 0, supplierExposure: src(events) });
+      expect(await t.supplierAgent.start(t.inv)).toMatchObject({ kind: "accepted", rateBps: 600 });
+    }
+  });
+
+  it("an on-chain payment counted twice (two rows for one invoice) is one deal", async () => {
+    const t = setup({ hurdle: 0, supplierExposure: src([past(400, 1), past(400, 1), past(600, 2)]) });
+    expect(await t.supplierAgent.start(t.inv)).toMatchObject({ rateBps: 600 }); // only two distinct deals: below the three needed
+  });
+
+  it("a history the agent cannot read is reported in the log and the ladder starts at the configured rate", async () => {
+    const t = setup({ hurdle: 0, supplierExposure: src(new Error("indexer down")) });
+    expect(await t.supplierAgent.start(t.inv)).toMatchObject({ kind: "accepted", rateBps: 600 });
+    expect(t.supplierStore.all()[0]!.snapshot).toMatchObject({ credit: { status: "unavailable" }, pastAcceptedCount: 0 });
+  });
+
+  it("records the supplier's own credit position with its on-chain evidence, and does not stop early payment when it is over", async () => {
+    const owed = { invoiceId: "0xaa", state: "approved" as const, face: 5_000n * USD, dueSec: BigInt(NOW) + 30n * 86_400n };
+    const limit = (n: bigint): ExposurePolicy => ({ ...DEFAULT_EXPOSURE_POLICY, version: "exposure-2", newCounterpartyLimit: n, maxLimit: n });
+    const over = setup({ hurdle: 0, supplierExposure: src([owed], limit(1_000n * USD)) });
+    expect(await over.supplierAgent.start(over.inv)).toMatchObject({ kind: "accepted" }); // getting paid early only lowers what the buyer owes
+    expect(over.supplierStore.all()[0]!.snapshot).toMatchObject({ credit: { policyVersion: "exposure-2", result: "over", evidence: [{ ref: "0xaa", kind: "outstanding" }] } });
+    const within = setup({ hurdle: 0, supplierExposure: src([owed], limit(9_000n * USD)) });
+    await within.supplierAgent.start(within.inv);
+    expect(within.supplierStore.all()[0]!.snapshot).toMatchObject({ credit: { result: "within" } });
+    expect(findPrivateKey(within.supplierStore.all()[0]!.snapshot)).toBeUndefined();
+    expect(JSON.stringify(within.supplierStore.all()[0]!.snapshot, (_k, v) => (typeof v === "bigint" ? v.toString() : v))).not.toMatch(/9000|1000000000/);
+  });
+
+  it("no limit set means no credit position is claimed", async () => {
+    const t = setup({ hurdle: 0, supplierExposure: src([], null) });
+    await t.supplierAgent.start(t.inv);
+    expect(t.supplierStore.all()[0]!.snapshot).not.toHaveProperty("credit");
+  });
+
+  it("rates the caller supplied are used as they are", async () => {
+    const t = setup({ hurdle: 0, supplierExposure: src([past(100, 1), past(100, 2), past(100, 3)]) });
+    expect(await t.supplierAgent.start({ ...t.inv, pastAcceptedBps: [800, 800, 800] })).toMatchObject({ rateBps: 800 });
+  });
+});
+
+describe("what the chain says the buyer owes is a verified obligation", () => {
+  const owed = (id: string, face: bigint) => ({ id: `invoice:${id}`, dueSec: BigInt(NOW + 40 * DAY), amount: face, provenance: "onchain" as const });
+
+  it("another approved invoice the buyer owes uses up cash it could otherwise spend", async () => {
+    // cash 7,100, reserve 5,000: 2,100 to spare. This invoice costs 2,000 at 0%. A 1,000 USDC invoice owed elsewhere leaves 1,100: no deal.
+    const free = setup({ hurdle: 0, prefs: { startRateBps: 0 }, treasury: async () => ({ cash: 7_100n * USD, obligations: [] }) });
+    expect(await free.supplierAgent.start(free.inv)).toMatchObject({ kind: "accepted", rateBps: 0 });
+    const t = setup({ hurdle: 0, prefs: { startRateBps: 0 }, treasury: async () => ({ cash: 7_100n * USD, obligations: [owed("0xother", 1_000n * USD)] }) });
+    expect((await t.supplierAgent.start(t.inv)).kind).toBe("hold_to_due");
+    expect(t.buyer.calls).toHaveLength(0);
+  });
+
+  it("the invoice being decided is not charged against itself", async () => {
+    const t = setup({ hurdle: 0, prefs: { startRateBps: 0 }, treasury: async () => ({ cash: 7_100n * USD, obligations: [owed(INVOICE, 2_000n * USD)] }) });
+    expect(await t.supplierAgent.start(t.inv)).toMatchObject({ kind: "accepted", rateBps: 0 });
+  });
+
+  it("the buyer's range labels each obligation by where it came from", async () => {
+    const onchainOnly = setup({ hurdle: 0, treasury: async () => ({ cash: 50_000n * USD, obligations: [owed("0xother", 1_000n * USD)] }) });
+    const r1 = (await onchainOnly.buyerAgent.range(INVOICE)) as { ceiling: { inputs: Array<{ ref: string; provenance: string }> } };
+    expect(r1.ceiling.inputs.find((i) => i.ref === "obligations")!.provenance).toBe("onchain");
+    const mixed = setup({ hurdle: 0, treasury: async () => ({ cash: 50_000n * USD, obligations: [owed("0xother", 1_000n * USD), { id: "payroll", dueSec: BigInt(NOW + DAY), amount: 1n * USD }] }) });
+    const r2 = (await mixed.buyerAgent.range(INVOICE)) as { ceiling: { inputs: Array<{ ref: string; provenance: string }> } };
+    expect(r2.ceiling.inputs.find((i) => i.ref === "obligations")!.provenance).toBe("declared"); // one declared item makes the set only as reliable as its weakest part
+  });
+
+  it("the replay still verifies a decision made with verified obligations", async () => {
+    const t = setup({ hurdle: 0, prefs: { startRateBps: 0 }, stamped: {}, treasury: async () => ({ cash: 7_100n * USD, obligations: [owed("0xother", 1_000n * USD)] }) });
+    await t.supplierAgent.start(t.inv);
+    const refused = t.buyerStore.all().find((e) => e.reasonCode === "LIQUIDITY_FLOOR")!;
+    expect(auditDecision(refused, t.buyerStore.preimageOf(refused.hash), t.buyerBook).ok).toBe(true);
   });
 });

@@ -5,7 +5,7 @@ import { BuyerAgent } from "../agents/buyer.js";
 import { AnthropicModel } from "../agents/model.js";
 import { viemChainReader } from "../agents/chain.js";
 import { openDecisionStore } from "../agents/log.js";
-import { fetchExposureEvents, fetchExposurePolicy, fetchObligations, linkAgent, signedReader } from "../agents/backend.js";
+import { fetchExposureEvents, fetchExposurePolicy, fetchObligations, fetchPayables, linkAgent, signedReader } from "../agents/backend.js";
 import { offerMsgSchema } from "../protocol/index.js";
 import { buyerPolicyFromEnv, loadConfig, loadEnvFile } from "../config.js";
 import { CircleCliAdapter } from "../wallets/circleCli.js";
@@ -47,6 +47,11 @@ const obligations = async () => {
   if (declaredNone) return [];
   throw new Error("The payment calendar is unavailable: set BACKEND_URL, or set BUYER_OBLIGATIONS_DECLARED_NONE=true if you have no obligations.");
 };
+/**
+ * What the chain says this buyer owes on approved, unpaid invoices (verified, unlike the calendar the owner typed). Read from the API's
+ * indexed events. Without BACKEND_URL there is no verified source, so none is added (and the declared calendar still applies).
+ */
+const payables = async () => (cfg.BACKEND_URL ? fetchPayables({ backendUrl: cfg.BACKEND_URL, buyer: cfg.BUYER_AGENT_WALLET_ADDRESS! }) : []);
 const store = openDecisionStore({ name: "buyer", dataDir: cfg.AGENT_DATA_DIR, wallet, domain: domain(cfg.ARC_CHAIN_ID, book), backendUrl: cfg.BACKEND_URL, policy: { label: "buyer-policy", params: buyerPolicyFromEnv() } });
 const buyer = new BuyerAgent({
   wallet,
@@ -68,7 +73,7 @@ const buyer = new BuyerAgent({
           events: (supplier) => fetchExposureEvents({ backendUrl: cfg.BACKEND_URL!, side: "buyer", owner: cfg.BUYER_AGENT_WALLET_ADDRESS!, counterparty: supplier }),
         }
       : undefined,
-  treasury: async () => ({ cash: await wallet.balance("USDC"), obligations: await obligations() }),
+  treasury: async () => ({ cash: await wallet.balance("USDC"), obligations: [...(await obligations()), ...(await payables())] }),
 });
 
 const obligationSchema = z.strictObject({

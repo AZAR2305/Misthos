@@ -212,7 +212,7 @@ function Body({ me }: { me: `0x${string}` }) {
         </div>
 
         <div className="stack">
-          <TreasuryCard balance={state ? state.balance : null} obligations={obligations} source={declared.source} />
+          <TreasuryCard balance={state ? state.balance : null} obligations={obligations} source={declared.source} owed={chain.status === "ready" ? owed : null} />
           <Card title="Allowance">
             <p className="muted">The contract can only move the USDC you allow. You can raise or lower this whenever you like.</p>
             <button type="button" className="btn btn-ghost" onClick={() => setAllowOpen(true)}>Set allowance</button>

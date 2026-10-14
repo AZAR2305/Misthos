@@ -4,7 +4,7 @@ import { domain } from "../core/index.js";
 import { AnthropicModel } from "../agents/model.js";
 import { SupplierAgent, httpTransport } from "../agents/supplier.js";
 import { viemChainReader } from "../agents/chain.js";
-import { linkAgent } from "../agents/backend.js";
+import { fetchExposureEvents, fetchExposurePolicy, linkAgent, signedReader } from "../agents/backend.js";
 import { openDecisionStore } from "../agents/log.js";
 import { loadConfig, loadEnvFile, supplierPrefsFromEnv } from "../config.js";
 import { CircleCliAdapter } from "../wallets/circleCli.js";
@@ -42,6 +42,15 @@ const wallet = new CircleCliAdapter({
 });
 const chain = viemChainReader(cfg.ARC_RPC_URL, book);
 const store = openDecisionStore({ name: "supplier", dataDir: cfg.AGENT_DATA_DIR, wallet, domain: domain(cfg.ARC_CHAIN_ID, book), backendUrl: cfg.BACKEND_URL, policy: { label: "supplier-policy", params: supplierPrefsFromEnv() } });
+// The supplier's history with a buyer and its own credit limit come from the API. Without BACKEND_URL it starts at its configured rate.
+const reader = cfg.BACKEND_URL ? signedReader({ backendUrl: cfg.BACKEND_URL, wallet, domain: domain(cfg.ARC_CHAIN_ID, book) }) : undefined;
+const exposure =
+  reader && cfg.BACKEND_URL
+    ? {
+        policy: () => fetchExposurePolicy(reader),
+        events: (buyer: Address) => fetchExposureEvents({ backendUrl: cfg.BACKEND_URL!, side: "supplier", owner: cfg.SUPPLIER_AGENT_WALLET_ADDRESS!, counterparty: buyer }),
+      }
+    : undefined;
 const paused = new Set<string>();
 const agents = new Map<string, SupplierAgent>();
 
@@ -57,6 +66,7 @@ const agentFor = (invoiceId: string) => {
     verifier,
     rungSeconds: cfg.LADDER_RUNG_SECONDS,
     shouldStop: (id) => paused.has(id),
+    exposure,
   });
   agents.set(invoiceId, a);
   return a;
@@ -85,7 +95,8 @@ serve(
         face: inv.amount,
         dueSec: inv.dueDate,
         status: inv.status === "approved" ? "approved" : inv.status === "registered" ? "registered" : inv.status === "disputed" ? "disputed" : "settled",
-        pastAcceptedBps: [], // from the ledger once the backend exists (agent/ is the process, backend/ owns the history)
+        pastAcceptedBps: [], // filled by the agent from proven settlements with this buyer when it can read history
+        buyer: inv.buyer,
       });
       return { result, transcript: agent.transcript };
     },
