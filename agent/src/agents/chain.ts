@@ -1,4 +1,5 @@
 import { createPublicClient, http, parseAbi } from "viem";
+import { ProtocolError } from "./buyer.js";
 import type { Address } from "../wallets/types.js";
 
 /** Read-only view of InvoiceBook (CLAUDE.md 7). Real chain reads; there is no cached or invented state. */
@@ -12,6 +13,22 @@ export const INVOICE_BOOK_ABI = parseAbi([
  * Agent wallets call settleEarlyFlat: Circle's CLI cannot encode a struct argument ("can't pack ABI parameter", found on the first real run),
  * so the offer travels as flat arguments. Same checks on chain as settleEarly.
  */
+/**
+ * Wraps a chain reader so that an unreachable RPC is a typed, public error (CHAIN_UNAVAILABLE) and not an opaque 500: no action is taken and the person
+ * sees "chain unavailable". It never substitutes another RPC or a cached value.
+ */
+export function guardChain(reader: ChainReader): ChainReader {
+  const guard = async <T>(f: () => Promise<T>): Promise<T> => {
+    try {
+      return await f();
+    } catch (e) {
+      if (e instanceof ProtocolError) throw e;
+      throw new ProtocolError("CHAIN_UNAVAILABLE", `The chain is unavailable, so no action was taken (${(e as Error).message.split("\n")[0]}).`);
+    }
+  };
+  return { invoice: (id) => guard(() => reader.invoice(id)), offerNonceUsed: (s, n) => guard(() => reader.offerNonceUsed(s, n)) };
+}
+
 export const SETTLE_EARLY_FRAGMENT =
   "function settleEarlyFlat(bytes32 id, uint16 rateBps, uint64 expiry, uint256 nonce, bytes sig, bytes32 decisionHash)";
 

@@ -171,6 +171,14 @@ function cliArg(v: unknown): string {
   return JSON.stringify(v, (_k, x: unknown) => (typeof x === "bigint" ? x.toString() : x));
 }
 
+/**
+ * The exact thing to type when a session has expired, for THIS agent's login folder. A CLI login belongs to one folder (CIRCLE_CLI_HOME), so a command
+ * without it would log in the wrong one. PowerShell syntax, because that is where the owner runs it; the email is the one used for this agent.
+ */
+export function reloginCommand(cliHome?: string): string {
+  return `${cliHome ? `$env:CIRCLE_CLI_HOME="${cliHome}"; ` : ""}pnpm exec circle wallet login <the email you used for this agent> --testnet   (then type the code Circle emails you)`;
+}
+
 export interface CircleCliAdapterOptions {
   /** The Agent Wallet address on Arc (from `circle wallet list --chain ARC-TESTNET --type agent`). */
   address: Address;
@@ -221,7 +229,7 @@ export class CircleCliAdapter implements WalletAdapter {
           if (json === undefined) throw new WalletError("BAD_OUTPUT", "The Circle CLI returned no JSON.", r.stdout.slice(0, 200));
           return json;
         }
-        const err = classifyCliFailure(r, this.o.loginHint);
+        const err = classifyCliFailure(r, this.o.loginHint ?? reloginCommand(this.o.cliHome));
         if (err.code === "RATE_LIMITED" && attempt < this.backoff.length) {
           await new Promise((res) => setTimeout(res, this.backoff[attempt]));
           continue;

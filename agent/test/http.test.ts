@@ -28,6 +28,9 @@ beforeAll(async () => {
       "GET /wallet": async () => {
         throw new WalletError("SESSION_EXPIRED", "session expired", "log in again");
       },
+      "GET /chain": async () => {
+        throw new ProtocolError("CHAIN_UNAVAILABLE", "The chain is unavailable, so no action was taken (fetch failed).");
+      },
       "GET /model": async () => {
         throw new ModelUnavailableError("The model is unavailable: no key");
       },
@@ -84,6 +87,8 @@ describe("agent http envelope", () => {
     expect(w).toMatchObject({ status: 503, json: { error: { code: "SESSION_EXPIRED" } } });
     expect(w.json.error?.message).toMatch(/log in again/); // the fix travels with the error
     expect(await call("/model")).toMatchObject({ status: 503, json: { error: { code: "MODEL_UNAVAILABLE" } } });
+    // an unreachable chain is a plain, typed "unavailable", not an opaque server error
+    expect(await call("/chain")).toMatchObject({ status: 503, json: { error: { code: "CHAIN_UNAVAILABLE" } } });
   });
 
   it("hides internals on an unexpected error", async () => {

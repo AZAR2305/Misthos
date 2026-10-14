@@ -124,7 +124,7 @@ export function serve(port: number, routes: Routes, name: string, opts: ServeOpt
     } catch (e) {
       if (e instanceof ZodError) return fail(res, 400, "BAD_REQUEST", e.issues[0]?.message ?? "The request does not match the protocol.");
       if (e instanceof SyntaxError) return fail(res, 400, "BAD_REQUEST", e.message);
-      if (e instanceof ProtocolError) return fail(res, e.code === "NOT_FOUND" ? 404 : 403, e.code, e.message);
+      if (e instanceof ProtocolError) return fail(res, e.code === "NOT_FOUND" ? 404 : e.code === "CHAIN_UNAVAILABLE" ? 503 : 403, e.code, e.message);
       if (e instanceof WalletError) return fail(res, 503, e.code, e.hint ? `${e.message} ${e.hint}` : e.message);
       if (e instanceof ModelUnavailableError || e instanceof ProposalInvalidError) return fail(res, 503, e.code, e.message);
       console.error(`[${name}]`, (e as Error).message);

@@ -3,7 +3,7 @@ import { z } from "zod";
 import { domain } from "../core/index.js";
 import { BuyerAgent } from "../agents/buyer.js";
 import { createModel, modelKeyOf } from "../agents/modelFactory.js";
-import { viemChainReader } from "../agents/chain.js";
+import { guardChain, viemChainReader } from "../agents/chain.js";
 import { openDecisionStore } from "../agents/log.js";
 import { fetchExposureEvents, fetchExposurePolicy, fetchPayables, linkAgent, signedReader } from "../agents/backend.js";
 import { offerMsgSchema } from "../protocol/index.js";
@@ -65,7 +65,7 @@ const buyer = new BuyerAgent({
   model: createModel(cfg),
   policy: buyerPolicyFromEnv(),
   store,
-  chain: viemChainReader(cfg.ARC_RPC_URL, book),
+  chain: guardChain(viemChainReader(cfg.ARC_RPC_URL, book)),
   invoiceBook: book,
   verifier,
   // The real USDC balance and the payment calendar the owner declared. A calendar that cannot be read is never assumed empty:

@@ -3,7 +3,7 @@ import { z } from "zod";
 import { domain } from "../core/index.js";
 import { createModel, modelKeyOf } from "../agents/modelFactory.js";
 import { SupplierAgent, httpTransport } from "../agents/supplier.js";
-import { viemChainReader } from "../agents/chain.js";
+import { guardChain, viemChainReader } from "../agents/chain.js";
 import { fetchExposureEvents, fetchExposurePolicy, linkAgent, signedReader } from "../agents/backend.js";
 import { openDecisionStore } from "../agents/log.js";
 import { loadConfig, loadEnvFile, supplierPrefsFromEnv } from "../config.js";
@@ -42,7 +42,7 @@ const wallet = new CircleCliAdapter({
   usdc: cfg.USDC_ADDRESS as Address,
   verifier,
 });
-const chain = viemChainReader(cfg.ARC_RPC_URL, book);
+const chain = guardChain(viemChainReader(cfg.ARC_RPC_URL, book));
 const vault = vaultFromEnv(cfg.AGENT_STORE_KEY);
 const store = openDecisionStore({ vault, name: "supplier", dataDir: cfg.AGENT_DATA_DIR, wallet, domain: domain(cfg.ARC_CHAIN_ID, book), backendUrl: cfg.BACKEND_URL, policy: { label: "supplier-policy", params: supplierPrefsFromEnv() } });
 // The supplier's history with a buyer and its own credit limit come from the API. Without BACKEND_URL it starts at its configured rate.

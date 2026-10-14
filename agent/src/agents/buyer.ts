@@ -43,7 +43,7 @@ import { DecisionStore } from "./store.js";
 
 export class ProtocolError extends Error {
   constructor(
-    readonly code: "UNKNOWN_SENDER" | "WRONG_SIGNER" | "BAD_SIGNATURE" | "SUPPLIER_MISMATCH" | "NOT_FOUND",
+    readonly code: "UNKNOWN_SENDER" | "WRONG_SIGNER" | "BAD_SIGNATURE" | "SUPPLIER_MISMATCH" | "NOT_FOUND" | "CHAIN_UNAVAILABLE",
     message: string,
   ) {
     super(message);

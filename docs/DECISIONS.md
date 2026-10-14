@@ -405,3 +405,12 @@ These closed spec Appendix A items and fixed three bugs that no scripted-CLI tes
 - **T5.** `rungExpiry = now + max(LADDER_RUNG_SECONDS, waitWindowSeconds + 180)`, with the wait window 120 s. The buyer refuses to settle an offer with under 60 s of life (`MIN_OFFER_LIFE_SEC`) and answers `EXPIRED`; the supplier signs
   the same rung again with a new nonce and expiry, at most twice. The 60 seconds exists because a Circle transaction takes tens of seconds to confirm. The final check just before the wallet call is a second guard on the same
   condition (the decision happens immediately before it, so the earlier check in the decision usually trips first).
+
+## T6 fail-closed matrix (14 Oct 2026), run against real components, locally
+`agent/scripts/failclosed-matrix.ts <invoice id>` breaks one dependency at a time and checks that nothing is sent and the reason is typed. Result, 4 of 4:
+- model down after one retry: a real Groq call with an invalid key -> `needs_approval` `MODEL_UNAVAILABLE`, no wallet call.
+- Circle session expired: a copy of the supplier login folder logged out through the real CLI -> `SESSION_EXPIRED`, with the exact command for that folder in the reason (`$env:CIRCLE_CLI_HOME="<folder>"; pnpm exec circle wallet login <email> --testnet`), no wallet call.
+- RPC unreachable: the real chain reader pointed at a closed port -> `CHAIN_UNAVAILABLE` (HTTP 503 "chain unavailable"), zero wallet calls. Before this change it surfaced as an opaque 500.
+- registry read fails: a real read against an address that is not a registry -> `needs_approval` `REGISTRY_UNAVAILABLE`, nothing paid.
+**Not done as written:** the plan said to test each row "on the hosted deployment". There is no hosted deployment yet, so these ran on this machine against the live Arc testnet, Circle and Groq services. Re-run it from the host once T1 exists.
+NO_OVERLAP was already built: the supplier logs `NO_OVERLAP`, the result is `hold_to_due`, and the invoice page's trace shows it.
