@@ -480,8 +480,8 @@ export class BuyerAgent {
     return this.d.wallet.execute({
       to: this.d.invoiceBook,
       abi: SETTLE_EARLY_FRAGMENT,
-      fn: "settleEarly",
-      args: [msg.invoiceId, offerFromPayload(msg.offer), msg.offerSig, decisionHash],
+      fn: "settleEarlyFlat",
+      args: [msg.invoiceId, msg.offer.rateBps, BigInt(msg.offer.expiry), BigInt(msg.offer.nonce), msg.offerSig, decisionHash],
       // Same inputs, same key: a restart or a retry cannot settle twice.
       idempotencyKey: `settle:${msg.invoiceId}:${msg.offer.nonce}`.slice(0, 120),
     });

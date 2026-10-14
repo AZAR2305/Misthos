@@ -116,7 +116,10 @@ export interface LadderInput {
 
 export function planLadder(i: LadderInput): { ceilingBps: number; rungs: number[] } {
   const ceiling = maxRate(i.prefs);
-  const start = Math.min(Math.max(i.proposedStartBps ?? i.prefs.startRateBps, 0), ceiling);
+  // The model may start the ask lower than the supplier's configured start, never higher: the default is the configured start (0% unless the
+  // supplier set otherwise), so a model cannot talk the agent into charging for speed before the buyer has had the chance to say no.
+  const configured = Math.min(Math.max(i.prefs.startRateBps, 0), ceiling);
+  const start = Math.min(Math.max(i.proposedStartBps ?? configured, 0), configured);
   const max = Math.min(Math.max(i.proposedMaxBps ?? ceiling, start), ceiling);
   return { ceilingBps: ceiling, rungs: buildLadder({ ...i.prefs, startRateBps: start, maxRateBps: max }, i.pastAcceptedBps) };
 }

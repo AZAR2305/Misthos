@@ -1,5 +1,11 @@
 import Anthropic from "@anthropic-ai/sdk";
-import type { z } from "zod";
+import { z } from "zod";
+
+/** The shape the model must reply with, shown to it as JSON Schema so it does not have to guess field names or allowed values. */
+const zodToJsonSchema = (schema: z.ZodType): unknown => {
+  const { $schema: _omit, ...rest } = z.toJSONSchema(schema) as Record<string, unknown>;
+  return rest;
+};
 
 /**
  * The strategy layer behind an interface (CLAUDE.md 8.7). The model proposes; code decides. A proposal is parsed with a
@@ -64,8 +70,8 @@ export function parseProposal<T>(text: string, schema: z.ZodType<T>): T {
   return parsed.data;
 }
 
-const userMessage = ({ role, task, snapshot }: { role: string; task: string; snapshot: unknown }) =>
-  `Role: ${role} agent.\nTask: ${task}\nSnapshot:\n${JSON.stringify(snapshot, (_k, v: unknown) => (typeof v === "bigint" ? v.toString() : v))}`;
+const userMessage = ({ role, task, snapshot, schema }: { role: string; task: string; snapshot: unknown; schema: z.ZodType }) =>
+  `Role: ${role} agent.\nTask: ${task}\nReply with exactly one JSON object that validates against this JSON Schema (use only these field names and allowed values):\n${JSON.stringify(zodToJsonSchema(schema))}\nSnapshot:\n${JSON.stringify(snapshot, (_k, v: unknown) => (typeof v === "bigint" ? v.toString() : v))}`;
 
 export class AnthropicModel implements AgentModel {
   private client?: Anthropic;
@@ -87,7 +93,7 @@ export class AnthropicModel implements AgentModel {
             messages: [
               {
                 role: "user",
-                content: userMessage({ role, task, snapshot }),
+                content: userMessage({ role, task, snapshot, schema }),
               },
             ],
           },
@@ -138,7 +144,7 @@ export class GroqModel implements AgentModel {
             response_format: { type: "json_object" },
             messages: [
               { role: "system", content: SYSTEM },
-              { role: "user", content: userMessage({ role, task, snapshot }) },
+              { role: "user", content: userMessage({ role, task, snapshot, schema }) },
             ],
           }),
           signal: AbortSignal.timeout(this.o.timeoutMs ?? 20_000),

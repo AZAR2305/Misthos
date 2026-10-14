@@ -8,8 +8,12 @@ export const INVOICE_BOOK_ABI = parseAbi([
 ]);
 
 /** Write fragments for the wallet adapter (`abi` + `fn`). */
+/**
+ * Agent wallets call settleEarlyFlat: Circle's CLI cannot encode a struct argument ("can't pack ABI parameter", found on the first real run),
+ * so the offer travels as flat arguments. Same checks on chain as settleEarly.
+ */
 export const SETTLE_EARLY_FRAGMENT =
-  "function settleEarly(bytes32 id, (bytes32 invoiceId, uint16 rateBps, uint64 expiry, uint256 nonce) offer, bytes sig, bytes32 decisionHash)";
+  "function settleEarlyFlat(bytes32 id, uint16 rateBps, uint64 expiry, uint256 nonce, bytes sig, bytes32 decisionHash)";
 
 const STATUS = ["none", "registered", "approved", "settled_early", "settled_due", "disputed"] as const;
 export type OnChainStatus = (typeof STATUS)[number];

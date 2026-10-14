@@ -16,6 +16,7 @@ describe("GroqModel", () => {
     const body = JSON.parse(seen!.init.body as string);
     expect(body.response_format).toEqual({ type: "json_object" });
     expect(body.messages[1].content).toContain('"amount":"5"'); // bigint became a string, never a float
+    expect(body.messages[1].content).toContain("rateBps"); // the reply shape is shown to the model as JSON Schema
   });
 
   it("is unavailable with no key, and fails closed after two failed attempts", async () => {

@@ -64,7 +64,8 @@ export type NegotiationResult =
 export type Transport = (msg: OfferMsg) => Promise<unknown>;
 
 /** POST {buyerUrl}/negotiate. The reply is validated against the strict schema by the caller. */
-export function httpTransport(buyerUrl: string, timeoutMs = 20_000): Transport {
+/** The buyer answers an accepted offer only after it has settled on chain through its wallet (tens of seconds with Circle), so wait long. */
+export function httpTransport(buyerUrl: string, timeoutMs = 120_000): Transport {
   return async (msg) => {
     const res = await fetch(`${buyerUrl}/negotiate`, {
       method: "POST",

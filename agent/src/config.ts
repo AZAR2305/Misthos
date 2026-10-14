@@ -30,8 +30,8 @@ const envSchema = z.object({
   /** Which model service proposes strategy. Code still decides everything; there is no fallback between providers. */
   MODEL_PROVIDER: z.enum(["anthropic", "groq"]).default("anthropic"),
   GROQ_API_KEY: optionalText,
-  /** VERIFY: a Groq model id that follows strict JSON instructions; check https://console.groq.com/docs/models. */
-  GROQ_MODEL: z.string().default("llama-3.3-70b-versatile"),
+  /** a Groq model id (listed by /models on 14 Oct 2026) that follows strict JSON instructions; check https://console.groq.com/docs/models. */
+  GROQ_MODEL: z.string().default("openai/gpt-oss-120b"),
   LADDER_RUNG_SECONDS: z.coerce.number().int().positive().default(900),
 });
 export type AgentConfig = z.infer<typeof envSchema>;

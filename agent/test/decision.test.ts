@@ -7,6 +7,7 @@ import {
   highestPayableRate,
   minRateWithin,
   outflowAt,
+  planLadder,
   supplierFloor,
   type BuyerCeilingInput,
   type BuyerPolicy,
@@ -220,5 +221,15 @@ describe("the ladder always reaches the supplier's ceiling", () => {
     const rungs = buildLadder({ costOfWaitingAprBps: 5000, maxRateBps: 1234, startRateBps: 0, stepBps: 10 });
     expect(rungs.at(-1)).toBe(1234);
     expect(rungs).toHaveLength(6);
+  });
+});
+
+describe("the ladder starts where the supplier configured it", () => {
+  const prefs = { costOfWaitingAprBps: 2200, maxRateBps: 2000, startRateBps: 0, stepBps: 200 };
+  it("a model proposal can lower the start but never raise it above the configured start", () => {
+    expect(planLadder({ prefs, pastAcceptedBps: [], proposedStartBps: 500 }).rungs[0]).toBe(0);
+    expect(planLadder({ prefs, pastAcceptedBps: [] }).rungs[0]).toBe(0);
+    expect(planLadder({ prefs: { ...prefs, startRateBps: 400 }, pastAcceptedBps: [], proposedStartBps: 100 }).rungs[0]).toBe(100);
+    expect(planLadder({ prefs: { ...prefs, startRateBps: 400 }, pastAcceptedBps: [], proposedStartBps: 900 }).rungs[0]).toBe(400);
   });
 });

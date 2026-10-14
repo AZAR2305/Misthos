@@ -342,3 +342,22 @@ middle to hand over an offer, a thumbs up and a jump on accept, a dance on settl
 ## Model provider: Groq supported alongside Anthropic (14 Oct 2026)
 - `MODEL_PROVIDER=anthropic|groq`. `GroqModel` calls Groq's OpenAI-compatible chat endpoint with plain fetch, strict JSON, temperature 0, same schema check, two attempts, then fails closed. No fallback between providers. `GROQ_MODEL` default is VERIFY.
 - The model never touches money (it proposes numbers that code bounds), so a smaller model is acceptable; the quality of its proposals is untested on real runs.
+
+## First real run on Arc testnet with Circle Agent Wallets (14 Oct 2026): what the real CLI taught us
+These closed spec Appendix A items and fixed three bugs that no scripted-CLI test could find.
+- **An Agent Wallet is a smart-contract (ERC-1271) wallet and must be deployed before it can sign.** The first `sign typed-data` answers "This wallet isn't
+  deployed on-chain yet"; any first transaction (a 0.01 USDC transfer) deploys it. After that its 65-byte signature verifies on chain through
+  `SignatureChecker`, so `registerInvoice` and settlement accept it.
+- **The CLI and service cannot encode a struct argument** (`can't pack ABI parameter`, for object, array and parenthesised forms). Flat arguments work. The contract
+  therefore gained `settleEarlyFlat(id, rateBps, expiry, nonce, sig, decisionHash)` (same checks, 42 tests) and the buyer agent calls it. The first
+  deployment (`0xd62B…35ED`) is superseded by `0x108DA05Fec74a1c0620CF7D66D07AeB586A5288C`.
+- **`--idempotency-key` must be a UUID.** The adapter sent a plain string and every keyed `execute` failed with "400 Invalid request body". It now derives a
+  stable UUID from the key text, so a retry still cannot send twice.
+- **The supplier's wait for the buyer must outlast a Circle transaction** (tens of seconds): 20 s became 120 s.
+- **The model can no longer raise the ladder's start above the supplier's configured start** (0% by default). It had proposed 200 bps and the first deal cleared at 2%.
+  Code now allows only lowering.
+- **The model is told the reply shape** as JSON Schema; Groq's `openai/gpt-oss-120b` otherwise invented the action names.
+- Results: invoice 25 USDC cleared at 200 bps (before the start rule), invoice 40 USDC cleared at **0%** with no fee, both settled by the two agents through
+  real Circle wallets. A 40 USDC invoice against 35 USDC of cash was refused on every rung (`LIQUIDITY_FLOOR`), correctly.
+- Still unverified: running with the website and backend linked (the agents ran with `BACKEND_URL` unset and `BUYER_OBLIGATIONS_DECLARED_NONE=true`, so no credit
+  limit or payment calendar was applied in these two deals).

@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { execFile } from "node:child_process";
 import { createRequire } from "node:module";
 import { createPublicClient, erc20Abi, http, parseAbiItem, type AbiParameter, type Hex } from "viem";
@@ -150,6 +151,18 @@ export function functionSignature(abi: string, fn: string): string {
   return `${fn}(${(item.inputs ?? []).map(canonicalType).join(",")})`;
 }
 
+/**
+ * The Circle CLI only accepts a UUID as an idempotency key (a plain string answers "400 Invalid request body"; found on the first real run).
+ * The same key text always gives the same UUID, so a retry still cannot send twice.
+ */
+export function idempotencyUuid(key: string): string {
+  const h = createHash("sha256").update(key).digest();
+  h[6] = (h[6]! & 0x0f) | 0x50; // version 5 style
+  h[8] = (h[8]! & 0x3f) | 0x80; // RFC 4122 variant
+  const x = h.subarray(0, 16).toString("hex");
+  return `${x.slice(0, 8)}-${x.slice(8, 12)}-${x.slice(12, 16)}-${x.slice(16, 20)}-${x.slice(20)}`;
+}
+
 function cliArg(v: unknown): string {
   if (typeof v === "bigint") return v.toString();
   if (typeof v === "boolean" || typeof v === "number") return String(v);
@@ -239,7 +252,7 @@ export class CircleCliAdapter implements WalletAdapter {
       "wallet", "execute", functionSignature(call.abi, call.fn), ...call.args.map(cliArg),
       "--contract", call.to, "--address", this.o.address, "--chain", this.chain,
     ];
-    if (call.idempotencyKey) args.push("--idempotency-key", call.idempotencyKey);
+    if (call.idempotencyKey) args.push("--idempotency-key", idempotencyUuid(call.idempotencyKey));
     const raw = await this.run(args);
     const txHash = findString(raw, (s) => /^0x[0-9a-fA-F]{64}$/.test(s)) as Hex | undefined;
     const transactionId = findByKey(raw, ["transactionId", "id"]);

@@ -166,6 +166,26 @@ contract InvoiceBookTest is Test {
         assertEq(usdc.balanceOf(feeRecipient), 0, "no fee at a zero rate");
     }
 
+    function test_settleEarlyFlat_matchesSettleEarly() public {
+        (bytes32 id,) = _registerApproved(1_000e6, 30);
+        (InvoiceBook.EarlyPayOffer memory o, bytes memory sig) = _signedOffer(SUPPLIER_PK, id, 500);
+        vm.prank(buyer);
+        book.settleEarlyFlat(id, o.rateBps, o.expiry, o.nonce, sig, bytes32(uint256(7)));
+        assertEq(uint8(_status(id)), uint8(InvoiceBook.Status.SettledEarly));
+        assertGt(usdc.balanceOf(supplier), 0);
+    }
+
+    function test_settleEarlyFlat_sameChecksApply() public {
+        (bytes32 id,) = _registerApproved(1_000e6, 30);
+        (InvoiceBook.EarlyPayOffer memory o, bytes memory sig) = _signedOffer(OTHER_PK, id, 500); // wrong signer
+        vm.prank(buyer);
+        vm.expectRevert(InvoiceBook.BadSignature.selector);
+        book.settleEarlyFlat(id, o.rateBps, o.expiry, o.nonce, sig, bytes32(0));
+        (o, sig) = _signedOffer(SUPPLIER_PK, id, 500);
+        vm.expectRevert(InvoiceBook.NotBuyer.selector); // only the buyer may settle
+        book.settleEarlyFlat(id, o.rateBps, o.expiry, o.nonce, sig, bytes32(0));
+    }
+
     // --------------------------------------------------- offer failure modes
 
     function test_expiredOffer_reverts() public {

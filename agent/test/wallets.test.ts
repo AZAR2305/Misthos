@@ -28,3 +28,13 @@ describe("per-agent Circle login folders", () => {
     expect(r.exitCode).not.toBe(0);
   });
 });
+
+import { idempotencyUuid } from "../src/wallets/circleCli";
+describe("idempotency keys for the Circle CLI", () => {
+  it("are UUIDs (the real CLI refuses anything else), stable for the same text, and different for different text", () => {
+    const k = "settle:0xed469d1cd41677f95461103ea9ba22330f41f41f3ae1759adeaaf6066c33057c:1791986644";
+    expect(idempotencyUuid(k)).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+    expect(idempotencyUuid(k)).toBe(idempotencyUuid(k));
+    expect(idempotencyUuid(k)).not.toBe(idempotencyUuid(k + "1"));
+  });
+});

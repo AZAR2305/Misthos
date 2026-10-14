@@ -139,11 +139,11 @@ describe("ladder negotiation (Appendix B)", () => {
     // exactly one settlement, with the signed offer and the decision hash that is in the log
     expect(t.buyer.calls).toHaveLength(1);
     const call = t.buyer.calls[0]!;
-    expect(call.fn).toBe("settleEarly");
+    expect(call.fn).toBe("settleEarlyFlat");
     expect(call.to).toBe(BOOK);
-    const [id, offer, , decisionHash] = call.args as [string, { rateBps: number }, string, string];
+    const [id, rateBps, , , , decisionHash] = call.args as [string, number, bigint, bigint, string, string];
     expect(id).toBe(INVOICE);
-    expect(offer.rateBps).toBe(1000);
+    expect(rateBps).toBe(1000);
     expect(t.buyerStore.all().some((e) => e.hash === decisionHash)).toBe(true);
     expect(t.buyerStore.verify()).toEqual({ ok: true });
     expect(t.supplierStore.verify()).toEqual({ ok: true });
@@ -496,7 +496,7 @@ describe("credit and exposure (SRS FR-05 and acceptance 5)", () => {
   it("the accepting entry is the settlement's decision hash and carries the policy version and on-chain evidence, with no limits", async () => {
     const t = setup({ hurdle: 0, prefs: { startRateBps: 0 }, exposure: source(policy(), [settledBefore]) });
     await t.supplierAgent.start(t.inv);
-    const decisionHash = (t.buyer.calls[0]!.args as unknown[])[3] as string;
+    const decisionHash = (t.buyer.calls[0]!.args as unknown[])[5] as string;
     const entry = t.buyerStore.all().find((e) => e.hash === decisionHash)!;
     expect(entry.snapshot).toMatchObject({ exposure: { policyVersion: "exposure-3", result: "ok", evidence: [{ ref: "0xaa", kind: "settlement", txHash: settledBefore.txHash, logIndex: 3 }] } });
     expect(findPrivateKey(entry.snapshot)).toBeUndefined();
@@ -523,7 +523,7 @@ describe("policy version, evidence and reproducibility (SRS FR-10 and NFR-04)", 
   it("the accepting entry is the settlement's decision hash and replays to the same decision", async () => {
     const t = setup({ stamped: {} });
     await t.supplierAgent.start(t.inv);
-    const decisionHash = (t.buyer.calls[0]!.args as unknown[])[3] as string;
+    const decisionHash = (t.buyer.calls[0]!.args as unknown[])[5] as string;
     const accept = t.buyerStore.all().find((e) => e.hash === decisionHash)!;
     const report = auditDecision(accept, t.buyerStore.preimageOf(accept.hash), t.buyerBook);
     expect(report).toMatchObject({ ok: true, policyVersion: "buyer-policy-1" });
@@ -623,7 +623,7 @@ describe("policy version, evidence and reproducibility (SRS FR-10 and NFR-04)", 
     try {
       const t = setup({ stamped: { dir } });
       await t.supplierAgent.start(t.inv);
-      const decisionHash = (t.buyer.calls[0]!.args as unknown[])[3] as string;
+      const decisionHash = (t.buyer.calls[0]!.args as unknown[])[5] as string;
       const report = auditFromFiles(dir, "buyer", decisionHash.slice(0, 14));
       expect(report).toMatchObject({ ok: true, hash: decisionHash });
       expect(auditFromFiles(dir, "supplier", t.supplierStore.all()[0]!.hash).ok).toBe(true);

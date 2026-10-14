@@ -193,7 +193,7 @@ contract InvoiceBook is EIP712, Ownable, ReentrancyGuard {
     }
 
     /// @notice The EIP-712 digest the supplier signs for an early-pay offer.
-    function hashOffer(EarlyPayOffer calldata offer) public view returns (bytes32) {
+    function hashOffer(EarlyPayOffer memory offer) public view returns (bytes32) {
         return _hashTypedDataV4(
             keccak256(abi.encode(OFFER_TYPEHASH, offer.invoiceId, offer.rateBps, offer.expiry, offer.nonce))
         );
@@ -259,6 +259,15 @@ contract InvoiceBook is EIP712, Ownable, ReentrancyGuard {
         _settle(id, offer, sig, offer.rateBps, decisionHash);
     }
 
+    /// @notice Same as settleEarly with the offer passed as flat arguments. Circle's CLI and agent-wallet service cannot encode a struct
+    ///         argument ("can't pack ABI parameter"), so an agent wallet calls this one. The offer is built here with the same invoice id.
+    function settleEarlyFlat(bytes32 id, uint16 rateBps, uint64 expiry, uint256 nonce, bytes calldata sig, bytes32 decisionHash)
+        external
+        nonReentrant
+    {
+        _settle(id, EarlyPayOffer({invoiceId: id, rateBps: rateBps, expiry: expiry, nonce: nonce}), sig, rateBps, decisionHash);
+    }
+
     /// @notice Pay up to 20 approved invoices early in one atomic transaction (Tier 3: early-pay rounds).
     /// @dev Any failing item reverts the whole batch. Caps apply to the batch total because spending accumulates
     ///      per item. A rate above an item's signed maximum reverts.
@@ -297,7 +306,7 @@ contract InvoiceBook is EIP712, Ownable, ReentrancyGuard {
 
     /// @dev Checks and effects in the order of spec 7.4. The fee is paid by the buyer on top of net, is zero at a
     ///      zero rate, and is never taken from the supplier.
-    function _settle(bytes32 id, EarlyPayOffer calldata offer, bytes calldata sig, uint16 rateBps, bytes32 decisionHash)
+    function _settle(bytes32 id, EarlyPayOffer memory offer, bytes memory sig, uint16 rateBps, bytes32 decisionHash)
         internal
         returns (uint256 net, uint256 discount, uint256 fee)
     {
