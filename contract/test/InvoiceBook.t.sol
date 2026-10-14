@@ -186,6 +186,121 @@ contract InvoiceBookTest is Test {
         book.settleEarlyFlat(id, o.rateBps, o.expiry, o.nonce, sig, bytes32(0));
     }
 
+
+    // ------------------------------------------------ settleEarlyFlat has the same checks as settleEarly
+    // Both entry points call the same internal _settle. These tests run every failure mode and the money result through the flat one
+    // as well, including a nonce used on one path being dead on the other. The only check the flat path cannot fail is OfferMismatch,
+    // because it builds the offer with the invoice id it was given.
+
+    function _flat(bytes32 id, InvoiceBook.EarlyPayOffer memory o, bytes memory sig) internal {
+        vm.prank(buyer);
+        book.settleEarlyFlat(id, o.rateBps, o.expiry, o.nonce, sig, bytes32(uint256(1)));
+    }
+
+    function test_flat_sameMoneyAsStruct() public {
+        (bytes32 a,) = _registerApproved(1_000e6, 30);
+        (bytes32 b,) = _registerApproved(1_000e6, 30);
+        (InvoiceBook.EarlyPayOffer memory oa, bytes memory sa) = _signedOffer(SUPPLIER_PK, a, 500);
+        (InvoiceBook.EarlyPayOffer memory ob, bytes memory sb) = _signedOffer(SUPPLIER_PK, b, 500);
+        uint256 s0 = usdc.balanceOf(supplier);
+        uint256 f0 = usdc.balanceOf(feeRecipient);
+        _settle(a, oa, sa);
+        uint256 structPaid = usdc.balanceOf(supplier) - s0;
+        uint256 structFee = usdc.balanceOf(feeRecipient) - f0;
+        s0 = usdc.balanceOf(supplier);
+        f0 = usdc.balanceOf(feeRecipient);
+        _flat(b, ob, sb);
+        assertEq(usdc.balanceOf(supplier) - s0, structPaid, "same net to the supplier");
+        assertEq(usdc.balanceOf(feeRecipient) - f0, structFee, "same fee");
+    }
+
+    function test_flat_expired_reverts() public {
+        (bytes32 id,) = _registerApproved(1_000e6, 30);
+        (InvoiceBook.EarlyPayOffer memory o, bytes memory sig) = _signedOffer(SUPPLIER_PK, id, 500);
+        vm.warp(block.timestamp + 1 days + 1);
+        vm.expectRevert(InvoiceBook.OfferExpired.selector);
+        _flat(id, o, sig);
+    }
+
+    function test_flat_pastDue_reverts() public {
+        (bytes32 id,) = _registerApproved(1_000e6, 30);
+        InvoiceBook.EarlyPayOffer memory o = _offer(id, 500, 40 days, 4242);
+        bytes memory sig = _sign(SUPPLIER_PK, _offerDigest(o));
+        vm.warp(block.timestamp + 31 days);
+        vm.expectRevert(InvoiceBook.PastDue.selector);
+        _flat(id, o, sig);
+    }
+
+    function test_flat_notApproved_and_secondSettle_revert() public {
+        (bytes32 id,) = _registerApproved(1_000e6, 30);
+        (InvoiceBook.EarlyPayOffer memory o, bytes memory sig) = _signedOffer(SUPPLIER_PK, id, 500);
+        _flat(id, o, sig);
+        (InvoiceBook.EarlyPayOffer memory o2, bytes memory sig2) = _signedOffer(SUPPLIER_PK, id, 500);
+        vm.expectRevert(InvoiceBook.NotApproved.selector);
+        _flat(id, o2, sig2);
+    }
+
+    function test_flat_signatureBoundToTheTerms() public {
+        // A signature for rate 500 must not pay at any other rate, expiry or nonce through the flat entry point.
+        (bytes32 id,) = _registerApproved(1_000e6, 30);
+        (InvoiceBook.EarlyPayOffer memory o, bytes memory sig) = _signedOffer(SUPPLIER_PK, id, 500);
+        vm.prank(buyer);
+        vm.expectRevert(InvoiceBook.BadSignature.selector);
+        book.settleEarlyFlat(id, o.rateBps - 1, o.expiry, o.nonce, sig, bytes32(0));
+        vm.prank(buyer);
+        vm.expectRevert(InvoiceBook.BadSignature.selector);
+        book.settleEarlyFlat(id, o.rateBps, o.expiry + 1, o.nonce, sig, bytes32(0));
+        vm.prank(buyer);
+        vm.expectRevert(InvoiceBook.BadSignature.selector);
+        book.settleEarlyFlat(id, o.rateBps, o.expiry, o.nonce + 1, sig, bytes32(0));
+    }
+
+    function test_flat_signatureForAnotherInvoiceIsRefused() public {
+        (bytes32 a,) = _registerApproved(1_000e6, 30);
+        (bytes32 b,) = _registerApproved(1_000e6, 30);
+        (InvoiceBook.EarlyPayOffer memory oa, bytes memory sa) = _signedOffer(SUPPLIER_PK, a, 500);
+        vm.prank(buyer);
+        vm.expectRevert(InvoiceBook.BadSignature.selector);
+        book.settleEarlyFlat(b, oa.rateBps, oa.expiry, oa.nonce, sa, bytes32(0)); // offer was signed for invoice a
+    }
+
+    function test_flat_nonceSharedAcrossBothEntryPoints() public {
+        (bytes32 id1,) = _registerApproved(1_000e6, 30);
+        (bytes32 id2,) = _registerApproved(1_000e6, 30);
+        InvoiceBook.EarlyPayOffer memory o1 = _offer(id1, 500, 1 days, 888);
+        InvoiceBook.EarlyPayOffer memory o2 = _offer(id2, 500, 1 days, 888);
+        bytes memory s1 = _sign(SUPPLIER_PK, _offerDigest(o1));
+        bytes memory s2 = _sign(SUPPLIER_PK, _offerDigest(o2));
+        _settle(id1, o1, s1); // used through settleEarly
+        vm.expectRevert(InvoiceBook.NonceUsed.selector);
+        _flat(id2, o2, s2); // dead through settleEarlyFlat
+    }
+
+    function test_flat_perInvoiceCapApplies() public {
+        (bytes32 id,) = _registerApproved(2_000_000_000, 27);
+        vm.prank(buyer);
+        book.setLimits(1_900_000_000, 0);
+        (InvoiceBook.EarlyPayOffer memory o, bytes memory sig) = _signedOffer(SUPPLIER_PK, id, 1000);
+        vm.expectRevert(InvoiceBook.PerInvoiceCapExceeded.selector);
+        _flat(id, o, sig);
+    }
+
+    function test_flat_rateAboveContractCeilingReverts() public {
+        (bytes32 id,) = _registerApproved(1_000e6, 30);
+        InvoiceBook.EarlyPayOffer memory o = _offer(id, uint16(book.MAX_RATE_BPS() + 1), 1 days, 5151);
+        bytes memory sig = _sign(SUPPLIER_PK, _offerDigest(o));
+        vm.expectRevert(InvoiceBook.RateTooHigh.selector);
+        _flat(id, o, sig);
+    }
+
+    function test_flat_zeroRate_paysFaceAndNoFee() public {
+        (bytes32 id,) = _registerApproved(2_000_000_000, 27);
+        (InvoiceBook.EarlyPayOffer memory o, bytes memory sig) = _signedOffer(SUPPLIER_PK, id, 0);
+        _flat(id, o, sig);
+        assertEq(usdc.balanceOf(supplier), 2_000_000_000);
+        assertEq(usdc.balanceOf(feeRecipient), 0);
+    }
+
     // --------------------------------------------------- offer failure modes
 
     function test_expiredOffer_reverts() public {

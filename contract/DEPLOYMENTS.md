@@ -25,6 +25,6 @@ then have each buyer wallet `approve(InvoiceBook, allowance)` on USDC once befor
 ### Superseded and current (14 Oct 2026, later the same day)
 - The first deployment (`0xd62B53a4…35ED`, block 67148962) is **superseded**. Circle's agent-wallet service cannot encode a struct argument
   (`can't pack ABI parameter`), so `settleEarly(id, offer, …)` cannot be called from an agent wallet. The contract gained `settleEarlyFlat`
-  (same checks, flat arguments; 42 tests).
+  (same checks, flat arguments; 52 tests incl. a parity suite).
 - **Current InvoiceBook: `0x108DA05Fec74a1c0620CF7D66D07AeB586A5288C`**, deploy tx `0x2d0204bca37f6c07420d02e8e5912a782b90a679cd00279b4a9516aeddad99ce`, block 67164103.
   https://explorer.testnet.arc.io/address/0x108DA05Fec74a1c0620CF7D66D07AeB586A5288C
