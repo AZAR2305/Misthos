@@ -5,13 +5,8 @@ import "./pitch.css";
 
 /**
  * The pitch, as web slides. Left/right arrows, Space and PageUp/PageDown move; Home and End jump; F is fullscreen; /pitch#3 opens slide 3.
- * Every number here is a real one from docs/TRACTION.md, docs/DECISIONS.md or docs/MARKET_RESEARCH.md. The traction slide shows zero
- * independent pilots because there are none yet: it is updated from docs/TRACTION.md when a pilot is confirmed, never before.
+ * Every number here is a real one from docs/MARKET_RESEARCH.md. Traction and run results are on /stats, which reads the chain.
  */
-
-const EXPLORER = "https://explorer.testnet.arc.io/tx/";
-const TX_25 = "0x8d581c6a48fcb14892ea647405a9370d274d80dfb9e9f7459241da1bee3ec8a1";
-const TX_40 = "0x7f0e67359180504dd7b00455fc85c542d43b7389536bfdb456c313f9df0c8119";
 
 function Intro() {
   return (
@@ -91,89 +86,44 @@ function How() {
   );
 }
 
-function Proof() {
-  return (
-    <>
-      <h2 className="pd-h2">It runs on Arc testnet today.</h2>
-      <div className="pd-grid">
-        <div className="pd-card">
-          <div className="pd-big pd-money">2</div>
-          <p>real settlements with Circle Agent Wallets on Arc testnet (25 and 40 USDC, 14 Oct 2026). Run by the build team, so labelled as team runs.</p>
-          <a href={EXPLORER + TX_25}>25 USDC settlement ↗</a>
-          <a href={EXPLORER + TX_40}>40 USDC settlement, cleared at 0% ↗</a>
-        </div>
-        <div className="pd-card">
-          <div className="pd-big pd-money">29 and 44</div>
-          <p>days early. One of the two cleared at 0%.</p>
-        </div>
-        <div className="pd-card">
-          <div className="pd-big">59 / 236 / 91 / 56</div>
-          <p>passing tests: contract (with fuzz and invariants), agent, backend, frontend. The fail-closed matrix passed 4 of 4.</p>
-        </div>
-        <div className="pd-card pd-agent">
-          <h3>Reputation on chain</h3>
-          <p>ERC-8004 identities and bilateral feedback for both agents, visible on the explorer. The buyer reads a supplier&apos;s feedback live before it pays.</p>
-        </div>
-      </div>
-    </>
-  );
-}
-
-function Traction() {
-  return (
-    <>
-      <h2 className="pd-h2">Traction, counted honestly.</h2>
-      <div className="pd-grid">
-        <div className="pd-card">
-          <div className="pd-big">0</div>
-          <p>independent businesses onboarded so far</p>
-        </div>
-        <div className="pd-card">
-          <div className="pd-big pd-money">2</div>
-          <p>team runs, shown separately and never added to pilots: 65 USDC face, 1 of 2 cleared at 0%</p>
-        </div>
-        <div className="pd-card">
-          <h3>Ready for the first pilot</h3>
-          <p>Pilot guide, 10-minute call script, origin tagging (pilot, team, unverified, never summed) and a no-wallet shadow report at /shadow.</p>
-        </div>
-      </div>
-      <p className="pd-note">Test USDC counts. Synthetic data does not, so none is shown. The live stats page reads the chain in your browser and lists each origin separately.</p>
-    </>
-  );
-}
-
 function Different() {
-  const Y = "✓";
-  const N = "—";
+  // Cells for other companies paraphrase their own public descriptions (sources under the table). VERIFY before naming a company on stage.
+  const cols = ["Who sets the price", "Agent on each side", "Terms enforced by a contract", "Funded by", "Settlement", "Can clear at 0%"];
   const rows: string[][] = [
-    ["Dynamic-discount platforms", N, N, N, "fixed or platform-set"],
-    ["Invoice factoring", N, N, N, "26–30% a year"],
-    ["Misthos", Y, Y, Y, "negotiated, often 0%"],
+    ["Misthos", "Two agents negotiate: supplier climbs a ladder from 0%, buyer holds a private hurdle", "Yes, both sides", "Yes: InvoiceBook checks the signed offer", "The buyer's own idle USDC, no lender", "On Arc, under a second", "Yes, and one of our two runs did"],
+    ["C2FO", "Suppliers bid; an algorithm picks offers that meet the buyer's target", "No", "No (platform)", "Buyer cash, or a funder for supplier finance", "Platform payment run", "Not a design goal"],
+    ["Taulia", "Supplier picks the payment date; a program rate applies", "No", "No (platform)", "Buyer cash or third-party funders", "Platform payment run", "Not a design goal"],
+    ["Centrifuge", "Pool terms set by originators and investors", "No", "Yes: on-chain pools", "Investors in a pool", "On-chain, pool rules", "Not a design goal"],
+    ["Invoice factoring", "The factor", "No", "No", "The factor", "Days", "No: about 26 to 30% a year"],
   ];
   return (
     <>
       <h2 className="pd-h2">Why Misthos is different.</h2>
-      <table className="pd-table">
-        <thead>
-          <tr>
-            <th />
-            <th>Agent on each side</th>
-            <th>Signed terms enforced on-chain</th>
-            <th>Sub-second settlement</th>
-            <th>Price</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((r) => (
-            <tr key={r[0]} className={r[0] === "Misthos" ? "us" : ""}>
-              {r.map((c, i) => (
-                <td key={i}>{c}</td>
+      <div style={{ overflowX: "auto" }}>
+        <table className="pd-table">
+          <thead>
+            <tr>
+              <th />
+              {cols.map((c) => (
+                <th key={c}>{c}</th>
               ))}
             </tr>
-          ))}
-        </tbody>
-      </table>
-      <p className="pd-src">Competitor cells describe the product category, not a measured comparison. VERIFY before naming any company.</p>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r[0]} className={r[0] === "Misthos" ? "us" : ""}>
+                {r.map((c, i) => (
+                  <td key={i}>{c}</td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="pd-src">
+        Other companies are described from their own public pages: c2fo.com dynamic discounting, taulia.com and a regulator filing on its daily rate, Centrifuge and Chainlink&apos;s on-chain factoring overview, and Fundthrough and Resolve Pay on factoring costs.
+        This is a summary of what each says it does, not a test of those products. VERIFY before naming a company on stage.
+      </p>
     </>
   );
 }
@@ -206,8 +156,6 @@ const SLIDES: { title: string; render: () => ReactNode }[] = [
   { title: "The problem", render: () => <Problem /> },
   { title: "The solution", render: () => <Solution /> },
   { title: "How it works", render: () => <How /> },
-  { title: "What runs today", render: () => <Proof /> },
-  { title: "Traction", render: () => <Traction /> },
   { title: "Why it's different", render: () => <Different /> },
   { title: "What's next", render: () => <Next /> },
 ];
