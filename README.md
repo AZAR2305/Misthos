@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/assets/misthos-banner.png" alt="Misthos: two businesses' agents agree the price of getting paid early, often 0%, settled on Arc" width="100%" />
+<img src="docs/assets/misthos-banner.png" alt="Misthos: two agents find the price of getting paid early, often 0%" width="100%" />
 
 # Misthos
 
@@ -53,7 +53,7 @@ The mechanism (dynamic discounting) exists in web2: C2FO, Taulia and others. Wha
 
 ## How it works
 
-<img src="docs/assets/misthos-flow.png" alt="Misthos flow: onboarding, one invoice, owner controls" width="100%" />
+<img src="docs/assets/misthos-flow.png" alt="One invoice, start to finish: supplier agent, InvoiceBook on Arc, buyer agent" width="100%" />
 
 | Stage | What happens |
 |---|---|
