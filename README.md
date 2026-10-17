@@ -51,6 +51,23 @@ Misthos gives each business its own agent:
 
 The mechanism (dynamic discounting) exists in web2: C2FO, Taulia and others. What is new here is two independently run agents finding the price from each side's private bounds, and a contract enforcing what they signed.
 
+## What makes Misthos different
+
+| Player | Who sets the price | An agent on each side | Terms enforced by a contract | Funded by | Settlement | Can clear at 0% |
+|---|---|---|---|---|---|---|
+| Invoice factoring | ❌ the factor | ❌ | ❌ | the factor | days | ❌ about 26 to 30% a year |
+| C2FO | ❌ suppliers bid, an algorithm picks offers that meet the buyer's target | ❌ | ❌ platform | buyer cash, or a funder | platform payment run | ❌ not a design goal |
+| Taulia | ❌ the supplier picks a date, a program rate applies | ❌ | ❌ platform | buyer cash or third-party funders | platform payment run | ❌ not a design goal |
+| Centrifuge | ❌ pool terms set by originators and investors | ❌ | ✅ on-chain pools | investors in a pool | on chain, pool rules | ❌ not a design goal |
+| **Misthos** | **✅ the two businesses' agents negotiate** | **✅ supplier and buyer** | **✅ InvoiceBook checks the signed offer** | **the buyer's own idle USDC, no lender** | **on Arc, under a second** | **✅ often, 7 of 8 settlements** |
+
+Other companies are described from their own public pages (c2fo.com on dynamic discounting, taulia.com, Centrifuge's documentation, and factoring costs from Fundthrough and Resolve Pay). This is a summary of what each says it does, not a test of their products.
+
+**Three things we have not seen combined:**
+1. **Two agents, two private ranges.** The supplier's ceiling and the buyer's hurdle never leave their own machines; a deal happens only where they overlap, and a refusal carries a reason code, never a number.
+2. **What the agents sign is what the contract enforces.** The offer is EIP-712 signed, single-use and expiring; `InvoiceBook` checks the signature, the rate ceiling and the buyer's caps before any USDC moves.
+3. **Trust from the chain, not from a form.** Each wallet's role is fixed on the `RoleRegistry`, the history between two wallets is counted from settlement events, and ERC-8004 ratings can only lower what a buyer agent accepts.
+
 ## How it works
 
 <img src="docs/assets/misthos-flow.png" alt="One invoice, start to finish: supplier agent, InvoiceBook on Arc, buyer agent" width="100%" />
