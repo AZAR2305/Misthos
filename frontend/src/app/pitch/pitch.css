@@ -1,0 +1,31 @@
+.pd { min-height: 100vh; background: var(--color-bg); color: var(--color-text); display: flex; flex-direction: column; padding: 48px 24px 88px; font-family: var(--font-sans); }
+.pd:fullscreen { overflow: auto; }
+.pd-slide { flex: 1; width: 100%; max-width: 1180px; margin: 0 auto; display: flex; flex-direction: column; justify-content: center; gap: 24px; animation: pd-in .4s ease both; }
+@keyframes pd-in { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+.pd-eyebrow { font-family: var(--font-mono); font-size: var(--text-micro); letter-spacing: .14em; text-transform: uppercase; color: var(--color-text-muted); }
+.pd-hero { font-size: clamp(48px, 9vw, 112px); line-height: 1; margin: 0; letter-spacing: -.02em; }
+.pd-h2 { font-size: clamp(26px, 4vw, 44px); line-height: 1.12; margin: 0; max-width: 22ch; }
+.pd-lede { font-size: clamp(18px, 2.2vw, 26px); color: var(--color-text-muted); max-width: 52ch; margin: 0; }
+.pd-grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+.pd-card { background: var(--color-surface-1); border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: 20px; display: flex; flex-direction: column; gap: 8px; }
+.pd-card h3 { margin: 0; font-size: var(--text-h3); }
+.pd-card p { margin: 0; color: var(--color-text-muted); }
+.pd-agent { background: var(--color-agent-bg); border-color: var(--color-agent-border); }
+.pd-agent h3, .pd-agent .pd-tag { color: var(--color-agent-text); }
+.pd-money { color: var(--color-money); }
+.pd-big { font-size: clamp(32px, 5vw, 56px); font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
+.pd-tag { font-family: var(--font-mono); font-size: var(--text-micro); color: var(--color-text-muted); }
+.pd-src { font-size: var(--text-micro); color: var(--color-text-muted); }
+.pd-table { width: 100%; border-collapse: collapse; font-size: var(--text-small); }
+.pd-table th, .pd-table td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--color-border); }
+.pd-table .us td { color: var(--color-money); font-weight: 600; }
+.pd-note { border-left: 3px solid var(--color-warn); padding: 8px 14px; color: var(--color-text-muted); }
+.pd-controls { position: fixed; left: 0; right: 0; bottom: 0; display: flex; gap: 12px; align-items: center; justify-content: center; padding: 14px; background: var(--color-bg); border-top: 1px solid var(--color-border); }
+.pd-controls button { background: var(--color-surface-2); color: var(--color-text); border: 1px solid var(--color-border); border-radius: var(--radius-sm); padding: 8px 14px; cursor: pointer; }
+.pd-controls button:disabled { opacity: .4; cursor: default; }
+.pd-controls button:focus-visible { outline: 2px solid var(--color-focus); }
+.pd-dots { display: flex; gap: 8px; }
+.pd-dots button { width: 10px; height: 10px; padding: 0; border-radius: 50%; }
+.pd-dots button.on { background: var(--color-primary); border-color: var(--color-primary); }
+.pd-hint { color: var(--color-text-muted); font-size: var(--text-micro); }
+@media (max-width: 640px) { .pd { padding: 32px 16px 96px; } .pd-hint { display: none; } }
