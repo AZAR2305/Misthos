@@ -9,7 +9,7 @@
 An open agent kit for invoice payment timing, settled in USDC on Arc.<br />
 The model proposes. Code decides.
 
-[**Live app**](https://misthos-kit.vercel.app) · [**Verifiable proofs**](docs/PROOFS.md) · [How it works](#how-it-works) · [Safety model](#safety-model) · [Quick start](#quick-start) · [Docs](#documentation)
+[**Live app**](https://misthos-kit.vercel.app) · [**Demo video**](https://youtu.be/9PfQtIN1SnA) · [**Verifiable proofs**](docs/PROOFS.md) · [How it works](#how-it-works) · [Safety model](#safety-model) · [Quick start](#quick-start) · [Docs](#documentation)
 
 [![Network](https://img.shields.io/badge/network-Arc%20testnet-111111)](https://docs.arc.network)
 [![Settlement](https://img.shields.io/badge/settlement-USDC-2775ca)](https://www.circle.com/usdc)
