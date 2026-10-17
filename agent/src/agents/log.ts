@@ -23,12 +23,15 @@ export function openDecisionStore(args: {
   vault?: Vault;
   /** Replaceable network call, for tests that run the API in the same process. */
   fetch?: FetchLike;
+  /** One line per decision for the operator's terminal. */
+  echo?: (line: string) => void;
 }): DecisionStore {
   const { name, dataDir, wallet, domain, backendUrl } = args;
   const stamp = args.policy ? new PolicyBook(join(dataDir, `${name}-policy.jsonl`), undefined, args.vault).use(args.policy.label, args.policy.params, Math.floor(Date.now() / 1000)) : undefined;
   return new DecisionStore({
     policy: stamp ? () => stamp : undefined,
     vault: args.vault,
+    echo: args.echo,
     file: join(dataDir, `${name}-decisions.jsonl`),
     attest: async (e) => {
       const signer = await wallet.address();

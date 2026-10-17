@@ -200,6 +200,8 @@ export interface CircleCliAdapterOptions {
    * different folders so the two logins do not overwrite each other. Ignored when `runner` is given.
    */
   cliHome?: string;
+  /** One line per signature and transaction for the operator's terminal. Never prints a key or a full payload. */
+  trace?: (line: string) => void;
   /** Arc RPC, used only for ERC-20 balanceOf reads. */
   rpcUrl?: string;
   usdc?: Address;
@@ -266,6 +268,8 @@ export class CircleCliAdapter implements WalletAdapter {
   }
 
   async signTypedData(payload: Eip712Payload): Promise<Hex> {
+    const t0 = Date.now();
+    this.o.trace?.(`wallet  signing ${payload.primaryType} with the Circle Agent Wallet ${this.o.address.slice(0, 8)}…`);
     const json = await this.run([
       "wallet", "sign", "typed-data", typedDataJson(payload),
       "--address", this.o.address, "--chain", this.chain,
@@ -275,6 +279,7 @@ export class CircleCliAdapter implements WalletAdapter {
     // Verify locally before the signature is stored or sent (spec 5.6).
     const ok = await this.verifier(payload, sig as Hex, this.o.address).catch(() => false);
     if (!ok) throw new WalletError("SIGNATURE_MISMATCH", "The signature does not recover to the agent wallet address.");
+    this.o.trace?.(`wallet  signed ${payload.primaryType} ${sig.slice(0, 12)}…, verified against the wallet (ERC-1271) in ${((Date.now() - t0) / 1000).toFixed(1)} s`);
     return sig as Hex;
   }
 
@@ -284,10 +289,13 @@ export class CircleCliAdapter implements WalletAdapter {
       "--contract", call.to, "--address", this.o.address, "--chain", this.chain,
     ];
     if (call.idempotencyKey) args.push("--idempotency-key", idempotencyUuid(call.idempotencyKey));
+    const t0 = Date.now();
+    this.o.trace?.(`chain   sending ${call.fn}() to ${call.to.slice(0, 10)}… on Arc from ${this.o.address.slice(0, 8)}…`);
     const raw = await this.run(args);
     const txHash = findString(raw, (s) => /^0x[0-9a-fA-F]{64}$/.test(s)) as Hex | undefined;
     const transactionId = findByKey(raw, ["transactionId", "id"]);
     if (!txHash && !transactionId) throw new WalletError("BAD_OUTPUT", "The Circle CLI returned neither a transaction hash nor an id.");
+    this.o.trace?.(`chain   ${call.fn}() confirmed ${txHash ?? transactionId} in ${((Date.now() - t0) / 1000).toFixed(1)} s`);
     return { txHash, transactionId, raw };
   }
 

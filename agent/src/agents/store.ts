@@ -64,6 +64,8 @@ export interface DecisionStoreOptions {
   policy?: () => PolicyStamp;
   /** Encrypts the private preimage lines at rest. The public entry, signature and delivery lines stay readable: they are what the API publishes. */
   vault?: Vault;
+  /** One line per decision for the operator's terminal. Public fields only (the same as the public log). */
+  echo?: (line: string) => void;
 }
 
 type Line =
@@ -150,6 +152,7 @@ export class DecisionStore {
       this.preimages.set(stored.hash, preimage);
       this.write(this.o.vault ? { k: "d", hash: stored.hash, sealed: this.o.vault.seal(JSON.stringify(preimage)) } : { k: "d", hash: stored.hash, preimage });
     }
+    this.o.echo?.(`decision #${stored.seq}  ${stored.outcome.padEnd(14)} ${String(input.invoiceId).slice(0, 10)}…  ${stored.reason}`);
     this.kick();
     return stored;
   }

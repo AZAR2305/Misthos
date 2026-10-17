@@ -38,7 +38,11 @@ const book = cfg.INVOICE_BOOK_ADDRESS as Address;
 const publicClient = createPublicClient({ transport: http(cfg.ARC_RPC_URL) });
 const verifier = chainVerifier(publicClient);
 
+/** The operator's terminal: one line per decision, signature and transaction, with the time. */
+const say = (line: string) => console.log(`[buyer-agent ${new Date().toTimeString().slice(0, 8)}] ${line}`);
+
 const wallet = new CircleCliAdapter({
+  trace: say,
   address: cfg.BUYER_AGENT_WALLET_ADDRESS as Address,
   cliHome: cfg.BUYER_CIRCLE_CLI_HOME,
   rpcUrl: cfg.ARC_RPC_URL,
@@ -62,7 +66,7 @@ const obligations = async () =>
  * indexed events. Without BACKEND_URL there is no verified source, so none is added (and the declared calendar still applies).
  */
 const payables = async () => (cfg.BACKEND_URL ? fetchPayables({ backendUrl: cfg.BACKEND_URL, buyer: cfg.BUYER_AGENT_WALLET_ADDRESS! }) : []);
-const store = openDecisionStore({ name: "buyer", dataDir: cfg.AGENT_DATA_DIR, wallet, domain: domain(cfg.ARC_CHAIN_ID, book), backendUrl: cfg.BACKEND_URL, policy: { label: "buyer-policy", params: buyerPolicyFromEnv() }, vault });
+const store = openDecisionStore({ echo: say, name: "buyer", dataDir: cfg.AGENT_DATA_DIR, wallet, domain: domain(cfg.ARC_CHAIN_ID, book), backendUrl: cfg.BACKEND_URL, policy: { label: "buyer-policy", params: buyerPolicyFromEnv() }, vault });
 const buyer = new BuyerAgent({
   wallet,
   domain: domain(cfg.ARC_CHAIN_ID, book),

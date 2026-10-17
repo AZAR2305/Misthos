@@ -38,7 +38,11 @@ const book = cfg.INVOICE_BOOK_ADDRESS as Address;
 const publicClient = createPublicClient({ transport: http(cfg.ARC_RPC_URL) });
 const verifier = chainVerifier(publicClient);
 
+/** The operator's terminal: one line per decision, signature and transaction, with the time. */
+const say = (line: string) => console.log(`[supplier-agent ${new Date().toTimeString().slice(0, 8)}] ${line}`);
+
 const wallet = new CircleCliAdapter({
+  trace: say,
   address: cfg.SUPPLIER_AGENT_WALLET_ADDRESS as Address,
   cliHome: cfg.SUPPLIER_CIRCLE_CLI_HOME,
   rpcUrl: cfg.ARC_RPC_URL,
@@ -48,7 +52,7 @@ const wallet = new CircleCliAdapter({
 const walletHealth = cachedHealth(() => wallet.health());
 const chain = guardChain(viemChainReader(cfg.ARC_RPC_URL, book));
 const vault = vaultFromEnv(cfg.AGENT_STORE_KEY);
-const store = openDecisionStore({ vault, name: "supplier", dataDir: cfg.AGENT_DATA_DIR, wallet, domain: domain(cfg.ARC_CHAIN_ID, book), backendUrl: cfg.BACKEND_URL, policy: { label: "supplier-policy", params: supplierPrefsFromEnv() } });
+const store = openDecisionStore({ echo: say, vault, name: "supplier", dataDir: cfg.AGENT_DATA_DIR, wallet, domain: domain(cfg.ARC_CHAIN_ID, book), backendUrl: cfg.BACKEND_URL, policy: { label: "supplier-policy", params: supplierPrefsFromEnv() } });
 // The supplier's history with a buyer and its own credit limit come from the API. Without BACKEND_URL it starts at its configured rate.
 const reader = cfg.BACKEND_URL ? signedReader({ backendUrl: cfg.BACKEND_URL, wallet, domain: domain(cfg.ARC_CHAIN_ID, book) }) : undefined;
 const exposure =
