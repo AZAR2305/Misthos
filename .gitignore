@@ -70,3 +70,6 @@ frontend/content/docs/
 .playwright-mcp/
 .next-*/
 /tmp/
+
+# proof-check outputs (regenerated)
+scripts/proofs-*.json
