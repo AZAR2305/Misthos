@@ -109,6 +109,8 @@ Pilot plan and scripts: `docs/PILOT_GUIDE.md`, `docs/PILOT_SCRIPT.md`, `docs/PIL
 - The site's content security policy allows `'unsafe-inline'` for scripts (the no-nonce form, so pages can stay static): XSS protection is partial.
 - The CI workflow (`.github/workflows/ci.yml`) has not yet run on GitHub; its commands were run locally.
 - No fuzz or invariant run has covered the backend, and the contract is unaudited.
+- A wallet's supplier-or-buyer role is fixed on Arc by `RoleRegistry` and enforced by the site and the API relayer; `InvoiceBook` itself does not check it, so a direct contract call between wallets with the wrong roles is still possible (the Trust card shows it).
+- The text agent understands a fixed list of requests; free wording goes through the language model, which can only pick one of those requests, and every payment waits for a confirmation.
 - No pilot, no revenue, no hosted backend, no demo video yet.
 
 ## How to run against the Arc testnet

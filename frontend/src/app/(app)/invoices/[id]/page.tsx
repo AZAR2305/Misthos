@@ -7,6 +7,7 @@ import { AddressChip, Card, Empty, Modal, Money, Notice, PageHeader, Skeleton, S
 import { useChainData } from "@/components/app/ChainData";
 import { DiscountCurve } from "@/components/app/DiscountCurve";
 import { OfferButton, PayEarlyButton } from "@/components/app/OfferFlows";
+import { TrustCard } from "@/components/app/TrustCard";
 import { InviteSupplier } from "@/components/app/ClaimLinks";
 import { findDuplicate } from "@/lib/chain/duplicates";
 import { CreditBasis } from "@/components/app/CreditBasis";
@@ -265,11 +266,9 @@ export default function InvoicePage() {
 
           <InviteSupplier invoice={inv} />
 
-          <Card title="Who is involved">
+          <TrustCard inv={inv} all={chain.invoices} me={me} />
+          <Card title="Reference">
             <dl className="kv">
-              <div><dt>Supplier</dt><dd><AddressChip address={inv.supplier} you={isSupplier} /></dd></div>
-              <div><dt>Buyer</dt><dd><AddressChip address={inv.buyer} you={isBuyer} /></dd></div>
-              <div><dt>Agent identity</dt><dd className="muted">Not registered yet <Tag>erc-8004</Tag></dd></div>
               <div><dt>Reference fingerprint</dt><dd className="mono tiny">{shortId(inv.refHash)}</dd></div>
             </dl>
           </Card>

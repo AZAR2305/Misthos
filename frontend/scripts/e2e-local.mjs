@@ -81,7 +81,7 @@ async function main() {
   check(/^0x[0-9a-fA-F]{40}$/.test(dep.invoiceBook), `InvoiceBook deployed at ${dep.invoiceBook}`);
 
   log("3. build the app against it");
-  const env = { ...process.env, NEXT_DIST_DIR: ".next-e2e", NEXT_PUBLIC_CHAIN_ID: "31337", NEXT_PUBLIC_RPC_URL: RPC, NEXT_PUBLIC_INVOICE_BOOK_ADDRESS: dep.invoiceBook, NEXT_PUBLIC_USDC_ADDRESS: dep.usdc, NEXT_PUBLIC_DEPLOY_BLOCK: String(dep.deployBlock), NEXT_PUBLIC_EXPLORER_URL: "http://localhost:1", NEXT_PUBLIC_API_URL: "", NEXT_PUBLIC_BUYER_AGENT_URL: "", NEXT_PUBLIC_SUPPLIER_AGENT_URL: "" /* wallet-only mode: never inherit the developer's own .env.local */ };
+  const env = { ...process.env, NEXT_DIST_DIR: ".next-e2e", NEXT_PUBLIC_CHAIN_ID: "31337", NEXT_PUBLIC_RPC_URL: RPC, NEXT_PUBLIC_INVOICE_BOOK_ADDRESS: dep.invoiceBook, NEXT_PUBLIC_USDC_ADDRESS: dep.usdc, NEXT_PUBLIC_DEPLOY_BLOCK: String(dep.deployBlock), NEXT_PUBLIC_EXPLORER_URL: "http://localhost:1", NEXT_PUBLIC_API_URL: "", NEXT_PUBLIC_ROLE_REGISTRY_ADDRESS: "", NEXT_PUBLIC_BUYER_AGENT_URL: "", NEXT_PUBLIC_SUPPLIER_AGENT_URL: "" /* wallet-only mode: never inherit the developer's own .env.local */ };
   const cwd = path.resolve(import.meta.dirname, "..");
   const nextBin = path.join(cwd, "node_modules", "next", "dist", "bin", "next");
   execFileSync(process.execPath, [nextBin, "build"], { cwd, env, stdio: "pipe", maxBuffer: 64 * 1024 * 1024 });

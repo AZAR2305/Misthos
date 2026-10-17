@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { walletNotice } from "@/lib/walletnotice";
 import { Card, Notice } from "@/components/ui/kit";
+import { AgentChat } from "./AgentChat";
 import { useAgentHealth } from "@/lib/hooks";
 
 /** Is this person's agent running? A plain answer, and the exact command to start it if not. */
@@ -35,6 +36,7 @@ export function AgentPanel({ role, url }: { role: "supplier" | "buyer"; url: str
               </Notice>
             );
           })()}
+          <AgentChat url={url} role={role} />
           {h.data.modelConfigured === false && <Notice kind="warn" title="No model key">Without a model key it takes no action on its own.</Notice>}
         </>
       ) : h.state === "offline" ? (

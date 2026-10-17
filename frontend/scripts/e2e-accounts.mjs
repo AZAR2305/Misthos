@@ -77,7 +77,7 @@ async function main() {
   const tsx = path.join(root, "backend", "node_modules", "tsx", "dist", "cli.mjs");
   const be = spawn(process.execPath, [tsx, "src/server.ts"], {
     cwd: path.join(root, "backend"),
-    env: { ...process.env, DATABASE_URL: "pglite://memory", PORT: String(API), ARC_RPC_URL: RPC, ARC_CHAIN_ID: "31337", INVOICE_BOOK_ADDRESS: dep.invoiceBook, USDC_ADDRESS: dep.usdc, DEPLOY_BLOCK: String(dep.deployBlock),
+    env: { ...process.env, DATABASE_URL: "pglite://memory", ROLE_REGISTRY_ADDRESS: "", PORT: String(API), ARC_RPC_URL: RPC, ARC_CHAIN_ID: "31337", INVOICE_BOOK_ADDRESS: dep.invoiceBook, USDC_ADDRESS: dep.usdc, DEPLOY_BLOCK: String(dep.deployBlock),
       FRONTEND_ORIGINS: BASE, AGENT_WALLETS: acct(5).address, RELAYER_PRIVATE_KEY: "0x" + Buffer.from(acct(3).getHdKey().privateKey).toString("hex") },
     stdio: "ignore",
   });
@@ -87,7 +87,7 @@ async function main() {
   check(health.db.ok && health.rpc.ok && health.relayer.configured, "backend healthy: db, rpc and relayer are on");
 
   log("3. build the app against the backend");
-  const env = { ...process.env, NEXT_DIST_DIR: ".next-e2e-acct", NEXT_PUBLIC_CHAIN_ID: "31337", NEXT_PUBLIC_RPC_URL: RPC, NEXT_PUBLIC_INVOICE_BOOK_ADDRESS: dep.invoiceBook, NEXT_PUBLIC_USDC_ADDRESS: dep.usdc, NEXT_PUBLIC_DEPLOY_BLOCK: String(dep.deployBlock), NEXT_PUBLIC_EXPLORER_URL: "http://localhost:1", NEXT_PUBLIC_API_URL: API_URL, NEXT_PUBLIC_BUYER_AGENT_URL: "", NEXT_PUBLIC_SUPPLIER_AGENT_URL: "" };
+  const env = { ...process.env, NEXT_DIST_DIR: ".next-e2e-acct", NEXT_PUBLIC_CHAIN_ID: "31337", NEXT_PUBLIC_RPC_URL: RPC, NEXT_PUBLIC_ROLE_REGISTRY_ADDRESS: "", NEXT_PUBLIC_INVOICE_BOOK_ADDRESS: dep.invoiceBook, NEXT_PUBLIC_USDC_ADDRESS: dep.usdc, NEXT_PUBLIC_DEPLOY_BLOCK: String(dep.deployBlock), NEXT_PUBLIC_EXPLORER_URL: "http://localhost:1", NEXT_PUBLIC_API_URL: API_URL, NEXT_PUBLIC_BUYER_AGENT_URL: "", NEXT_PUBLIC_SUPPLIER_AGENT_URL: "" };
   const cwd = path.resolve(import.meta.dirname, "..");
   const nextBin = path.join(cwd, "node_modules", "next", "dist", "bin", "next");
   execFileSync(process.execPath, [nextBin, "build"], { cwd, env, stdio: "pipe", maxBuffer: 64 * 1024 * 1024 });
