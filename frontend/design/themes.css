@@ -19,6 +19,10 @@
 :root {
   --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-display: "Bricolage Grotesque", "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  /* The Misthos mark (owner's logo, 2026-10-18): a dark tile, two white stems, and the zero of a 0% price in the theme's mint. The same in every theme. */
+  --brand-tile: #122b16;
+  --brand-stem: #ffffff;
+  --brand-zero: #82de91;
 }
 
 /* ------------------------------------------------------------------ Mint (default, light) */

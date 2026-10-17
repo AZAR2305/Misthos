@@ -10,9 +10,7 @@ export default function Image() {
     (
       <div style={{ width: "100%", height: "100%", display: "flex", flexDirection: "column", justifyContent: "space-between", background: "#fafaf9", padding: 72, color: "#1c1917" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
-          <div style={{ width: 56, height: 56, borderRadius: 14, background: "#82de91", display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <svg width="34" height="34" viewBox="0 0 24 24"><path d="M3 20V12a9 9 0 0 1 18 0v8h-5v-8a4 4 0 0 0-8 0v8H3Z" fill="#122b16" /></svg>
-          </div>
+          <svg width="56" height="56" viewBox="0 0 240 240"><rect width="240" height="240" rx="52" fill="#122b16" /><path d="M60 170L100 70H118L88 170H60Z" fill="#ffffff" /><path d="M180 170L140 70H122L152 170H180Z" fill="#ffffff" /><ellipse cx="120" cy="125" rx="12" ry="24" fill="none" stroke="#82de91" strokeWidth="8" /></svg>
           <div style={{ fontSize: 40, fontWeight: 700 }}>Misthos</div>
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>

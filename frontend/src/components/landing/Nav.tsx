@@ -4,11 +4,14 @@ import { useEffect, useState } from "react";
 import { ConnectButton } from "@/components/wallet/ConnectButton";
 import { ThemePicker } from "@/components/ThemePicker";
 
-export function ArcGlyph({ size = 22 }: { size?: number }) {
-  // Placeholder arch mark. Replace with the official Arc vector once it is verified (docs/DECISIONS.md).
+/** The Misthos mark: two stems (Misthos and Arc) around the zero of a 0% price. Colours come from the brand tokens in themes.css. */
+export function MisthosMark({ size = 22 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" fill="none">
-      <path d="M3 20V12a9 9 0 0 1 18 0v8h-5v-8a4 4 0 0 0-8 0v8H3Z" fill="currentColor" />
+    <svg width={size} height={size} viewBox="0 0 240 240" aria-hidden="true" fill="none">
+      <rect width="240" height="240" rx="52" fill="var(--brand-tile)" />
+      <path d="M60 170L100 70H118L88 170H60Z" fill="var(--brand-stem)" />
+      <path d="M180 170L140 70H122L152 170H180Z" fill="var(--brand-stem)" />
+      <ellipse cx="120" cy="125" rx="12" ry="24" stroke="var(--brand-zero)" strokeWidth="8" />
     </svg>
   );
 }
@@ -29,7 +32,7 @@ export function Nav() {
         Misthos<sup>®</sup>
       </a>
       <a href="#top" className="nav-mark" aria-label="Back to top">
-        <ArcGlyph size={26} />
+        <MisthosMark size={28} />
       </a>
       <div className="nav-end">
         <ThemePicker />

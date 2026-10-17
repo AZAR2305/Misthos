@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { ArcGlyph } from "@/components/landing/Nav";
+import { MisthosMark } from "@/components/landing/Nav";
 import { ConnectButton } from "@/components/wallet/ConnectButton";
 import { ThemePicker } from "@/components/ThemePicker";
 import { useWallet } from "@/components/wallet/WalletProvider";
@@ -153,7 +153,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       <header className="appbar" data-scrolled={scrolled}>
         <div className="appbar-row">
           <Link href="/" className="rail-brand" aria-label="Misthos home">
-            <ArcGlyph size={22} />
+            <MisthosMark size={26} />
             <span>MISTHOS</span>
           </Link>
           <div className="tabs-wrap">
