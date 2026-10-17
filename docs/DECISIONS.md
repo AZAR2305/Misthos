@@ -471,3 +471,6 @@ NO_OVERLAP was already built: the supplier logs `NO_OVERLAP`, the result is `hol
 
 ## 18 Oct 2026: the Misthos mark
 - The owner supplied the logo (`gemini-svg.svg`: two stems for Misthos and Arc around the zero of a 0% price). It replaces the placeholder arch glyph in the app header, the landing nav, the favicon (`src/app/icon.svg`) and the share image. Colours follow the logo: a dark tile, white stems, the zero in the theme mint, as brand tokens (`--brand-tile`, `--brand-stem`, `--brand-zero`) in `design/themes.css`, the same in every theme. The header mark no longer spins on hover (a logo should not turn upside down).
+
+## 18 Oct 2026: repository tidy
+- Internal working files are kept on disk but no longer tracked (listed in `.gitignore`): the build spec (`docs/spec/`), the SRS plans, hackathon scope, next steps, submission checklist, video guides, design and inspiration notes, dev-only frontend scripts not wired into `package.json`, `.mcp.json` and the Next-generated agent notes. Nothing the README links to was hidden. Local copies stay where they were.

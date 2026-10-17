@@ -73,3 +73,30 @@ frontend/content/docs/
 
 # proof-check outputs (regenerated)
 scripts/proofs-*.json
+
+# internal working files: kept on disk, not part of the public repository
+docs/HACKATHON_SCOPE.md
+docs/NEXT_STEPS.md
+docs/SPEC_COMPLIANCE.md
+docs/SRS_GAP_PLAN.md
+docs/SRS_IMPLEMENTATION_SPEC.md
+docs/SUBMISSION_CHECKLIST.md
+docs/VIDEO_GUIDE.md
+docs/VIDEO_SHOTLIST.md
+docs/design-plan.md
+docs/inspiration-notes.md
+docs/spec/
+# dev-only frontend scripts (not wired into package.json)
+frontend/scripts/agents-motion.mjs
+frontend/scripts/fps.mjs
+frontend/scripts/interact.mjs
+frontend/scripts/sheet.mjs
+frontend/scripts/themes.mjs
+frontend/scripts/video-frames.mjs
+# local tooling and generated agent notes
+.mcp.json
+frontend/AGENTS.md
+frontend/CLAUDE.md
+# local media and design sources
+*.mp4
+gemini-svg.svg

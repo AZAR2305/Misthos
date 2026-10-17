@@ -221,8 +221,8 @@ pnpm --filter @misthos/agent audit-decision <hash or its first 10+ characters> .
 It checks the entry's hash, the policy version and its commitment, and the inputs commitment, then runs the same decision code on the
 kept inputs and compares the result. It prints `VERIFIED` or `FAILED` with the reason.
 
-**Old logs.** An agent log written before 14 Oct can contain the supplier's private settings (finding F-0 in
-`docs/SRS_IMPLEMENTATION_SPEC.md`). It cannot be edited, and the API now refuses such entries. Move the old data directory aside
+**Old logs.** An agent log written before 14 Oct can contain the supplier's private settings (finding F-0 in the internal
+SRS review, recorded in `docs/DECISIONS.md`). It cannot be edited, and the API now refuses such entries. Move the old data directory aside
 (`.agent-data` to `.agent-data-old`) before connecting that agent to a backend.
 
 ---
