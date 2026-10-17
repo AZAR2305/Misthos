@@ -20,7 +20,7 @@ export function AgentChat({ url, role }: { url: string; role: "supplier" | "buye
 
   const call = async (path: string, body: unknown): Promise<Reply> => {
     try {
-      const r = await fetch(`${url}${path}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(150_000) });
+      const r = await fetch(`${url}${path}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(600_000) });
       const j = (await r.json()) as { ok: boolean; data?: Reply; error?: { message?: string } };
       if (j.ok && j.data) return j.data;
       return { kind: "refused", text: j.error?.message ?? "The agent could not do that." };
@@ -70,6 +70,7 @@ export function AgentChat({ url, role }: { url: string; role: "supplier" | "buye
             )}
           </div>
         ))}
+        {busy && <p className="muted tiny" role="status">Working on it. A payment can take a few minutes to settle on Arc.</p>}
         <div ref={end} />
       </div>
       <form onSubmit={send} style={{ display: "flex", gap: 8 }}>

@@ -14,7 +14,7 @@ import { ProtocolError } from "../agents/buyer.js";
 import { vaultFromEnv } from "../agents/vault.js";
 import { ChatAgent } from "../agents/chat.js";
 import { supplierTools } from "../agents/chatTools.js";
-import { chatRoutes, fetchInvoiceLines, toDecisionLines } from "./chatHttp.js";
+import { cachedHealth, chatRoutes, fetchInvoiceLines, toDecisionLines } from "./chatHttp.js";
 import { serve, type ServeOptions } from "./http.js";
 
 /**
@@ -45,6 +45,7 @@ const wallet = new CircleCliAdapter({
   usdc: cfg.USDC_ADDRESS as Address,
   verifier,
 });
+const walletHealth = cachedHealth(() => wallet.health());
 const chain = guardChain(viemChainReader(cfg.ARC_RPC_URL, book));
 const vault = vaultFromEnv(cfg.AGENT_STORE_KEY);
 const store = openDecisionStore({ vault, name: "supplier", dataDir: cfg.AGENT_DATA_DIR, wallet, domain: domain(cfg.ARC_CHAIN_ID, book), backendUrl: cfg.BACKEND_URL, policy: { label: "supplier-policy", params: supplierPrefsFromEnv() } });
@@ -67,11 +68,11 @@ const agentFor = (invoiceId: string) => {
     model: createModel(cfg),
     prefs: supplierPrefsFromEnv(),
     store,
-    transport: httpTransport(cfg.BUYER_AGENT_URL!),
+    transport: httpTransport(cfg.BUYER_AGENT_URL!, PEER_TIMEOUT_S * 1000),
     buyerAgent: cfg.BUYER_AGENT_WALLET_ADDRESS as Address,
     verifier,
     rungSeconds: cfg.LADDER_RUNG_SECONDS,
-    waitWindowSeconds: 120, // the same as httpTransport's timeout
+    waitWindowSeconds: PEER_TIMEOUT_S, // the same as httpTransport timeout
     shouldStop: (id) => paused.has(id),
     exposure,
   });
@@ -89,7 +90,7 @@ const chat = new ChatAgent({
   role: "supplier",
   model: createModel(cfg),
   tools: supplierTools({
-    health: async () => ({ wallet: await wallet.health(), modelConfigured: !!modelKeyOf(cfg) }),
+    health: async () => ({ wallet: await walletHealth(), modelConfigured: !!modelKeyOf(cfg) }),
     decisions: (n) => toDecisionLines(store.all(), n),
     listInvoices: async () => {
       if (!cfg.BACKEND_URL) throw new Error("BACKEND_URL is not set, so I cannot read your invoices. Set it in agent/.env.");
@@ -110,13 +111,16 @@ const chat = new ChatAgent({
   }),
 });
 
+/** How long the supplier waits for the buyer agent to answer one offer. 120 s is plenty on a normal machine; a slow one (the Circle CLI is spawned per signature) may need more. */
+const PEER_TIMEOUT_S = Math.min(900, Math.max(30, Number(process.env.PEER_TIMEOUT_SECONDS ?? 120) || 120));
+
 const idSchema = z.string().regex(/^0x[0-9a-fA-F]{64}$/);
 
 serve(
   cfg.SUPPLIER_AGENT_PORT,
   {
     "GET /health": async () => {
-      const w = await wallet.health();
+      const w = await walletHealth();
       return { wallet: w, modelConfigured: !!modelKeyOf(cfg), invoiceBook: book };
     },
     "POST /start/:invoiceId": async ({ params }) => {

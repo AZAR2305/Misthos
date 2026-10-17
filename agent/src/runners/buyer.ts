@@ -15,7 +15,7 @@ import { ObligationStore, obligationInput } from "../agents/obligations.js";
 import { vaultFromEnv } from "../agents/vault.js";
 import { ChatAgent } from "../agents/chat.js";
 import { buyerTools } from "../agents/chatTools.js";
-import { chatRoutes, fetchInvoiceLines, toDecisionLines } from "./chatHttp.js";
+import { cachedHealth, chatRoutes, fetchInvoiceLines, toDecisionLines } from "./chatHttp.js";
 import { serve, type ServeOptions } from "./http.js";
 
 /**
@@ -45,6 +45,7 @@ const wallet = new CircleCliAdapter({
   usdc: cfg.USDC_ADDRESS as Address,
   verifier,
 });
+const walletHealth = cachedHealth(() => wallet.health());
 const reader = cfg.BACKEND_URL ? signedReader({ backendUrl: cfg.BACKEND_URL, wallet, domain: domain(cfg.ARC_CHAIN_ID, book) }) : undefined;
 /**
  * The payment calendar is private, so it lives only here: an encrypted file on this machine, managed through this agent's own routes
@@ -116,7 +117,7 @@ const chat = new ChatAgent({
   role: "buyer",
   model: createModel(cfg),
   tools: buyerTools({
-    health: async () => ({ wallet: await wallet.health(), modelConfigured: !!modelKeyOf(cfg) }),
+    health: async () => ({ wallet: await walletHealth(), modelConfigured: !!modelKeyOf(cfg) }),
     decisions: (n) => toDecisionLines(store.all(), n),
     payables: async () => {
       if (!cfg.BACKEND_URL) throw new Error("BACKEND_URL is not set, so I cannot read what you owe. Set it in agent/.env.");
@@ -144,7 +145,7 @@ const chat = new ChatAgent({
 serve(
   cfg.BUYER_AGENT_PORT,
   {
-    "GET /health": async () => ({ wallet: await wallet.health(), modelConfigured: !!modelKeyOf(cfg), invoiceBook: book }),
+    "GET /health": async () => ({ wallet: await walletHealth(), modelConfigured: !!modelKeyOf(cfg), invoiceBook: book }),
     "POST /negotiate": async ({ body }) => buyer.handleOffer(offerMsgSchema.parse(body)),
     "POST /accept/:invoiceId": async ({ params }) => buyer.acceptHeld(z.string().regex(/^0x[0-9a-fA-F]{64}$/).parse(params.invoiceId).toLowerCase()),
     "POST /plan": async ({ body }) => runPlan(body),

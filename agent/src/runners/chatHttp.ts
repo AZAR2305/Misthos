@@ -30,3 +30,26 @@ export async function fetchInvoiceLines(backendUrl: string, who: { supplier?: st
 }
 
 export const toDecisionLines = (rows: ReadonlyArray<{ at: number; outcome: string; reason: string }>, n: number): DecisionLine[] => rows.slice(-n).reverse().map((r) => ({ at: r.at, outcome: r.outcome, reason: r.reason }));
+
+/**
+ * Wallet health spawns the Circle CLI, which takes seconds on a small machine, while the website gives up after 2.5 s. So the last answer is served at once and
+ * refreshed in the background every 20 s. Only the very first call waits. A failed check is served as a failure, never as a stale success.
+ */
+export function cachedHealth<T>(fn: () => Promise<T>): () => Promise<T> {
+  let last: { ok: true; value: T } | { ok: false; err: unknown } | undefined;
+  let inflight: Promise<void> | undefined;
+  const refresh = () =>
+    (inflight ??= fn()
+      .then(
+        (value) => void (last = { ok: true, value }),
+        (err) => void (last = { ok: false, err }),
+      )
+      .finally(() => void (inflight = undefined)));
+  void refresh();
+  setInterval(() => void refresh(), 20_000).unref();
+  return async () => {
+    if (!last) await refresh();
+    if (last!.ok) return last!.value;
+    throw last!.err;
+  };
+}
